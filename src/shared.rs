@@ -3,7 +3,6 @@ use color_eyre::Result;
 #[derive(Debug, Default)]
 pub struct AppState {
     pub counter: u32,
-    pub messages: Vec<String>,
 }
 
 impl AppState {
@@ -13,10 +12,6 @@ impl AppState {
 
     pub fn increment(&mut self) {
         self.counter += 1;
-    }
-
-    pub fn add_message(&mut self, msg: String) {
-        self.messages.push(msg);
     }
 }
 
