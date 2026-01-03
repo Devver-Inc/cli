@@ -2,6 +2,11 @@
 name = "devver-cli"
 version = "0.0.1"
 edition = "2024"
+description = "Ultra-fast deployments and visual feedback for Devver"
+license = "MIT"
+repository = "https://github.com/Devver-Inc/cli"
+homepage = "https://devver.app"
+readme = "README.md"
 
 [dependencies]
 crossterm = "0.28"
@@ -13,3 +18,21 @@ clap = { version = "4.5", features = ["derive"] }
 version = "1.5.0"
 default-features = false
 features = ["precommit-hook", "run-cargo-fmt", "run-cargo-clippy"]
+
+[profile.dist]
+inherits = "release"
+lto = "thin"
+
+[workspace.metadata.dist]
+cargo-dist-version = "0.27.0"
+ci = "github"
+installers = ["shell", "powershell"]
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+]
+pr-run-mode = "plan"
+install-path = "CARGO_HOME"
+allow-dirty = ["ci"]
