@@ -3,8 +3,9 @@ use clap::{Parser, Subcommand};
 use color_eyre::Result;
 
 #[derive(Parser, Debug)]
-#[command(name = "mycli")]
-#[command(about = "A CLI skeleton with TUI support", long_about = None)]
+#[command(name = "devver-cli")]
+#[command(version)]
+#[command(about = "Ultra-fast deployments and visual feedback for Devver", long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
