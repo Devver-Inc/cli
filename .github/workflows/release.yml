@@ -50,6 +50,8 @@ jobs:
             os: macos-latest
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
           - target: x86_64-pc-windows-msvc
             os: windows-latest
 
@@ -61,8 +63,16 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install cross-compilation tools
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
       - name: Create archive (Unix)
         if: runner.os != 'Windows'
@@ -150,7 +160,7 @@ jobs:
           set -e
 
           # Clone the tap repository
-          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/Devver-Inc/homebrew-cli.git" tap
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/Devver-Inc/homebrew-tap.git" tap
           cd tap
 
           # Create Formula directory if it doesn't exist
@@ -164,14 +174,17 @@ jobs:
           curl -sL "${BASE_URL}/devver-cli-aarch64-apple-darwin.tar.gz" -o /tmp/arm64-darwin.tar.gz
           curl -sL "${BASE_URL}/devver-cli-x86_64-apple-darwin.tar.gz" -o /tmp/x64-darwin.tar.gz
           curl -sL "${BASE_URL}/devver-cli-x86_64-unknown-linux-gnu.tar.gz" -o /tmp/x64-linux.tar.gz
+          curl -sL "${BASE_URL}/devver-cli-aarch64-unknown-linux-gnu.tar.gz" -o /tmp/arm64-linux.tar.gz
 
           SHA_ARM64_DARWIN=$(sha256sum /tmp/arm64-darwin.tar.gz | cut -d' ' -f1)
           SHA_X64_DARWIN=$(sha256sum /tmp/x64-darwin.tar.gz | cut -d' ' -f1)
           SHA_X64_LINUX=$(sha256sum /tmp/x64-linux.tar.gz | cut -d' ' -f1)
+          SHA_ARM64_LINUX=$(sha256sum /tmp/arm64-linux.tar.gz | cut -d' ' -f1)
 
           echo "SHA256 (aarch64-apple-darwin): ${SHA_ARM64_DARWIN}"
           echo "SHA256 (x86_64-apple-darwin): ${SHA_X64_DARWIN}"
           echo "SHA256 (x86_64-unknown-linux-gnu): ${SHA_X64_LINUX}"
+          echo "SHA256 (aarch64-unknown-linux-gnu): ${SHA_ARM64_LINUX}"
 
           # Generate the formula
           cat > Formula/devver-cli.rb << EOF
@@ -193,6 +206,10 @@ jobs:
             end
 
             on_linux do
+              if Hardware::CPU.arm?
+                url "${BASE_URL}/devver-cli-aarch64-unknown-linux-gnu.tar.gz"
+                sha256 "${SHA_ARM64_LINUX}"
+              end
               if Hardware::CPU.intel?
                 url "${BASE_URL}/devver-cli-x86_64-unknown-linux-gnu.tar.gz"
                 sha256 "${SHA_X64_LINUX}"
