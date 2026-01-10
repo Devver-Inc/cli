@@ -143,7 +143,7 @@ jobs:
     steps:
       - name: Update Homebrew formula
         env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
           VERSION: ${{ needs.plan.outputs.version }}
           TAG: ${{ needs.plan.outputs.tag }}
         run: |
