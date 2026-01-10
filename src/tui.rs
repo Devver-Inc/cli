@@ -1,4 +1,5 @@
 use crate::shared::{CommandHandler, SharedLogic};
+use crate::update;
 use color_eyre::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
@@ -34,6 +35,10 @@ impl App {
             output_log: Vec::new(),
             shared: SharedLogic::new(),
         };
+
+        let update_result = update::check_and_update();
+        app.log(&update_result.message);
+
         app.log("Welcome! Press ':' for command mode, 'q' to quit.");
         app.log("Commands: hello [name], count, echo <text>, help");
         app

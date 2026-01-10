@@ -1,6 +1,7 @@
 mod cli;
 mod shared;
 mod tui;
+mod update;
 
 use clap::Parser;
 use cli::{Cli, CliHandler};
