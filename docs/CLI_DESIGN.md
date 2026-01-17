@@ -66,9 +66,17 @@ devver-cli
 ├── project                 # Project management
 │   ├── list               # List all projects
 │   ├── create             # Create new project
-│   ├── deploy             # Deploy a project
+│   ├── use <id>           # Select active project
+│   ├── deploy             # Deploy current directory
+│   ├── link <name> <url>  # Link external repo (multi-repo setup)
 │   └── info <id>          # Project details
-├── config                  # Configuration management
+├── secret                  # Secret/environment management
+│   ├── set <key> <value>  # Set a secret for current project
+│   ├── set --file <path>  # Import secrets from .env file
+│   ├── list               # List secret keys (values hidden)
+│   ├── get <key>          # Reveal a secret value
+│   └── delete <key>       # Remove a secret
+├── config                  # Local CLI configuration
 │   ├── get <key>
 │   ├── set <key> <value>
 │   └── list
@@ -85,8 +93,15 @@ devver-cli
 | `devver auth login` | Authenticate via Logto | P0 | DEV-87 |
 | `devver auth logout` | Clear credentials | P0 | DEV-79 |
 | `devver auth status` | Show login status | P1 | DEV-79 |
+| `devver project use <id>` | Select active project | P0 | - |
 | `devver project list` | List projects | P1 | DEV-34 |
 | `devver project info <id>` | Show project details | P1 | DEV-34 |
+| `devver project link <name> <url>` | Link external repo | P1 | - |
+| `devver deploy` | Deploy current directory | P0 | - |
+| `devver secret set <key> <val>` | Set a secret | P1 | - |
+| `devver secret set --file .env` | Import secrets from file | P1 | - |
+| `devver secret list` | List secret keys | P1 | - |
+| `devver secret delete <key>` | Remove a secret | P2 | - |
 | `devver update` | Self-update CLI | P2 | DEV-99 |
 
 ---
