@@ -1,0 +1,152 @@
+{
+  "projects": [
+    {
+      "id": "proj_7f3a2b1c-8d4e-5f6a-9b0c-1d2e3f4a5b6c",
+      "name": "acme-saas",
+      "slug": "acme-saas",
+      "organization_id": "org_acme",
+      "description": "Main SaaS application - React frontend + NestJS API",
+      "created_at": "2025-09-15T10:30:00Z",
+      "updated_at": "2026-01-15T14:22:00Z",
+      "status": "active",
+      "container_url": "acme-saas.devver.app",
+      "git_remote": "ssh://git@containers.devver.app:2222/org-acme/acme-saas.git",
+      "config": {
+        "services": {
+          "web": {
+            "root": "./frontend",
+            "install": "bun install",
+            "build": "bun run build",
+            "start": "bun run start",
+            "depends": ["api"]
+          },
+          "api": {
+            "root": "./backend",
+            "install": "npm install",
+            "build": "npm run build",
+            "start": "node dist/main.js",
+            "depends": ["mongodb"]
+          }
+        }
+      },
+      "team_members": [
+        {
+          "user_id": "user_steevy",
+          "role": "owner",
+          "joined_at": "2025-09-15T10:30:00Z"
+        },
+        {
+          "user_id": "user_fethi",
+          "role": "developer",
+          "joined_at": "2025-10-01T09:00:00Z"
+        },
+        {
+          "user_id": "user_victor",
+          "role": "developer",
+          "joined_at": "2025-10-01T09:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "proj_8e4b3c2d-9f5a-6b7c-0d1e-2f3a4b5c6d7e",
+      "name": "mobile-api",
+      "slug": "mobile-api",
+      "organization_id": "org_acme",
+      "description": "REST API for mobile applications",
+      "created_at": "2025-11-20T08:15:00Z",
+      "updated_at": "2026-01-16T11:45:00Z",
+      "status": "active",
+      "container_url": "mobile-api.devver.app",
+      "git_remote": "ssh://git@containers.devver.app:2222/org-acme/mobile-api.git",
+      "config": {
+        "services": {
+          "api": {
+            "root": ".",
+            "install": "bun install",
+            "build": "bun run build",
+            "start": "bun run start",
+            "depends": ["mongodb", "redis"]
+          }
+        }
+      },
+      "team_members": [
+        {
+          "user_id": "user_fethi",
+          "role": "owner",
+          "joined_at": "2025-11-20T08:15:00Z"
+        },
+        {
+          "user_id": "user_alex",
+          "role": "developer",
+          "joined_at": "2025-12-01T10:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "proj_9f5c4d3e-0a6b-7c8d-1e2f-3a4b5c6d7e8f",
+      "name": "landing-page",
+      "slug": "landing-page",
+      "organization_id": "org_acme",
+      "description": "Marketing landing page - Next.js static site",
+      "created_at": "2026-01-05T16:00:00Z",
+      "updated_at": "2026-01-17T09:30:00Z",
+      "status": "active",
+      "container_url": "landing-page.devver.app",
+      "git_remote": "ssh://git@containers.devver.app:2222/org-acme/landing-page.git",
+      "config": {
+        "services": {
+          "web": {
+            "root": ".",
+            "install": "bun install",
+            "build": "bun run build",
+            "start": "bun run start"
+          }
+        }
+      },
+      "team_members": [
+        {
+          "user_id": "user_steevy",
+          "role": "owner",
+          "joined_at": "2026-01-05T16:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "proj_0a6d5e4f-1b7c-8d9e-2f3a-4b5c6d7e8f9a",
+      "name": "internal-tools",
+      "slug": "internal-tools",
+      "organization_id": "org_acme",
+      "description": "Internal admin dashboard and tooling",
+      "created_at": "2025-12-10T14:20:00Z",
+      "updated_at": "2026-01-10T17:00:00Z",
+      "status": "paused",
+      "container_url": "internal-tools.devver.app",
+      "git_remote": "ssh://git@containers.devver.app:2222/org-acme/internal-tools.git",
+      "config": {
+        "services": {
+          "dashboard": {
+            "root": "./admin",
+            "install": "npm install",
+            "build": "npm run build",
+            "start": "npm run preview",
+            "depends": ["api"]
+          },
+          "api": {
+            "root": "./api",
+            "install": "npm install",
+            "build": "npm run build",
+            "start": "node dist/index.js",
+            "depends": ["postgres"]
+          }
+        }
+      },
+      "team_members": [
+        {
+          "user_id": "user_victor",
+          "role": "owner",
+          "joined_at": "2025-12-10T14:20:00Z"
+        }
+      ]
+    }
+  ]
+}

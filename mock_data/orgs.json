@@ -1,0 +1,25 @@
+{
+	"organizations": [
+		{
+			"id": "org_acme",
+			"name": "Acme Inc",
+			"slug": "acme",
+			"plan": "pro",
+			"created_at": "2025-09-01T08:00:00Z",
+			"owner_id": "user_steevy",
+			"databases": {
+				"mongodb": {
+					"host": "mongodb.org-acme.svc.cluster.local",
+					"port": 27017,
+					"status": "running"
+				}
+			},
+			"usage": {
+				"containers": 4,
+				"active_deployments": 7,
+				"storage_gb": 12.5,
+				"bandwidth_gb": 45.2
+			}
+		}
+	]
+}

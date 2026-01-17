@@ -1,0 +1,120 @@
+{
+  "api_responses": {
+    "GET /projects": {
+      "success": true,
+      "data": "$REF:projects.json:projects",
+      "meta": {
+        "total": 4,
+        "page": 1,
+        "per_page": 20
+      }
+    },
+    "GET /projects/:id": {
+      "success": true,
+      "data": "$REF:projects.json:projects[0]"
+    },
+    "GET /projects/:id/deployments": {
+      "success": true,
+      "data": "$REF:deployments.json:deployments",
+      "meta": {
+        "total": 9,
+        "active": 7,
+        "failed": 1,
+        "stopped": 1
+      }
+    },
+    "POST /projects/:id/deploy": {
+      "success": true,
+      "data": {
+        "deployment_id": "deploy_new123",
+        "url": "https://acme-saas.devver.app/my-branch",
+        "status": "deploying"
+      }
+    },
+    "GET /deployments/:id/logs": {
+      "success": true,
+      "data": "$REF:logs.json:logs",
+      "streaming": true,
+      "content_type": "text/event-stream"
+    },
+    "DELETE /deployments/:branch": {
+      "success": true,
+      "data": {
+        "message": "Deployment stopped and cleaned up",
+        "branch": "pr-142",
+        "processes_killed": ["web-pr-142-3003", "api-pr-142-4003"],
+        "worktree_removed": true
+      }
+    },
+    "GET /me": {
+      "success": true,
+      "data": "$REF:users_and_orgs.json:users[0]"
+    },
+    "POST /auth/login": {
+      "success": true,
+      "data": {
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoidXNlcl9zdGVldnkiLCJvcmdfaWQiOiJvcmdfYWNtZSIsImlhdCI6MTczNzEyMzQ1NiwiZXhwIjoxNzM5NzE1NDU2fQ.mock_signature",
+        "expires_at": "2026-02-17T14:30:00Z",
+        "user": "$REF:users_and_orgs.json:users[0]"
+      }
+    },
+    "GET /tickets": {
+      "success": true,
+      "data": "$REF:tickets.json:tickets",
+      "meta": {
+        "total": 5,
+        "by_status": {
+          "in_progress": 2,
+          "done": 1,
+          "backlog": 1,
+          "todo": 1
+        }
+      }
+    },
+    "PATCH /tickets/:id/status": {
+      "success": true,
+      "data": {
+        "id": "ticket_1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+        "status": "done",
+        "updated_at": "2026-01-17T15:00:00Z"
+      }
+    }
+  },
+  "error_responses": {
+    "401_unauthorized": {
+      "success": false,
+      "error": {
+        "code": "UNAUTHORIZED",
+        "message": "Invalid or expired token. Please run 'devver login' to authenticate."
+      }
+    },
+    "403_forbidden": {
+      "success": false,
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "You don't have permission to access this project."
+      }
+    },
+    "404_not_found": {
+      "success": false,
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "Project 'unknown-project' not found."
+      }
+    },
+    "409_conflict": {
+      "success": false,
+      "error": {
+        "code": "CONFLICT",
+        "message": "Deployment for branch 'main' is already in progress."
+      }
+    },
+    "500_internal": {
+      "success": false,
+      "error": {
+        "code": "INTERNAL_ERROR",
+        "message": "An unexpected error occurred. Please try again or contact support."
+      }
+    }
+  }
+}

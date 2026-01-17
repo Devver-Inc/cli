@@ -1,0 +1,347 @@
+{
+  "deployments": [
+    {
+      "id": "deploy_a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+      "project_id": "proj_7f3a2b1c-8d4e-5f6a-9b0c-1d2e3f4a5b6c",
+      "branch": "main",
+      "commit": "8f2a3b4c",
+      "commit_message": "fix: handle null responses in user service",
+      "deployed_by": "user_steevy",
+      "deployed_at": "2026-01-17T10:15:00Z",
+      "status": "running",
+      "url": "https://acme-saas.devver.app/main",
+      "services": [
+        {
+          "name": "web",
+          "port": 3000,
+          "pm2_name": "web-main-3000",
+          "status": "online",
+          "memory": "128MB",
+          "cpu": "2.3%",
+          "uptime": "6h 45m"
+        },
+        {
+          "name": "api",
+          "port": 4000,
+          "pm2_name": "api-main-4000",
+          "status": "online",
+          "memory": "256MB",
+          "cpu": "5.1%",
+          "uptime": "6h 45m"
+        }
+      ],
+      "links": {
+        "web": { "api": "main" },
+        "api": { "mongodb": "org-database" }
+      },
+      "timing": {
+        "git_push": 1200,
+        "worktree": 450,
+        "install": 2800,
+        "build": 1900,
+        "pm2_start": 380,
+        "nginx_reload": 95,
+        "total": 6825
+      }
+    },
+    {
+      "id": "deploy_b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
+      "project_id": "proj_7f3a2b1c-8d4e-5f6a-9b0c-1d2e3f4a5b6c",
+      "branch": "feature/user-dashboard",
+      "commit": "c9d0e1f2",
+      "commit_message": "feat: add user analytics dashboard",
+      "deployed_by": "user_fethi",
+      "deployed_at": "2026-01-17T11:30:00Z",
+      "status": "running",
+      "url": "https://acme-saas.devver.app/feature-user-dashboard",
+      "services": [
+        {
+          "name": "web",
+          "port": 3001,
+          "pm2_name": "web-feature-user-dashboard-3001",
+          "status": "online",
+          "memory": "142MB",
+          "cpu": "1.8%",
+          "uptime": "3h 30m"
+        },
+        {
+          "name": "api",
+          "port": 4001,
+          "pm2_name": "api-feature-user-dashboard-4001",
+          "status": "online",
+          "memory": "234MB",
+          "cpu": "3.2%",
+          "uptime": "3h 30m"
+        }
+      ],
+      "links": {
+        "web": { "api": "feature/user-dashboard" },
+        "api": { "mongodb": "org-database" }
+      },
+      "timing": {
+        "git_push": 980,
+        "worktree": 120,
+        "install": 520,
+        "build": 1650,
+        "pm2_start": 340,
+        "nginx_reload": 90,
+        "total": 3700
+      }
+    },
+    {
+      "id": "deploy_c3d4e5f6-a7b8-9c0d-1e2f-3a4b5c6d7e8f",
+      "project_id": "proj_7f3a2b1c-8d4e-5f6a-9b0c-1d2e3f4a5b6c",
+      "branch": "fix/auth-refresh",
+      "commit": "1a2b3c4d",
+      "commit_message": "fix: token refresh race condition",
+      "deployed_by": "user_victor",
+      "deployed_at": "2026-01-17T14:05:00Z",
+      "status": "running",
+      "url": "https://acme-saas.devver.app/fix-auth-refresh",
+      "services": [
+        {
+          "name": "web",
+          "port": 3002,
+          "pm2_name": "web-fix-auth-refresh-3002",
+          "status": "online",
+          "memory": "131MB",
+          "cpu": "0.9%",
+          "uptime": "1h 15m"
+        },
+        {
+          "name": "api",
+          "port": 4002,
+          "pm2_name": "api-fix-auth-refresh-4002",
+          "status": "online",
+          "memory": "248MB",
+          "cpu": "2.1%",
+          "uptime": "1h 15m"
+        }
+      ],
+      "links": {
+        "web": { "api": "fix/auth-refresh" },
+        "api": { "mongodb": "org-database" }
+      },
+      "timing": {
+        "git_push": 1050,
+        "worktree": 480,
+        "install": 2650,
+        "build": 1720,
+        "pm2_start": 350,
+        "nginx_reload": 88,
+        "total": 6338
+      }
+    },
+    {
+      "id": "deploy_d4e5f6a7-b8c9-0d1e-2f3a-4b5c6d7e8f9a",
+      "project_id": "proj_7f3a2b1c-8d4e-5f6a-9b0c-1d2e3f4a5b6c",
+      "branch": "pr-142",
+      "commit": "5e6f7a8b",
+      "commit_message": "chore: update dependencies",
+      "deployed_by": "user_fethi",
+      "deployed_at": "2026-01-16T16:20:00Z",
+      "status": "stopped",
+      "url": "https://acme-saas.devver.app/pr-142",
+      "services": [
+        {
+          "name": "web",
+          "port": 3003,
+          "pm2_name": "web-pr-142-3003",
+          "status": "stopped",
+          "memory": "0MB",
+          "cpu": "0%",
+          "uptime": "0"
+        },
+        {
+          "name": "api",
+          "port": 4003,
+          "pm2_name": "api-pr-142-4003",
+          "status": "stopped",
+          "memory": "0MB",
+          "cpu": "0%",
+          "uptime": "0"
+        }
+      ],
+      "links": {
+        "web": { "api": "pr-142" },
+        "api": { "mongodb": "org-database" }
+      },
+      "stopped_at": "2026-01-17T08:00:00Z",
+      "stopped_by": "user_fethi",
+      "stop_reason": "PR merged"
+    },
+    {
+      "id": "deploy_e5f6a7b8-c9d0-1e2f-3a4b-5c6d7e8f9a0b",
+      "project_id": "proj_8e4b3c2d-9f5a-6b7c-0d1e-2f3a4b5c6d7e",
+      "branch": "main",
+      "commit": "9a0b1c2d",
+      "commit_message": "feat: add push notification endpoints",
+      "deployed_by": "user_fethi",
+      "deployed_at": "2026-01-17T08:45:00Z",
+      "status": "running",
+      "url": "https://mobile-api.devver.app/main",
+      "services": [
+        {
+          "name": "api",
+          "port": 3000,
+          "pm2_name": "api-main-3000",
+          "status": "online",
+          "memory": "312MB",
+          "cpu": "8.4%",
+          "uptime": "6h 35m"
+        }
+      ],
+      "links": {
+        "api": { "mongodb": "org-database", "redis": "org-cache" }
+      },
+      "timing": {
+        "git_push": 890,
+        "worktree": 95,
+        "install": 1200,
+        "build": 980,
+        "pm2_start": 290,
+        "nginx_reload": 82,
+        "total": 3537
+      }
+    },
+    {
+      "id": "deploy_f6a7b8c9-d0e1-2f3a-4b5c-6d7e8f9a0b1c",
+      "project_id": "proj_8e4b3c2d-9f5a-6b7c-0d1e-2f3a4b5c6d7e",
+      "branch": "feature/graphql",
+      "commit": "3d4e5f6a",
+      "commit_message": "feat: implement GraphQL schema",
+      "deployed_by": "user_alex",
+      "deployed_at": "2026-01-17T13:20:00Z",
+      "status": "running",
+      "url": "https://mobile-api.devver.app/feature-graphql",
+      "services": [
+        {
+          "name": "api",
+          "port": 3001,
+          "pm2_name": "api-feature-graphql-3001",
+          "status": "online",
+          "memory": "345MB",
+          "cpu": "4.2%",
+          "uptime": "2h"
+        }
+      ],
+      "links": {
+        "api": { "mongodb": "org-database", "redis": "org-cache" }
+      },
+      "timing": {
+        "git_push": 920,
+        "worktree": 420,
+        "install": 2100,
+        "build": 1450,
+        "pm2_start": 310,
+        "nginx_reload": 78,
+        "total": 5278
+      }
+    },
+    {
+      "id": "deploy_a7b8c9d0-e1f2-3a4b-5c6d-7e8f9a0b1c2d",
+      "project_id": "proj_9f5c4d3e-0a6b-7c8d-1e2f-3a4b5c6d7e8f",
+      "branch": "main",
+      "commit": "7b8c9d0e",
+      "commit_message": "style: update hero section gradient",
+      "deployed_by": "user_steevy",
+      "deployed_at": "2026-01-17T09:30:00Z",
+      "status": "running",
+      "url": "https://landing-page.devver.app/main",
+      "services": [
+        {
+          "name": "web",
+          "port": 3000,
+          "pm2_name": "web-main-3000",
+          "status": "online",
+          "memory": "89MB",
+          "cpu": "0.5%",
+          "uptime": "5h 50m"
+        }
+      ],
+      "links": {},
+      "timing": {
+        "git_push": 750,
+        "worktree": 85,
+        "install": 890,
+        "build": 2200,
+        "pm2_start": 180,
+        "nginx_reload": 65,
+        "total": 4170
+      }
+    },
+    {
+      "id": "deploy_b8c9d0e1-f2a3-4b5c-6d7e-8f9a0b1c2d3e",
+      "project_id": "proj_9f5c4d3e-0a6b-7c8d-1e2f-3a4b5c6d7e8f",
+      "branch": "redesign/pricing",
+      "commit": "1f2a3b4c",
+      "commit_message": "feat: new pricing page design",
+      "deployed_by": "user_steevy",
+      "deployed_at": "2026-01-17T14:50:00Z",
+      "status": "deploying",
+      "url": "https://landing-page.devver.app/redesign-pricing",
+      "services": [
+        {
+          "name": "web",
+          "port": 3001,
+          "pm2_name": "web-redesign-pricing-3001",
+          "status": "building",
+          "memory": "0MB",
+          "cpu": "0%",
+          "uptime": "0"
+        }
+      ],
+      "links": {},
+      "current_step": "build",
+      "timing": {
+        "git_push": 680,
+        "worktree": 92,
+        "install": 1050
+      }
+    },
+    {
+      "id": "deploy_c9d0e1f2-a3b4-5c6d-7e8f-9a0b1c2d3e4f",
+      "project_id": "proj_7f3a2b1c-8d4e-5f6a-9b0c-1d2e3f4a5b6c",
+      "branch": "experiment/new-api",
+      "commit": "2a3b4c5d",
+      "commit_message": "experiment: testing new API architecture",
+      "deployed_by": "user_victor",
+      "deployed_at": "2026-01-17T12:00:00Z",
+      "status": "failed",
+      "url": null,
+      "services": [
+        {
+          "name": "web",
+          "port": 3004,
+          "pm2_name": "web-experiment-new-api-3004",
+          "status": "error",
+          "memory": "0MB",
+          "cpu": "0%",
+          "uptime": "0"
+        },
+        {
+          "name": "api",
+          "port": 4004,
+          "pm2_name": "api-experiment-new-api-4004",
+          "status": "error",
+          "memory": "0MB",
+          "cpu": "0%",
+          "uptime": "0"
+        }
+      ],
+      "links": {},
+      "error": {
+        "code": "BUILD_ERROR",
+        "message": "Build failed for service 'api'",
+        "logs": "Error: Cannot find module '@nestjs/core'\nDid you forget to run `npm install`?\n\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1075:15)\n    at Module._load (node:internal/modules/cjs/loader:920:27)",
+        "step": 3,
+        "service": "api"
+      },
+      "timing": {
+        "git_push": 1100,
+        "worktree": 510,
+        "install": 2340
+      }
+    }
+  ]
+}

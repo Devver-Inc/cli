@@ -1,0 +1,139 @@
+{
+  "logs": {
+    "deploy_a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d": [
+      {
+        "timestamp": "2026-01-17T10:15:01.234Z",
+        "service": "api",
+        "level": "info",
+        "message": "Server starting on port 4000"
+      },
+      {
+        "timestamp": "2026-01-17T10:15:01.456Z",
+        "service": "api",
+        "level": "info",
+        "message": "Connected to MongoDB at mongodb.org-acme.svc.cluster.local:27017"
+      },
+      {
+        "timestamp": "2026-01-17T10:15:01.678Z",
+        "service": "api",
+        "level": "info",
+        "message": "API ready - listening on http://0.0.0.0:4000"
+      },
+      {
+        "timestamp": "2026-01-17T10:15:02.100Z",
+        "service": "web",
+        "level": "info",
+        "message": "Starting production server..."
+      },
+      {
+        "timestamp": "2026-01-17T10:15:02.345Z",
+        "service": "web",
+        "level": "info",
+        "message": "Ready on http://0.0.0.0:3000"
+      },
+      {
+        "timestamp": "2026-01-17T12:34:56.789Z",
+        "service": "api",
+        "level": "info",
+        "message": "GET /api/users - 200 - 45ms"
+      },
+      {
+        "timestamp": "2026-01-17T12:35:12.012Z",
+        "service": "api",
+        "level": "info",
+        "message": "GET /api/analytics - 200 - 123ms"
+      },
+      {
+        "timestamp": "2026-01-17T13:45:00.123Z",
+        "service": "api",
+        "level": "warn",
+        "message": "Slow query detected: users.find() took 850ms"
+      },
+      {
+        "timestamp": "2026-01-17T14:12:34.567Z",
+        "service": "web",
+        "level": "info",
+        "message": "Client connected from 192.168.1.100"
+      },
+      {
+        "timestamp": "2026-01-17T14:15:00.000Z",
+        "service": "api",
+        "level": "info",
+        "message": "Health check passed"
+      }
+    ],
+    "deploy_c9d0e1f2-a3b4-5c6d-7e8f-9a0b1c2d3e4f": [
+      {
+        "timestamp": "2026-01-17T12:00:01.000Z",
+        "service": "system",
+        "level": "info",
+        "message": "Starting deployment for experiment/new-api"
+      },
+      {
+        "timestamp": "2026-01-17T12:00:02.100Z",
+        "service": "system",
+        "level": "info",
+        "message": "Git worktree created at /app/deployments/experiment-new-api"
+      },
+      {
+        "timestamp": "2026-01-17T12:00:25.440Z",
+        "service": "system",
+        "level": "info",
+        "message": "npm install completed successfully"
+      },
+      {
+        "timestamp": "2026-01-17T12:00:26.000Z",
+        "service": "system",
+        "level": "info",
+        "message": "Starting build: npm run build"
+      },
+      {
+        "timestamp": "2026-01-17T12:00:28.500Z",
+        "service": "api",
+        "level": "error",
+        "message": "Error: Cannot find module '@nestjs/core'"
+      },
+      {
+        "timestamp": "2026-01-17T12:00:28.501Z",
+        "service": "api",
+        "level": "error",
+        "message": "Did you forget to run `npm install`?"
+      },
+      {
+        "timestamp": "2026-01-17T12:00:28.510Z",
+        "service": "api",
+        "level": "error",
+        "message": "    at Module._resolveFilename (node:internal/modules/cjs/loader:1075:15)"
+      },
+      {
+        "timestamp": "2026-01-17T12:00:28.520Z",
+        "service": "system",
+        "level": "error",
+        "message": "Build failed for service 'api' at step 3"
+      },
+      {
+        "timestamp": "2026-01-17T12:00:28.530Z",
+        "service": "system",
+        "level": "info",
+        "message": "Rolling back deployment..."
+      },
+      {
+        "timestamp": "2026-01-17T12:00:29.000Z",
+        "service": "system",
+        "level": "info",
+        "message": "Worktree removed, rollback complete"
+      }
+    ]
+  },
+  "deploy_events": [
+    {
+      "deployment_id": "deploy_b8c9d0e1-f2a3-4b5c-6d7e-8f9a0b1c2d3e",
+      "events": [
+        { "step": "git_push", "status": "completed", "duration_ms": 680, "timestamp": "2026-01-17T14:50:00.680Z" },
+        { "step": "worktree", "status": "completed", "duration_ms": 92, "timestamp": "2026-01-17T14:50:00.772Z" },
+        { "step": "install", "status": "completed", "duration_ms": 1050, "timestamp": "2026-01-17T14:50:01.822Z" },
+        { "step": "build", "status": "in_progress", "started_at": "2026-01-17T14:50:01.823Z" }
+      ]
+    }
+  ]
+}
