@@ -1,0 +1,25 @@
+# https://taskfile.dev
+version: "3"
+tasks:
+    check:
+        desc: Verify formatting, lints, and tests
+        cmds:
+            - cargo fmt --check
+            - cargo clippy
+            - cargo test
+
+    fix:
+        desc: Auto-fix formatting and lint issues
+        cmds:
+            - cargo fmt
+            - cargo clippy --fix --allow-dirty
+
+    release:
+        desc: Build optimized binary with dist profile
+        cmds:
+            - cargo build --profile dist
+
+    install-local:
+        desc: Install dev version locally
+        cmds:
+            - cargo install --path .
