@@ -1,4 +1,5 @@
 mod cli;
+mod git;
 mod shared;
 mod tui;
 mod update;

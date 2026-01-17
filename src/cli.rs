@@ -10,23 +10,17 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
 
-    /// Run in interactive TUI mode
     #[arg(short, long)]
     pub interactive: bool,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Say hello
     Hello {
-        /// Name to greet
         name: Option<String>,
     },
-    /// Increment and show counter
     Count,
-    /// Echo back the input
     Echo {
-        /// Text to echo
         #[arg(trailing_var_arg = true)]
         text: Vec<String>,
     },

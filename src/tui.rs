@@ -1,3 +1,4 @@
+use crate::git::GitInfo;
 use crate::shared::{CommandHandler, SharedLogic};
 use crate::update;
 use color_eyre::Result;
@@ -24,6 +25,7 @@ pub struct App {
     pub command_input: String,
     pub output_log: Vec<String>,
     pub shared: SharedLogic,
+    pub git_info: GitInfo,
 }
 
 impl App {
@@ -34,13 +36,14 @@ impl App {
             command_input: String::new(),
             output_log: Vec::new(),
             shared: SharedLogic::new(),
+            git_info: GitInfo::fetch(),
         };
 
         let update_result = update::check_and_update();
         app.log(&update_result.message);
 
-        app.log("Welcome! Press ':' for command mode, 'q' to quit.");
-        app.log("Commands: hello [name], count, echo <text>, help");
+        // app.log("Welcome! Press ':' for command mode, 'q' to quit.");
+        // app.log("Commands: hello [name], count, echo <text>, help");
         app
     }
 
@@ -64,8 +67,8 @@ impl App {
 
     fn render_main(&self, frame: &mut Frame, area: Rect) {
         let title = match self.mode {
-            Mode::Normal => "Normal Mode",
-            Mode::Command => "Command Mode",
+            Mode::Normal => self.git_info.display(),
+            Mode::Command => "Command Mode".to_string(),
         };
 
         let title_style = match self.mode {
