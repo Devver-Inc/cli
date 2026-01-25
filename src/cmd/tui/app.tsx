@@ -1,5 +1,6 @@
 import { createCliRenderer, TextAttributes } from "@opentui/core";
-import { createRoot } from "@opentui/react";
+import { createRoot, useKeyboard } from "@opentui/react";
+import { ExitProvider, useExit } from "./exit";
 
 export interface Args {}
 
@@ -10,21 +11,40 @@ export function tui(input: {
 	onExit?: () => Promise<void>;
 }) {
 	return new Promise<void>(async (resolve) => {
-		// const mode = await getTerminalBackgroundColor()
+		const renderer = await createCliRenderer({
+			exitOnCtrlC: false,
+		});
+
 		const onExit = async () => {
 			await input.onExit?.();
 			resolve();
 		};
 
-		return <App />;
+		createRoot(renderer).render(
+			<ExitProvider onExit={onExit}>
+				<App />
+			</ExitProvider>,
+		);
 	});
 }
 
 function App() {
+	const exit = useExit();
+
+	useKeyboard((key) => {
+		if (key.ctrl && key.name === "c") {
+			exit();
+		}
+	});
+
 	return (
 		<box alignItems="center" justifyContent="center" flexGrow={1}>
-			<box justifyContent="center" alignItems="flex-end">
-				<ascii-font font="tiny" text="OpenTUI" />
+			<box
+				flexDirection="column"
+				justifyContent="center"
+				alignItems="center"
+			>
+				<ascii-font font="slick" text="Devver" />
 				<text attributes={TextAttributes.DIM}>
 					What will you build?
 				</text>
@@ -35,6 +55,3 @@ function App() {
 		</box>
 	);
 }
-
-const renderer = await createCliRenderer();
-createRoot(renderer).render(<App />);

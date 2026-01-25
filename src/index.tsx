@@ -100,5 +100,7 @@ try {
 	process.exitCode = 1;
 } finally {
 	// Explicitly exit to avoid any hanging subprocesses.
-	process.exit();
+	if (process.exitCode) {
+		process.exit();
+	}
 }

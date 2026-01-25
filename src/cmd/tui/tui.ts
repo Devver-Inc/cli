@@ -41,9 +41,11 @@ export const TuiCommand = cmd({
 				sessionID: args.session,
 				agent: args.agent,
 				model: args.model,
-				prompt,
+				prompt: args.prompts,
 			},
-			onExit: async () => {},
+			onExit: async () => {
+				console.log("goodbye");
+			},
 		});
 
 		setTimeout(() => {
