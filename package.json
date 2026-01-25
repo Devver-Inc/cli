@@ -14,7 +14,9 @@
   },
   "dependencies": {
     "@opentui/core": "^0.1.72",
-    "@opentui/react": "^0.1.72",
-    "react": "^19.2.3"
+    "@opentui/react": "^0.1.74",
+    "@types/yargs": "^17.0.35",
+    "uninstall": "^0.0.0",
+    "yargs": "^18.0.0"
   }
 }
