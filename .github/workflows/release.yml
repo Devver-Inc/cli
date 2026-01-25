@@ -1,0 +1,237 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: Plan release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: plan
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Planning release for $TAG (version $VERSION)"
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: plan
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            os: macos-latest
+            arch: arm64
+          - target: darwin-x64
+            os: macos-13
+            arch: x64
+          - target: linux-x64
+            os: ubuntu-latest
+            arch: x64
+          - target: linux-arm64
+            os: ubuntu-latest
+            arch: arm64
+          - target: windows-x64
+            os: windows-latest
+            arch: x64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          if [ "${{ matrix.arch }}" = "arm64" ] && [ "${{ runner.os }}" = "Linux" ]; then
+            bun build src/index.tsx --compile --target=bun-linux-arm64 --outfile=devver-cli
+          else
+            bun build src/index.tsx --compile --outfile=devver-cli
+          fi
+
+      - name: Build binary (Windows)
+        if: runner.os == 'Windows'
+        run: bun build src/index.tsx --compile --outfile=devver-cli.exe
+
+      - name: Create archive (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          tar czf devver-cli-${{ matrix.target }}.tar.gz devver-cli
+          shasum -a 256 devver-cli-${{ matrix.target }}.tar.gz > devver-cli-${{ matrix.target }}.tar.gz.sha256
+
+      - name: Create archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          7z a devver-cli-${{ matrix.target }}.zip devver-cli.exe
+          (Get-FileHash devver-cli-${{ matrix.target }}.zip -Algorithm SHA256).Hash.ToLower() + "  devver-cli-${{ matrix.target }}.zip" | Out-File -Encoding utf8 devver-cli-${{ matrix.target }}.zip.sha256
+
+      - name: Upload artifact (Unix)
+        if: runner.os != 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: devver-cli-${{ matrix.target }}
+          path: |
+            devver-cli-${{ matrix.target }}.tar.gz
+            devver-cli-${{ matrix.target }}.tar.gz.sha256
+
+      - name: Upload artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: devver-cli-${{ matrix.target }}
+          path: |
+            devver-cli-${{ matrix.target }}.zip
+            devver-cli-${{ matrix.target }}.zip.sha256
+
+  release:
+    name: Create GitHub Release
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" \) -exec mv {} release/ \;
+
+      - name: Generate release notes from changelog
+        id: changelog
+        run: |
+          if [ -f CHANGELOG.md ]; then
+            # Extract the latest version's changelog
+            awk '/^## \[/{if(p) exit; p=1; next} p' CHANGELOG.md > release_notes.md
+          else
+            echo "Release ${{ needs.plan.outputs.tag }}" > release_notes.md
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.plan.outputs.tag }}
+          name: ${{ needs.plan.outputs.tag }}
+          body_path: release_notes.md
+          files: release/*
+          draft: false
+          prerelease: false
+
+  homebrew:
+    name: Update Homebrew tap
+    needs: [plan, release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update Homebrew formula
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.CLI_RELEASE_PAT }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          set -e
+
+          # Clone the tap repository
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/Devver-Inc/homebrew-tap.git" tap
+          cd tap
+
+          # Create Formula directory if it doesn't exist
+          mkdir -p Formula
+
+          BASE_URL="https://github.com/Devver-Inc/cli/releases/download/${TAG}"
+
+          # Download and compute SHA256 for each platform
+          echo "Downloading artifacts and computing checksums..."
+
+          curl -sL "${BASE_URL}/devver-cli-darwin-arm64.tar.gz" -o /tmp/arm64-darwin.tar.gz
+          curl -sL "${BASE_URL}/devver-cli-darwin-x64.tar.gz" -o /tmp/x64-darwin.tar.gz
+          curl -sL "${BASE_URL}/devver-cli-linux-x64.tar.gz" -o /tmp/x64-linux.tar.gz
+          curl -sL "${BASE_URL}/devver-cli-linux-arm64.tar.gz" -o /tmp/arm64-linux.tar.gz
+
+          SHA_ARM64_DARWIN=$(sha256sum /tmp/arm64-darwin.tar.gz | cut -d' ' -f1)
+          SHA_X64_DARWIN=$(sha256sum /tmp/x64-darwin.tar.gz | cut -d' ' -f1)
+          SHA_X64_LINUX=$(sha256sum /tmp/x64-linux.tar.gz | cut -d' ' -f1)
+          SHA_ARM64_LINUX=$(sha256sum /tmp/arm64-linux.tar.gz | cut -d' ' -f1)
+
+          echo "SHA256 (darwin-arm64): ${SHA_ARM64_DARWIN}"
+          echo "SHA256 (darwin-x64): ${SHA_X64_DARWIN}"
+          echo "SHA256 (linux-x64): ${SHA_X64_LINUX}"
+          echo "SHA256 (linux-arm64): ${SHA_ARM64_LINUX}"
+
+          # Generate the formula
+          cat > Formula/devver-cli.rb << EOF
+          class DevverCli < Formula
+            desc "Ultra-fast deployments and visual feedback for Devver"
+            homepage "https://devver.app"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "${BASE_URL}/devver-cli-darwin-arm64.tar.gz"
+                sha256 "${SHA_ARM64_DARWIN}"
+              end
+              if Hardware::CPU.intel?
+                url "${BASE_URL}/devver-cli-darwin-x64.tar.gz"
+                sha256 "${SHA_X64_DARWIN}"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.arm?
+                url "${BASE_URL}/devver-cli-linux-arm64.tar.gz"
+                sha256 "${SHA_ARM64_LINUX}"
+              end
+              if Hardware::CPU.intel?
+                url "${BASE_URL}/devver-cli-linux-x64.tar.gz"
+                sha256 "${SHA_X64_LINUX}"
+              end
+            end
+
+            def install
+              bin.install "devver-cli"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/devver-cli --version")
+            end
+          end
+          EOF
+
+          # Commit and push
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/devver-cli.rb
+          git commit -m "Update devver-cli to ${TAG}" || echo "No changes to commit"
+          git push
