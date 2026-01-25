@@ -1,6 +1,10 @@
 import { EOL } from "os";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
+import { AuthCommand } from "./cmd/auth";
+import { DeployCommand } from "./cmd/deploy";
+import { ProjectCommand } from "./cmd/project";
+import { SecretCommand } from "./cmd/secret";
 import { TuiCommand } from "./cmd/tui/tui";
 import { FormatError } from "./error";
 import { UI } from "./ui";
@@ -22,28 +26,32 @@ export const LOG_FILE_PATH = "";
 
 const cli = yargs(hideBin(process.argv))
 	.parserConfiguration({ "populate--": true })
-	.scriptName("opencode")
+	.scriptName("devver")
 	.wrap(100)
 	.help("help", "show help")
 	.alias("help", "h")
 	.version("version", "show version number", VERSION)
 	.alias("version", "v")
-	.option("print-logs", {
-		describe: "print logs to stderr",
-		type: "boolean",
-	})
-	.option("log-level", {
-		describe: "log level",
-		type: "string",
-		choices: ["DEBUG", "INFO", "WARN", "ERROR"],
-	})
-	.middleware(async (opts) => {
-		console.info("devver", {
-			version: VERSION,
-			args: process.argv.slice(2),
-		});
-	})
+	// .option("print-logs", {
+	// 	describe: "print logs to stderr",
+	// 	type: "boolean",
+	// })
+	// .option("log-level", {
+	// 	describe: "log level",
+	// 	type: "string",
+	// 	choices: ["DEBUG", "INFO", "WARN", "ERROR"],
+	// })
+	// .middleware(async (opts) => {
+	// 	console.info("devver", {
+	// 		version: VERSION,
+	// 		args: process.argv.slice(2),
+	// 	});
+	// })
 	.command(TuiCommand)
+	.command(AuthCommand)
+	.command(DeployCommand)
+	.command(ProjectCommand)
+	.command(SecretCommand)
 	.usage("\n" + UI.logo())
 	.completion("completion", "generate shell completion script")
 	.fail((msg, err) => {

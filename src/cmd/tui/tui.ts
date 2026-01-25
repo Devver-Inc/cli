@@ -3,36 +3,12 @@ import { tui } from "./app";
 
 export const TuiCommand = cmd({
 	command: "$0 [project]",
-	describe: "start opencode tui",
+	describe: "start devver tui",
 	builder: (yargs) =>
-		yargs
-			.positional("project", {
-				type: "string",
-				describe: "path to start opencode in",
-			})
-			.option("model", {
-				type: "string",
-				alias: ["m"],
-				describe: "model to use in the format of provider/model",
-			})
-			.option("continue", {
-				alias: ["c"],
-				describe: "continue the last session",
-				type: "boolean",
-			})
-			.option("session", {
-				alias: ["s"],
-				type: "string",
-				describe: "session id to continue",
-			})
-			.option("prompt", {
-				type: "string",
-				describe: "prompt to use",
-			})
-			.option("agent", {
-				type: "string",
-				describe: "agent to use",
-			}),
+		yargs.positional("project", {
+			type: "string",
+			describe: "path to start devver in",
+		}),
 	handler: async (args) => {
 		const tuiPromise = tui({
 			url: "",
@@ -48,10 +24,10 @@ export const TuiCommand = cmd({
 			},
 		});
 
-		setTimeout(() => {
-			// client.call("checkUpgrade", { directory: cwd }).catch(() => {});
-			// Update
-		}, 1000);
+		// setTimeout(() => {
+		// client.call("checkUpgrade", { directory: cwd }).catch(() => {});
+		// Update
+		// }, 1000);
 
 		await tuiPromise;
 	},
