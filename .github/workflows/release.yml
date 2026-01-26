@@ -45,14 +45,11 @@ jobs:
             os: macos-latest
             arch: arm64
           - target: darwin-x64
-            os: macos-13
+            os: macos-15
             arch: x64
           - target: linux-x64
             os: ubuntu-latest
             arch: x64
-          - target: linux-arm64
-            os: ubuntu-latest
-            arch: arm64
           - target: windows-x64
             os: windows-latest
             arch: x64
@@ -70,12 +67,7 @@ jobs:
 
       - name: Build binary (Unix)
         if: runner.os != 'Windows'
-        run: |
-          if [ "${{ matrix.arch }}" = "arm64" ] && [ "${{ runner.os }}" = "Linux" ]; then
-            bun build src/index.tsx --compile --target=bun-linux-arm64 --outfile=devver-cli
-          else
-            bun build src/index.tsx --compile --outfile=devver-cli
-          fi
+        run: bun build src/index.tsx --compile --outfile=devver-cli
 
       - name: Build binary (Windows)
         if: runner.os == 'Windows'
@@ -177,17 +169,14 @@ jobs:
           curl -sL "${BASE_URL}/devver-cli-darwin-arm64.tar.gz" -o /tmp/arm64-darwin.tar.gz
           curl -sL "${BASE_URL}/devver-cli-darwin-x64.tar.gz" -o /tmp/x64-darwin.tar.gz
           curl -sL "${BASE_URL}/devver-cli-linux-x64.tar.gz" -o /tmp/x64-linux.tar.gz
-          curl -sL "${BASE_URL}/devver-cli-linux-arm64.tar.gz" -o /tmp/arm64-linux.tar.gz
 
           SHA_ARM64_DARWIN=$(sha256sum /tmp/arm64-darwin.tar.gz | cut -d' ' -f1)
           SHA_X64_DARWIN=$(sha256sum /tmp/x64-darwin.tar.gz | cut -d' ' -f1)
           SHA_X64_LINUX=$(sha256sum /tmp/x64-linux.tar.gz | cut -d' ' -f1)
-          SHA_ARM64_LINUX=$(sha256sum /tmp/arm64-linux.tar.gz | cut -d' ' -f1)
 
           echo "SHA256 (darwin-arm64): ${SHA_ARM64_DARWIN}"
           echo "SHA256 (darwin-x64): ${SHA_X64_DARWIN}"
           echo "SHA256 (linux-x64): ${SHA_X64_LINUX}"
-          echo "SHA256 (linux-arm64): ${SHA_ARM64_LINUX}"
 
           # Generate the formula
           cat > Formula/devver-cli.rb << EOF
@@ -209,10 +198,6 @@ jobs:
             end
 
             on_linux do
-              if Hardware::CPU.arm?
-                url "${BASE_URL}/devver-cli-linux-arm64.tar.gz"
-                sha256 "${SHA_ARM64_LINUX}"
-              end
               if Hardware::CPU.intel?
                 url "${BASE_URL}/devver-cli-linux-x64.tar.gz"
                 sha256 "${SHA_X64_LINUX}"
