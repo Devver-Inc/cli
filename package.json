@@ -1,6 +1,6 @@
 {
   "name": "devver-cli",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Ultra-fast deployments and visual feedback for Devver",
   "module": "src/index.tsx",
   "type": "module",
