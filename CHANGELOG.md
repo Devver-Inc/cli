@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/Devver-Inc/cli/compare/v1.0.0...v1.0.1) (2026-01-26)
+
+
+### Bug Fixes
+
+* release binaries errors ([#16](https://github.com/Devver-Inc/cli/issues/16)) ([6452626](https://github.com/Devver-Inc/cli/commit/6452626b8ac10ced158d6f427fe1c8193f279161))
+
 ## 1.0.0 (2026-01-26)
 
 
