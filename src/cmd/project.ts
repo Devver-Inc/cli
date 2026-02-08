@@ -1,3 +1,5 @@
+import { getProjectById, getProjects } from "../api/projects.requests";
+import { disposeRuntime, runAuthenticated } from "../util/runtime";
 import { cmd } from "./cmd";
 
 const ProjectUseCommand = cmd({
@@ -19,7 +21,11 @@ const ProjectListCommand = cmd({
   command: "list",
   describe: "List projects",
   async handler() {
-    await new Promise(() => ({}));
+    const projects = await runAuthenticated(getProjects);
+    for (const project of projects) {
+      console.log(`${project.id}: ${project.name}`);
+    }
+    await disposeRuntime();
   },
 });
 
@@ -33,8 +39,9 @@ const ProjectInfoCommand = cmd({
       describe: "Project id",
     }),
   async handler(args) {
-    console.log("Getting info for project ... ", args.id);
-    await new Promise(() => ({}));
+    const project = await runAuthenticated(getProjectById(args.id));
+    console.log(`${project.id}: ${project.name}`);
+    await disposeRuntime();
   },
 });
 
