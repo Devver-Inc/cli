@@ -67,5 +67,16 @@ export const rpc = {
   async cancelLogin() {
     await client.signOut();
   },
+  async getAccessToken() {
+    if (await client.isAuthenticated()) {
+      const claims = await client.getIdTokenClaims();
+      const orgId = claims?.organizations?.[0];
+      if (orgId) {
+        return client.getAccessToken("http://localhost:9999", orgId);
+      }
+      return client.getAccessToken("http://localhost:9999");
+    }
+    return null;
+  },
 };
 Rpc.listen(rpc);

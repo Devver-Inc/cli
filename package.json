@@ -19,6 +19,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@effect/platform": "^0.94.3",
     "@flystorage/file-storage": "^1.2.2",
     "@flystorage/local-fs": "^1.2.0",
     "@logto/node": "^3.1.8",
