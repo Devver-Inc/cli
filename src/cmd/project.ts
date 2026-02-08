@@ -1,4 +1,4 @@
-import { cmd } from "./cmd"
+import { cmd } from "./cmd";
 
 const ProjectUseCommand = cmd({
   command: "use <id>",
@@ -10,15 +10,18 @@ const ProjectUseCommand = cmd({
       describe: "Project id",
     }),
   async handler(args) {
-    console.log("Using project ", args.id)
+    console.log("Using project ", args.id);
+    await new Promise(() => ({}));
   },
-})
+});
 
 const ProjectListCommand = cmd({
   command: "list",
   describe: "List projects",
-  async handler() {},
-})
+  async handler() {
+    await new Promise(() => ({}));
+  },
+});
 
 const ProjectInfoCommand = cmd({
   command: "info <id>",
@@ -30,9 +33,10 @@ const ProjectInfoCommand = cmd({
       describe: "Project id",
     }),
   async handler(args) {
-    console.log("Getting info for project ... ", args.id)
+    console.log("Getting info for project ... ", args.id);
+    await new Promise(() => ({}));
   },
-})
+});
 
 const ProjectLinkCommand = cmd({
   command: "link <url>",
@@ -54,25 +58,32 @@ const ProjectLinkCommand = cmd({
         type: "string",
         describe: "Update existing project by ID",
       })
-      .example("$0 project link https://github.com/foo/bar --name myproject", "Link new repo")
-      .example("$0 project link https://github.com/foo/new --id abc123", "Update existing")
+      .example(
+        "$0 project link https://github.com/foo/bar --name myproject",
+        "Link new repo"
+      )
+      .example(
+        "$0 project link https://github.com/foo/new --id abc123",
+        "Update existing"
+      )
       .check((args) => {
         if (args.name && args.id) {
-          throw new Error("Use --name OR --id, not both")
+          throw new Error("Use --name OR --id, not both");
         }
-        if (!args.name && !args.id) {
-          throw new Error("Provide --name (new) or --id (existing)")
+        if (!(args.name || args.id)) {
+          throw new Error("Provide --name (new) or --id (existing)");
         }
-        return true
+        return true;
       }),
   async handler(args) {
     if (args.name) {
-      console.log("Creating:", args.name, args.url)
+      console.log("Creating:", args.name, args.url);
     } else {
-      console.log("Updating:", args.id, args.url)
+      console.log("Updating:", args.id, args.url);
     }
+    await new Promise(() => ({}));
   },
-})
+});
 export const ProjectCommand = cmd({
   command: "project",
   describe: "manage projects",
@@ -83,5 +94,7 @@ export const ProjectCommand = cmd({
       .command(ProjectInfoCommand)
       .command(ProjectLinkCommand)
       .demandCommand(),
-  async handler() {},
-})
+  async handler() {
+    await new Promise(() => ({}));
+  },
+});

@@ -1,5 +1,5 @@
-import { cmd } from "../cmd"
-import { tui } from "./app"
+import { cmd } from "../cmd";
+import { tui } from "./app";
 
 export const TuiCommand = cmd({
   command: "$0 [project]",
@@ -20,15 +20,16 @@ export const TuiCommand = cmd({
         prompt: args.prompts,
       },
       onExit: async () => {
-        console.log("goodbye")
+        console.log("goodbye");
+        await new Promise(() => ({}));
       },
-    })
+    });
 
     // setTimeout(() => {
     // client.call("checkUpgrade", { directory: cwd }).catch(() => {});
     // Update
     // }, 1000);
 
-    await tuiPromise
+    await tuiPromise;
   },
-})
+});

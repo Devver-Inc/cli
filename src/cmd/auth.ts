@@ -1,28 +1,54 @@
-import { cmd } from "./cmd"
+import { getAuthClient, startLogin, terminateAuthClient } from "../auth/client";
+import { cmd } from "./cmd";
 
 const AuthLoginCommand = cmd({
   command: "login",
   describe: "authenticate to your devver server",
   async handler() {
-    console.log("logging in ...")
+    console.log("Opening browser for login...");
+
+    const { onSuccess, onError } = await startLogin();
+
+    await new Promise<void>((resolve, reject) => {
+      onSuccess(() => {
+        console.log("✓ Login successful!");
+        resolve();
+      });
+      onError((e) => {
+        console.error("✗ Login failed:", e.error);
+        reject(new Error(e.error));
+      });
+    });
+
+    await terminateAuthClient();
   },
-})
+});
 
 const AuthLogoutCommand = cmd({
   command: "logout",
   describe: "logout from your devver server",
   async handler() {
-    console.log("logging out ...")
+    const client = getAuthClient();
+    await client.call("logout", undefined);
+    console.log("✓ Logged out");
+    await terminateAuthClient();
   },
-})
+});
 
 const AuthStatusCommand = cmd({
   command: "status",
   describe: "Show login status",
   async handler() {
-    console.log("auth status :  ...")
+    const client = getAuthClient();
+    const user = await client.call("getUser", undefined);
+    if (user) {
+      console.log("✓ Logged in as:", user.username ?? user.sub);
+    } else {
+      console.log("✗ Not logged in");
+    }
+    await terminateAuthClient();
   },
-})
+});
 
 export const AuthCommand = cmd({
   command: "auth",
@@ -33,5 +59,7 @@ export const AuthCommand = cmd({
       .command(AuthLogoutCommand)
       .command(AuthStatusCommand)
       .demandCommand(),
-  async handler() {},
-})
+  async handler() {
+    await new Promise(() => ({}));
+  },
+});

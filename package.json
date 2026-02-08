@@ -1,41 +1,30 @@
 {
-  "name": "devver-cli",
-  "version": "1.0.1",
-  "description": "Ultra-fast deployments and visual feedback for Devver",
+  "name": "devver-cli-opentui",
   "module": "src/index.tsx",
   "type": "module",
-  "bin": {
-    "devver-cli": "./devver-cli"
-  },
+  "private": true,
   "scripts": {
     "dev": "bun run --watch src/index.tsx",
-    "build": "bun build src/index.tsx --compile --outfile=devver-cli",
-    "typecheck": "tsc --noEmit",
-    "lint": "bunx @biomejs/biome check src/",
-    "lint:fix": "bunx @biomejs/biome check --write src/",
-    "test": "bun test"
+    "cmd": "bun run src/index.tsx",
+    "check": "ultracite check",
+    "fix": "ultracite fix"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
+    "@biomejs/biome": "^2.3.13",
     "@types/bun": "latest",
-    "@types/react": "^19.2.9"
+    "@types/react": "^19.2.9",
+    "ultracite": "^7.1.5"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
-    "@opentui/core": "0.1.74",
-    "@opentui/react": "0.1.74",
+    "@flystorage/file-storage": "^1.2.2",
+    "@flystorage/local-fs": "^1.2.0",
+    "@logto/node": "^3.1.8",
+    "@opentui/react": "^0.1.74",
     "@types/yargs": "^17.0.35",
+    "effect": "^3.19.15",
     "yargs": "^18.0.0"
-  },
-  "overrides": {
-    "@opentui/core": "0.1.74"
-  },
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git@github.com:Devver-Inc/cli.git"
-  },
-  "homepage": "https://devver.app"
+  }
 }

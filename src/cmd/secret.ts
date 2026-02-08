@@ -1,4 +1,4 @@
-import { cmd } from "./cmd"
+import { cmd } from "./cmd";
 
 const SecretSetCommand = cmd({
   command: "set [key] [val]",
@@ -22,29 +22,31 @@ const SecretSetCommand = cmd({
       })
       .check((args) => {
         if (args.file && (args.key || args.val)) {
-          throw new Error("Cannot use --file with key/val arguments")
+          throw new Error("Cannot use --file with key/val arguments");
         }
-        if (!args.file && (!args.key || !args.val)) {
-          throw new Error("Provide <key> <val> or --file <path>")
+        if (!(args.file || (args.key && args.val))) {
+          throw new Error("Provide <key> <val> or --file <path>");
         }
-        return true
+        return true;
       }),
   handler: async (args) => {
     if (args.file) {
-      console.log("Importing from file:", args.file)
+      console.log("Importing from file:", args.file);
     } else {
-      console.log("Setting secret:", args.key, "=", args.val)
+      console.log("Setting secret:", args.key, "=", args.val);
     }
+    await new Promise(() => ({}));
   },
-})
+});
 
 const SecretListCommand = cmd({
   command: "list",
   describe: "List secret keys",
   async handler() {
-    console.log("List secrets keys ...")
+    console.log("List secrets keys ...");
+    await new Promise(() => ({}));
   },
-})
+});
 
 const DeleteSecretCommand = cmd({
   command: "delete <key>",
@@ -56,9 +58,10 @@ const DeleteSecretCommand = cmd({
       describe: "Secret key",
     }),
   async handler(args) {
-    console.log("Deleting secret ", args.key)
+    console.log("Deleting secret ", args.key);
+    await new Promise(() => ({}));
   },
-})
+});
 
 export const SecretCommand = cmd({
   command: "secret",
@@ -69,5 +72,7 @@ export const SecretCommand = cmd({
       .command(SecretListCommand)
       .command(DeleteSecretCommand)
       .demandCommand(),
-  async handler() {},
-})
+  async handler() {
+    await new Promise(() => ({}));
+  },
+});

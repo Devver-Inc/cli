@@ -6,10 +6,6 @@ out
 dist
 *.tgz
 
-# compiled binary
-devver-cli
-devver-cli.exe
-
 # code coverage
 coverage
 *.lcov

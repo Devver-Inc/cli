@@ -1,3 +1,3 @@
 export function FormatError(input: unknown) {
-  return `Unknown error : ${input}`
+  return `Unknown error : ${input}`;
 }
