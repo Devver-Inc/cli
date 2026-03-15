@@ -91,6 +91,7 @@ const ProjectLinkCommand = cmd({
     await new Promise(() => ({}));
   },
 });
+
 export const ProjectCommand = cmd({
   command: "project",
   describe: "manage projects",

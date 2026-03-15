@@ -1,13 +1,8 @@
-import path from "node:path";
 import { FileStorage } from "@flystorage/file-storage";
 import { LocalStorageAdapter } from "@flystorage/local-fs";
+import { Global } from "./global";
 
-const dataDir =
-  process.env.XDG_DATA_HOME ||
-  path.join(process.env.HOME ?? "", ".local/share");
-const storageDir = path.join(dataDir, "devver");
-
-const storage = new FileStorage(new LocalStorageAdapter(storageDir));
+const storage = new FileStorage(new LocalStorageAdapter(Global.Path.data));
 
 async function write(filePath: string, contents: string): Promise<void> {
   await storage.write(filePath, contents);

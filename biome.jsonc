@@ -3,5 +3,17 @@
   "extends": ["ultracite/biome/core"],
   "javascript": {
     "globals": ["Bun", "ResolveMessage", "BuildMessage"]
-  }
+  },
+  "overrides": [
+    {
+      "include": ["src/**/Global.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noNonNullAssertion": "off"
+          }
+        }
+      }
+    }
+  ]
 }

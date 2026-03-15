@@ -32,7 +32,7 @@ class LogtoStorageAdapter {
 export function createLogtoClient(onNavigate?: (url: string) => void) {
   return new LogtoClient(
     {
-      appId: "wat2nrbr150jagrlpwl04",
+      appId: "ihq9chjvnkq0x81qeoi4m",
       endpoint: "https://auth.devver.app/",
       scopes: [
         UserScope.Organizations,

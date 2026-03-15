@@ -1,7 +1,9 @@
+#!/usr/bin/env -S bun run
 import { EOL } from "node:os";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { AuthCommand } from "./cmd/auth";
+import { ConfigCommand } from "./cmd/config";
 import { DeployCommand } from "./cmd/deploy";
 import { ProjectCommand } from "./cmd/project";
 import { SecretCommand } from "./cmd/secret";
@@ -49,6 +51,7 @@ const cli = yargs(hideBin(process.argv))
   // })
   .command(TuiCommand)
   .command(AuthCommand)
+  .command(ConfigCommand)
   .command(DeployCommand)
   .command(ProjectCommand)
   .command(SecretCommand)
