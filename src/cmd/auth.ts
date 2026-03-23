@@ -1,4 +1,8 @@
-import { getAuthClient, startLogin, terminateAuthClient } from "../auth/client";
+import { getAuthClient, startLogin, terminateAuthClient, getOrganizationDetails } from "../auth/client";
+import { getCurrentOrganization, setCurrentOrganization } from "../auth/organization";
+import { getCurrentProject } from "../project/storage";
+import { getProjectById } from "../api/projects.requests";
+import { runAuthenticated, disposeRuntime } from "../util/runtime";
 import { cmd } from "./cmd";
 
 const AuthLoginCommand = cmd({
@@ -43,12 +47,48 @@ const AuthStatusCommand = cmd({
     const user = await client.call("getUser", undefined);
     if (user) {
       console.log("✓ Logged in as:", user.username ?? user.sub);
+
+      try {
+        const organizations = await getOrganizationDetails();
+        const currentOrg = await getCurrentOrganization();
+
+        if (organizations.length > 0) {
+          console.log("\nOrganizations:");
+          for (const org of organizations) {
+            const marker = org.id === currentOrg ? "* " : "  ";
+            console.log(`${marker}${org.name}`);
+          }
+          const currentOrgData = organizations.find(o => o.id === currentOrg);
+          if (currentOrg && currentOrgData) {
+            console.log(`\nCurrent organization: ${currentOrgData.name}`);
+          } else {
+            console.log(`\nCurrent organization: ${organizations[0]?.name ?? 'Unknown'} (default)`);
+          }
+        } else {
+          console.log("✗ Not part of any organization");
+        }
+
+        // Show current project if one is selected
+        const currentProjectId = await getCurrentProject();
+        if (currentProjectId) {
+          try {
+            const project = await runAuthenticated(getProjectById(currentProjectId));
+            console.log(`\nCurrent project: ${project.name}`);
+          } catch (error) {
+            console.log(`\nCurrent project: ${currentProjectId} (details unavailable)`);
+          }
+        }
+      } catch (error) {
+        console.error("✗ Failed to fetch organization details:", error);
+      }
     } else {
       console.log("✗ Not logged in");
     }
     await terminateAuthClient();
+    await disposeRuntime();
   },
 });
+
 
 export const AuthCommand = cmd({
   command: "auth",

@@ -61,20 +61,64 @@ export const rpc = {
     }
     return null;
   },
+  async getOrganizations() {
+    if (await client.isAuthenticated()) {
+      try {
+        const claims = await client.getAccessTokenClaims("http://localhost:9999");
+        return claims?.organizations ?? [];
+      } catch (error) {
+        console.error("Failed to get access token claims, falling back to ID token:", error);
+        const idClaims = await client.getIdTokenClaims();
+        const orgIds = idClaims?.organizations ?? [];
+        return Array.isArray(orgIds) && typeof orgIds[0] === 'string'
+          ? orgIds.map((id: string) => ({ id, name: id }))
+          : orgIds;
+      }
+    }
+    return [];
+  },
   async logout() {
     await client.signOut();
   },
   async cancelLogin() {
     await client.signOut();
   },
-  async getAccessToken() {
+  async getAccessToken(input: unknown) {
+    const { orgId } = (input as { orgId?: string }) ?? {};
+
     if (await client.isAuthenticated()) {
-      const claims = await client.getIdTokenClaims();
-      const orgId = claims?.organizations?.[0];
-      if (orgId) {
-        return client.getAccessToken("http://localhost:9999", orgId);
+      try {
+        const claims = await client.getAccessTokenClaims("http://localhost:9999");
+        const organizations = (claims?.organizations ?? []) as Array<{ id: string; name: string; description?: string; roles?: any[] }>;
+
+        let targetOrgId: string | undefined;
+        if (orgId) {
+          const orgExists = organizations.some(org => org.id === orgId);
+          if (!orgExists) {
+            throw new Error(`You are not a member of organization: ${orgId}`);
+          }
+          targetOrgId = orgId;
+        } else {
+          targetOrgId = organizations[0]?.id;
+        }
+
+        if (!targetOrgId) {
+          throw new Error("You must be part of an organization to use this command. Please contact your administrator.");
+        }
+
+        return client.getAccessToken("http://localhost:9999", targetOrgId);
+      } catch (error) {
+        // Fallback: try to get token with orgId from ID token if access token claims fail
+        const idClaims = await client.getIdTokenClaims();
+        const orgIds = idClaims?.organizations ?? [];
+        const targetOrgId = orgId ?? orgIds[0];
+        
+        if (!targetOrgId) {
+          throw new Error("You must be part of an organization to use this command. Please contact your administrator.");
+        }
+        
+        return client.getAccessToken("http://localhost:9999", targetOrgId);
       }
-      return client.getAccessToken("http://localhost:9999");
     }
     return null;
   },

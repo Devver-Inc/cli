@@ -23,6 +23,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@clack/prompts": "^1.1.0",
     "@effect/platform": "^0.94.3",
     "@flystorage/file-storage": "^1.2.2",
     "@flystorage/local-fs": "^1.2.0",

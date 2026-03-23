@@ -1,6 +1,35 @@
+import { Effect } from "effect";
 import { getProjectById, getProjects } from "../api/projects.requests";
 import { disposeRuntime, runAuthenticated } from "../util/runtime";
 import { cmd } from "./cmd";
+import { Prompt } from "../util/prompts";
+import { getCurrentProject, setCurrentProject } from "../project/storage";
+
+const ProjectStatusCommand = cmd({
+  command: "status",
+  describe: "Show current project",
+  async handler() {
+    const currentProjectId = await getCurrentProject();
+    
+    if (!currentProjectId) {
+      console.log("✗ No project selected");
+      console.log("Use 'devver project list' to select a project");
+      await disposeRuntime();
+      return;
+    }
+
+    try {
+      const project = await runAuthenticated(getProjectById(currentProjectId));
+      console.log("✓ Current project:");
+      console.log(`  ${project.name} (${project.id})`);
+    } catch (error) {
+      console.error("✗ Failed to fetch project details:", error);
+      console.log(`  Project ID: ${currentProjectId}`);
+    }
+    
+    await disposeRuntime();
+  },
+});
 
 const ProjectUseCommand = cmd({
   command: "use <id>",
@@ -19,13 +48,60 @@ const ProjectUseCommand = cmd({
 
 const ProjectListCommand = cmd({
   command: "list",
-  describe: "List projects",
+  describe: "List projects and select one",
   async handler() {
     const projects = await runAuthenticated(getProjects);
-    for (const project of projects) {
-      console.log(`${project.id}: ${project.name}`);
+    const currentProjectId = await getCurrentProject();
+
+    if (projects.length === 0) {
+      console.log("✗ No projects found");
+      await disposeRuntime();
+      return;
     }
+
+    if (projects.length === 1 && projects[0]) {
+      console.log("You only have one project:", projects[0].name);
+      await setCurrentProject(projects[0].id);
+      await disposeRuntime();
+      return;
+    }
+
+    const choice = await Effect.runPromise(
+      Effect.gen(function* () {
+        const currentProject = projects.find(p => p.id === currentProjectId);
+        const displayProject = currentProject ?? projects[0];
+        yield* Prompt.intro(`Current project: ${displayProject?.name ?? 'None'}`);
+
+        const choice = yield* Prompt.select({
+          message: "Select a project:",
+          options: projects.map(project => ({
+            value: project.id,
+            label: displayProject && project.id === displayProject.id ? `${project.name} (current)` : project.name,
+          })),
+        });
+
+        if (choice === "Canceled") {
+          yield* Prompt.outro("Project selection canceled");
+          return null;
+        }
+
+        const spinner = Prompt.spinner();
+        yield* spinner.start("Switching project...");
+
+        const selectedProject = projects.find(p => p.id === choice);
+
+        yield* spinner.stop("Project switched successfully");
+        yield* Prompt.outro(`Now using project: ${selectedProject?.name ?? choice}`);
+        return choice;
+      })
+    );
+
+    if (choice) {
+      await setCurrentProject(choice as string);
+    }
+
     await disposeRuntime();
+    process.exit(0);
   },
 });
 
@@ -97,6 +173,7 @@ export const ProjectCommand = cmd({
   describe: "manage projects",
   builder: (yargs) =>
     yargs
+      .command(ProjectStatusCommand)
       .command(ProjectUseCommand)
       .command(ProjectListCommand)
       .command(ProjectInfoCommand)

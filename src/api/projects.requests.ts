@@ -54,7 +54,7 @@ export const GetProjectSchema = Schema.Struct({
   id: Schema.NonEmptyString,
   ...ProjectBase,
   organizationId: Schema.NonEmptyString,
-  createdBy: Schema.NullOr(GetUserLightSchema), // define this separately
+  createdBy: Schema.NullOr(GetUserLightSchema),
   machineConfiguration: MachineConfigurationResponse,
   teamMembers: Schema.Array(GetUserLightSchema),
   accessControl: AccessControlResponse,
@@ -62,13 +62,31 @@ export const GetProjectSchema = Schema.Struct({
   updatedAt: Schema.Date,
 });
 
+export const GetProjectListItemSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  description: Schema.optional(Schema.String),
+  createdAt: Schema.DateFromString,
+});
+
 export const GetProjectsSchema = Schema.Array(GetProjectSchema);
+
+export const PaginatedProjectsSchema = Schema.Struct({
+  data: Schema.Array(GetProjectListItemSchema),
+  meta: Schema.Struct({
+    currentPage: Schema.Number,
+    totalItemsCount: Schema.Number,
+    totalPagesCount: Schema.Number,
+    itemsPerPage: Schema.Number,
+  }),
+});
 
 type CreateProjectDto = Schema.Schema.Type<typeof CreateProjectSchema>;
 
 export const getProjects = Effect.gen(function* () {
   const api = yield* ApiClient;
-  return yield* api.get("/projects", GetProjectsSchema);
+  const response = yield* api.get("/projects", PaginatedProjectsSchema);
+  return response.data;
 });
 
 export const getProjectById = (id: string) =>
