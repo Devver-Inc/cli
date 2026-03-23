@@ -10,6 +10,7 @@ import { SecretCommand } from "./cmd/secret";
 import { TuiCommand } from "./cmd/tui/tui";
 import { FormatError } from "./error";
 import { UI } from "./ui";
+import { OrganizationCommand } from "./cmd/organization";
 
 process.on("unhandledRejection", (e) => {
   console.error("exception", {
@@ -55,6 +56,7 @@ const cli = yargs(hideBin(process.argv))
   .command(DeployCommand)
   .command(ProjectCommand)
   .command(SecretCommand)
+  .command(OrganizationCommand)
   .usage(`\n${UI.logo()}`)
   .completion("completion", "generate shell completion script")
   .fail((msg, err) => {
@@ -114,7 +116,7 @@ try {
   process.exitCode = 1;
 } finally {
   // Explicitly exit to avoid any hanging subprocesses.
-  if (process.exitCode) {
+  // if (process.exitCode) {
     process.exit();
-  }
+  // }
 }

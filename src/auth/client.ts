@@ -1,6 +1,7 @@
 import { Rpc } from "../util/rpc";
 import { Storage } from "../storage";
 import type { rpc } from "./worker";
+import { getCurrentOrganization } from "./organization";
 
 const API_RESOURCE = "http://localhost:9999";
 const TOKEN_EXPIRY_BUFFER_SECONDS = 60;
@@ -67,9 +68,19 @@ async function getStoredToken(): Promise<string | null> {
 
     const idTokenContent = await Storage.readToString("logto/idToken");
     const idToken = JSON.parse(idTokenContent);
-    const orgId = idToken?.claims?.organizations?.[0];
+    const organizations = (idToken?.claims?.organizations ?? []) as Array<{ id: string; name: string }>;
+    
+    // Get the selected organization or use the first one
+    const currentOrg = await getCurrentOrganization();
+    const orgId = currentOrg && organizations.some(org => org.id === currentOrg)
+      ? currentOrg 
+      : organizations[0]?.id;
 
-    const tokenKey = orgId ? `@${API_RESOURCE}#${orgId}` : `@${API_RESOURCE}`;
+    if (!orgId) {
+      throw new Error("You must be part of an organization to use this command. Please contact your administrator.");
+    }
+
+    const tokenKey = `@${API_RESOURCE}#${orgId}`;
     const entry = tokens[tokenKey];
 
     if (!entry) {
@@ -89,7 +100,11 @@ async function getStoredToken(): Promise<string | null> {
 
 async function refreshToken(): Promise<string | null> {
   const authClient = getAuthClient();
-  const token = await authClient.call("getAccessToken", undefined);
+  
+  // Get the selected organization
+  const currentOrg = await getCurrentOrganization();
+  
+  const token = await authClient.call("getAccessToken", { orgId: currentOrg ?? undefined });
   await terminateAuthClient();
   return token;
 }
@@ -101,3 +116,26 @@ export async function getAccessToken(): Promise<string | null> {
   }
   return refreshToken();
 }
+
+export async function refreshAccessToken(): Promise<string | null> {
+  // Force refresh - bypass stored token
+  return refreshToken();
+}
+
+
+export type OrganizationDetails = {
+  id: string;
+  name: string;
+  description?: string;
+  roles?: Array<{ roleId: string; roleName: string }>;
+};
+
+export async function getOrganizationDetails(): Promise<OrganizationDetails[]> {
+  const authClient = getAuthClient();
+  const organizations = await authClient.call("getOrganizations", undefined);
+  await terminateAuthClient();
+  return organizations as OrganizationDetails[];
+}
+
+
+
