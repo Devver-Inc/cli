@@ -1,3 +1,7 @@
+/**
+ * Bridges Logto's storage interface to our XDG-based Storage module.
+ * All Logto state (tokens, session) is persisted under `logto/` in the data dir.
+ */
 import LogtoClient, { UserScope } from "@logto/node";
 import { Storage } from "../storage";
 

@@ -11,6 +11,7 @@ import { SecretCommand } from "./cmd/secret";
 import { TuiCommand } from "./cmd/tui/tui";
 import { FormatError } from "./error";
 import { UI } from "./ui";
+import { RepositoryCommand } from "./cmd/repos";
 
 declare global {
   const DEVVER_VERSION: string;
@@ -63,6 +64,7 @@ const cli = yargs(hideBin(process.argv))
   .command(ProjectCommand)
   .command(SecretCommand)
   .command(OrganizationCommand)
+  .command(RepositoryCommand)
   .usage(`\n${UI.logo()}`)
   .completion("completion", "generate shell completion script")
   .fail((msg, err) => {

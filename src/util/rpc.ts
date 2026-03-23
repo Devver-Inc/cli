@@ -1,3 +1,13 @@
+/**
+ * Minimal JSON-based RPC over Bun Workers.
+ *
+ * Worker side: Rpc.listen(handlers) to expose methods.
+ * Main thread: Rpc.client<typeof handlers>(worker) to call them.
+ * Also supports fire-and-forget events from worker -> main via Rpc.emit().
+ *
+ * Used to isolate the Logto auth client in a separate thread so its
+ * local HTTP callback server doesn't block the main CLI event loop.
+ */
 declare const self: Worker;
 
 interface Definition {

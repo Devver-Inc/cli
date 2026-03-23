@@ -1,4 +1,7 @@
-import fs from "node:fs/promises";
+/**
+ * XDG base directory paths for all persisted CLI data.
+ * Top-level await ensures dirs exist before any Storage call.
+ */
 import os from "node:os";
 import path from "node:path";
 import { xdgCache, xdgConfig, xdgData, xdgState } from "xdg-basedir";

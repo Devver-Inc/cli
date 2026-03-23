@@ -21,6 +21,8 @@
         "rules": {
           "complexity": {
             "noExcessiveCognitiveComplexity": "off"
+            "noExtraNonNullAssertion": "off",
+            "noNonNullAssertedOptionalChain": "off"
           }
         }
       }

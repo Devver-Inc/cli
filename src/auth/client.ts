@@ -1,3 +1,16 @@
+/**
+ * Main-thread auth facade.
+ *
+ * The actual Logto client lives in a Bun Worker (worker.ts) because it
+ * spins up a local HTTP server for the OAuth callback. We communicate
+ * with it via the Rpc helper.
+ *
+ * Token caching: tokens are persisted by Logto's storage adapter
+ * (see logto.ts). getAccessToken() first checks the stored token's
+ * expiry; if still valid (with a 60 s buffer), it returns immediately
+ * without spawning the worker.
+ */
+
 import { Storage } from "../storage";
 import { Rpc } from "../util/rpc";
 import { getCurrentOrganization } from "./organization";
@@ -101,6 +114,7 @@ async function getStoredToken(): Promise<string | null> {
       );
     }
 
+    /** Scoped token key: `@<resource>#<orgId>` -- matches Logto's storage format. */
     const tokenKey = `@${API_RESOURCE}#${orgId}`;
     const entry = tokens[tokenKey];
 
@@ -145,7 +159,7 @@ export function refreshAccessToken(): Promise<string | null> {
   return refreshToken();
 }
 
-export interface OrganizationDetails {
+export type OrganizationDetails = {
   id: string;
   name: string;
   description?: string;

@@ -1,12 +1,14 @@
 import { getProjectById } from "../api/projects.requests";
 import {
+  getAccessToken,
   getAuthClient,
   getOrganizationDetails,
   startLogin,
   terminateAuthClient,
 } from "../auth/client";
 import { getCurrentOrganization } from "../auth/organization";
-import { getCurrentProject } from "../project/storage";
+import { getCurrentProjectId } from "../util/project/storage";
+import { getLinkedRepoForCwd } from "../util/repository/storage";
 import { disposeRuntime, runAuthenticated } from "../util/runtime";
 import { cmd } from "./cmd";
 
@@ -74,9 +76,7 @@ const AuthStatusCommand = cmd({
         } else {
           console.log("✗ Not part of any organization");
         }
-
-        // Show current project if one is selected
-        const currentProjectId = await getCurrentProject();
+        const currentProjectId = await getCurrentProjectId();
         if (currentProjectId) {
           try {
             const project = await runAuthenticated(
@@ -89,6 +89,12 @@ const AuthStatusCommand = cmd({
             );
           }
         }
+        const linked = await getLinkedRepoForCwd();
+        console.log(
+          `\nCurrent repository: ${linked ? linked.repoName : "No repository linked to this folder"} `
+        );
+        const accessToken = await getAccessToken();
+        console.log(accessToken);
       } catch (error) {
         console.error("✗ Failed to fetch organization details:", error);
       }

@@ -3,10 +3,12 @@ import "../config/detectors";
 import { writeConfigFile } from "../config";
 import { detectProject } from "../config/detect";
 
+
 export const InitConfigCommand = cmd({
   command: "init",
   describe: "init devver config in current directory",
   async handler() {
+
     const detection = await detectProject();
 
     console.log("\nProject detection:");
@@ -25,6 +27,8 @@ export const InitConfigCommand = cmd({
     console.log("  (config file created anyway)");
   },
 });
+
+
 
 export const ConfigCommand = cmd({
   command: "config",
