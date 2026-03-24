@@ -1,9 +1,11 @@
 import { Effect } from "effect";
-import { getAuthClient, startLogin, terminateAuthClient, getOrganizationDetails, refreshAccessToken } from "../auth/client";
-import { cmd } from "./cmd";
+import { getOrganizationDetails, refreshAccessToken } from "../auth/client";
+import {
+  getCurrentOrganization,
+  setCurrentOrganization,
+} from "../auth/organization";
 import { Prompt } from "../util/prompts";
-import { getCurrentOrganization, setCurrentOrganization } from "../auth/organization";
-
+import { cmd } from "./cmd";
 
 const SelectOrganizationCommand = cmd({
   command: "list",
@@ -18,20 +20,30 @@ const SelectOrganizationCommand = cmd({
     }
 
     if (organizations.length === 1) {
-      console.log("You only have one organization:", organizations[0]?.name ?? 'Unknown');
+      console.log(
+        "You only have one organization:",
+        organizations[0]?.name ?? "Unknown"
+      );
       return;
     }
 
     const choice = await Effect.runPromise(
       Effect.gen(function* () {
-        const currentOrgData = organizations.find(org => org.id === currentOrg) ?? organizations[0];
-        yield* Prompt.intro(`Current organization: ${currentOrgData?.name ?? 'Unknown'}`);
+        const currentOrgData =
+          organizations.find((org) => org.id === currentOrg) ??
+          organizations[0];
+        yield* Prompt.intro(
+          `Current organization: ${currentOrgData?.name ?? "Unknown"}`
+        );
 
         const choice = yield* Prompt.select({
           message: "Select an organization to change:",
-          options: organizations.map(org => ({
+          options: organizations.map((org) => ({
             value: org.id,
-            label: org.id === currentOrgData?.id ? `${org.name} (current)` : org.name,
+            label:
+              org.id === currentOrgData?.id
+                ? `${org.name} (current)`
+                : org.name,
           })),
         });
 
@@ -43,24 +55,28 @@ const SelectOrganizationCommand = cmd({
         const spinner = Prompt.spinner();
         yield* spinner.start("Switching organization...");
 
-        const selectedOrg = organizations.find(org => org.id === choice);
+        const selectedOrg = organizations.find((org) => org.id === choice);
 
         yield* spinner.stop("Organization switched successfully");
-        yield* Prompt.outro(`Now using organization: ${selectedOrg?.name ?? choice}`);
+        yield* Prompt.outro(
+          `Now using organization: ${selectedOrg?.name ?? choice}`
+        );
         return choice;
       })
-
     );
 
     if (choice) {
       await setCurrentOrganization(choice as string);
-      
+
       // Request a fresh access token for the newly selected organization
       // This ensures the token is cached for future API calls
       try {
         await refreshAccessToken();
       } catch (error) {
-        console.error("Warning: Failed to fetch access token for organization:", error);
+        console.error(
+          "Warning: Failed to fetch access token for organization:",
+          error
+        );
       }
     }
 
@@ -71,10 +87,7 @@ const SelectOrganizationCommand = cmd({
 export const OrganizationCommand = cmd({
   command: "org",
   describe: "manage organizations",
-  builder: (yargs) =>
-    yargs
-      .command(SelectOrganizationCommand)
-      .demandCommand(),
+  builder: (yargs) => yargs.command(SelectOrganizationCommand).demandCommand(),
   async handler() {
     await new Promise(() => ({}));
   },

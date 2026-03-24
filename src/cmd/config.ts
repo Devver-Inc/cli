@@ -21,11 +21,10 @@ export const InitConfigCommand = cmd({
     if (detection.results.length > 0) {
       writeConfigFile(detection);
     }
-      writeConfigFile(detection);
-      console.log("  (config file created anyway)");
-    }
+    writeConfigFile(detection);
+    console.log("  (config file created anyway)");
   },
-)
+});
 
 export const ConfigCommand = cmd({
   command: "config",

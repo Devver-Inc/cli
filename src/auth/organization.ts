@@ -21,5 +21,5 @@ export async function setCurrentOrganization(orgId: string): Promise<void> {
 export async function clearCurrentOrganization(): Promise<void> {
   try {
     await Storage.deleteFile(CURRENT_ORG_KEY);
-  } catch {	}
+  } catch {}
 }

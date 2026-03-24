@@ -1,7 +1,7 @@
-import { Rpc } from "../util/rpc";
 import { Storage } from "../storage";
-import type { rpc } from "./worker";
+import { Rpc } from "../util/rpc";
 import { getCurrentOrganization } from "./organization";
+import type { rpc } from "./worker";
 
 const API_RESOURCE = "http://localhost:9999";
 const TOKEN_EXPIRY_BUFFER_SECONDS = 60;
@@ -68,16 +68,22 @@ async function getStoredToken(): Promise<string | null> {
 
     const idTokenContent = await Storage.readToString("logto/idToken");
     const idToken = JSON.parse(idTokenContent);
-    const organizations = (idToken?.claims?.organizations ?? []) as Array<{ id: string; name: string }>;
-    
+    const organizations = (idToken?.claims?.organizations ?? []) as Array<{
+      id: string;
+      name: string;
+    }>;
+
     // Get the selected organization or use the first one
     const currentOrg = await getCurrentOrganization();
-    const orgId = currentOrg && organizations.some(org => org.id === currentOrg)
-      ? currentOrg 
-      : organizations[0]?.id;
+    const orgId =
+      currentOrg && organizations.some((org) => org.id === currentOrg)
+        ? currentOrg
+        : organizations[0]?.id;
 
     if (!orgId) {
-      throw new Error("You must be part of an organization to use this command. Please contact your administrator.");
+      throw new Error(
+        "You must be part of an organization to use this command. Please contact your administrator."
+      );
     }
 
     const tokenKey = `@${API_RESOURCE}#${orgId}`;
@@ -100,11 +106,13 @@ async function getStoredToken(): Promise<string | null> {
 
 async function refreshToken(): Promise<string | null> {
   const authClient = getAuthClient();
-  
+
   // Get the selected organization
   const currentOrg = await getCurrentOrganization();
-  
-  const token = await authClient.call("getAccessToken", { orgId: currentOrg ?? undefined });
+
+  const token = await authClient.call("getAccessToken", {
+    orgId: currentOrg ?? undefined,
+  });
   await terminateAuthClient();
   return token;
 }
@@ -122,7 +130,6 @@ export async function refreshAccessToken(): Promise<string | null> {
   return refreshToken();
 }
 
-
 export type OrganizationDetails = {
   id: string;
   name: string;
@@ -136,6 +143,3 @@ export async function getOrganizationDetails(): Promise<OrganizationDetails[]> {
   await terminateAuthClient();
   return organizations as OrganizationDetails[];
 }
-
-
-

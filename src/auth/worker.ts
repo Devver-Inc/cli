@@ -64,13 +64,18 @@ export const rpc = {
   async getOrganizations() {
     if (await client.isAuthenticated()) {
       try {
-        const claims = await client.getAccessTokenClaims("http://localhost:9999");
+        const claims = await client.getAccessTokenClaims(
+          "http://localhost:9999"
+        );
         return claims?.organizations ?? [];
       } catch (error) {
-        console.error("Failed to get access token claims, falling back to ID token:", error);
+        console.error(
+          "Failed to get access token claims, falling back to ID token:",
+          error
+        );
         const idClaims = await client.getIdTokenClaims();
         const orgIds = idClaims?.organizations ?? [];
-        return Array.isArray(orgIds) && typeof orgIds[0] === 'string'
+        return Array.isArray(orgIds) && typeof orgIds[0] === "string"
           ? orgIds.map((id: string) => ({ id, name: id }))
           : orgIds;
       }
@@ -88,12 +93,19 @@ export const rpc = {
 
     if (await client.isAuthenticated()) {
       try {
-        const claims = await client.getAccessTokenClaims("http://localhost:9999");
-        const organizations = (claims?.organizations ?? []) as Array<{ id: string; name: string; description?: string; roles?: any[] }>;
+        const claims = await client.getAccessTokenClaims(
+          "http://localhost:9999"
+        );
+        const organizations = (claims?.organizations ?? []) as Array<{
+          id: string;
+          name: string;
+          description?: string;
+          roles?: any[];
+        }>;
 
         let targetOrgId: string | undefined;
         if (orgId) {
-          const orgExists = organizations.some(org => org.id === orgId);
+          const orgExists = organizations.some((org) => org.id === orgId);
           if (!orgExists) {
             throw new Error(`You are not a member of organization: ${orgId}`);
           }
@@ -103,7 +115,9 @@ export const rpc = {
         }
 
         if (!targetOrgId) {
-          throw new Error("You must be part of an organization to use this command. Please contact your administrator.");
+          throw new Error(
+            "You must be part of an organization to use this command. Please contact your administrator."
+          );
         }
 
         return client.getAccessToken("http://localhost:9999", targetOrgId);
@@ -112,11 +126,13 @@ export const rpc = {
         const idClaims = await client.getIdTokenClaims();
         const orgIds = idClaims?.organizations ?? [];
         const targetOrgId = orgId ?? orgIds[0];
-        
+
         if (!targetOrgId) {
-          throw new Error("You must be part of an organization to use this command. Please contact your administrator.");
+          throw new Error(
+            "You must be part of an organization to use this command. Please contact your administrator."
+          );
         }
-        
+
         return client.getAccessToken("http://localhost:9999", targetOrgId);
       }
     }
