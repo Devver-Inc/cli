@@ -1,10 +1,11 @@
 import { Storage } from "../storage";
-import { Rpc } from "../util/rpc";
+import { createLogtoClient } from "./logto";
 import { getCurrentOrganization } from "./organization";
-import type { rpc } from "./worker";
 
 const API_RESOURCE = "http://localhost:9999";
 const TOKEN_EXPIRY_BUFFER_SECONDS = 60;
+const REDIRECT_PORT = 9999;
+const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/callback`;
 
 interface StoredTokenEntry {
   token: string;
@@ -14,46 +15,91 @@ interface StoredTokenEntry {
 
 type StoredTokens = Record<string, StoredTokenEntry>;
 
-let worker: Worker | undefined;
-let client: ReturnType<typeof Rpc.client<typeof rpc>> | undefined;
+let server: ReturnType<typeof Bun.serve> | undefined;
+let capturedAuthUrl: string | undefined;
+let loginSuccessHandler: (() => void) | undefined;
+let loginErrorHandler: ((e: { error: string }) => void) | undefined;
 
-export function getAuthClient() {
-  if (!worker) {
-    worker = new Worker(new URL("./worker.ts", import.meta.url));
-    worker.onerror = (e) => {
-      console.error("Worker error:", e);
-    };
-    client = Rpc.client<typeof rpc>(worker);
-  }
-  if (!client) {
-    throw new Error("Auth client not initialized");
-  }
-  return client;
-}
+const logtoClient = createLogtoClient((url) => {
+  capturedAuthUrl = url;
+});
 
-export async function terminateAuthClient() {
-  if (worker && client) {
-    await client.call("stopServer", undefined);
-    worker.terminate();
-    worker = undefined;
-    client = undefined;
+export function terminateAuthClient() {
+  if (server) {
+    server.stop();
+    server = undefined;
   }
 }
 
 export async function startLogin() {
-  const c = getAuthClient();
-  const { url } = await c.call("startLogin", undefined);
-  globalThis.Bun.spawn(["open", url]);
+  capturedAuthUrl = undefined;
+
+  await logtoClient.signIn({
+    redirectUri: REDIRECT_URI,
+  });
+
+  const authUrl = capturedAuthUrl ?? "";
+
+  server = globalThis.Bun.serve({
+    port: REDIRECT_PORT,
+    async fetch(req) {
+      const url = new URL(req.url);
+      if (url.pathname === "/callback") {
+        try {
+          await logtoClient.handleSignInCallback(req.url);
+          if (loginSuccessHandler) {
+            loginSuccessHandler();
+          }
+          return new Response("<h1>Success! Close this tab.</h1>", {
+            headers: { "Content-Type": "text/html" },
+          });
+        } catch (err) {
+          if (loginErrorHandler) {
+            loginErrorHandler({ error: String(err) });
+          }
+          return new Response("<h1>Login failed</h1>", {
+            status: 400,
+          });
+        } finally {
+          if (server) {
+            server.stop();
+            server = undefined;
+          }
+        }
+      }
+      return new Response("Not found", { status: 404 });
+    },
+  });
+
+  globalThis.Bun.spawn(["open", authUrl]);
+
   return {
-    onSuccess: (handler: () => void) => c.on("login.success", handler),
-    onError: (handler: (e: { error: string }) => void) =>
-      c.on("login.error", handler),
+    onSuccess: (handler: () => void) => {
+      loginSuccessHandler = handler;
+    },
+    onError: (handler: (e: { error: string }) => void) => {
+      loginErrorHandler = handler;
+    },
   };
 }
 
 export async function cancelLogin() {
-  const c = getAuthClient();
-  await c.call("cancelLogin", undefined);
+  await logtoClient.signOut();
+  if (server) {
+    server.stop();
+    server = undefined;
+  }
+}
+
+export async function logout() {
+  await logtoClient.signOut();
+}
+
+export async function getUser() {
+  if (await logtoClient.isAuthenticated()) {
+    return logtoClient.getIdTokenClaims();
+  }
+  return null;
 }
 
 async function getStoredToken(): Promise<string | null> {
@@ -104,15 +150,57 @@ async function getStoredToken(): Promise<string | null> {
   }
 }
 
-async function refreshToken(): Promise<string | null> {
-  const authClient = getAuthClient();
+async function getAccessTokenFromLogto(orgId?: string): Promise<string | null> {
+  if (await logtoClient.isAuthenticated()) {
+    try {
+      const claims = await logtoClient.getAccessTokenClaims(API_RESOURCE);
+      const organizations = (claims?.organizations ?? []) as Array<{
+        id: string;
+        name: string;
+        description?: string;
+        roles?: Array<{ roleId: string; roleName: string }>;
+      }>;
 
+      let targetOrgId: string | undefined;
+      if (orgId) {
+        const orgExists = organizations.some((org) => org.id === orgId);
+        if (!orgExists) {
+          throw new Error(`You are not a member of organization: ${orgId}`);
+        }
+        targetOrgId = orgId;
+      } else {
+        targetOrgId = organizations[0]?.id;
+      }
+
+      if (!targetOrgId) {
+        throw new Error(
+          "You must be part of an organization to use this command. Please contact your administrator."
+        );
+      }
+
+      return logtoClient.getAccessToken(API_RESOURCE, targetOrgId);
+    } catch {
+      // Fallback: try to get token with orgId from ID token if access token claims fail
+      const idClaims = await logtoClient.getIdTokenClaims();
+      const orgIds = idClaims?.organizations ?? [];
+      const targetOrgId = orgId ?? orgIds[0];
+
+      if (!targetOrgId) {
+        throw new Error(
+          "You must be part of an organization to use this command. Please contact your administrator."
+        );
+      }
+
+      return logtoClient.getAccessToken(API_RESOURCE, targetOrgId);
+    }
+  }
+  return null;
+}
+
+async function refreshToken(): Promise<string | null> {
   // Get the selected organization
   const currentOrg = await getCurrentOrganization();
-
-  const token = await authClient.call("getAccessToken", {
-    orgId: currentOrg ?? undefined,
-  });
+  const token = await getAccessTokenFromLogto(currentOrg ?? undefined);
   await terminateAuthClient();
   return token;
 }
@@ -138,8 +226,21 @@ export interface OrganizationDetails {
 }
 
 export async function getOrganizationDetails(): Promise<OrganizationDetails[]> {
-  const authClient = getAuthClient();
-  const organizations = await authClient.call("getOrganizations", undefined);
-  await terminateAuthClient();
-  return organizations as OrganizationDetails[];
+  if (await logtoClient.isAuthenticated()) {
+    try {
+      const claims = await logtoClient.getAccessTokenClaims(API_RESOURCE);
+      return (claims?.organizations ?? []) as OrganizationDetails[];
+    } catch (error) {
+      console.error(
+        "Failed to get access token claims, falling back to ID token:",
+        error
+      );
+      const idClaims = await logtoClient.getIdTokenClaims();
+      const orgIds = idClaims?.organizations ?? [];
+      return Array.isArray(orgIds) && typeof orgIds[0] === "string"
+        ? orgIds.map((id: string) => ({ id, name: id }))
+        : (orgIds as unknown as OrganizationDetails[]);
+    }
+  }
+  return [];
 }

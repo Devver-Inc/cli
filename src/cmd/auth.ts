@@ -1,7 +1,8 @@
 import { getProjectById } from "../api/projects.requests";
 import {
-  getAuthClient,
   getOrganizationDetails,
+  getUser,
+  logout,
   startLogin,
   terminateAuthClient,
 } from "../auth/client";
@@ -37,8 +38,7 @@ const AuthLogoutCommand = cmd({
   command: "logout",
   describe: "logout from your devver server",
   async handler() {
-    const client = getAuthClient();
-    await client.call("logout", undefined);
+    await logout();
     console.log("✓ Logged out");
     await terminateAuthClient();
   },
@@ -48,8 +48,7 @@ const AuthStatusCommand = cmd({
   command: "status",
   describe: "Show login status",
   async handler() {
-    const client = getAuthClient();
-    const user = await client.call("getUser", undefined);
+    const user = await getUser();
     if (user) {
       console.log("✓ Logged in as:", user.username ?? user.sub);
 
