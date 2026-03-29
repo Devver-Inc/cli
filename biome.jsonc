@@ -10,7 +10,8 @@
       "linter": {
         "rules": {
           "suspicious": {
-            "noExtraNonNullAssertion": "off"
+            "noExtraNonNullAssertion": "off",
+            "noNonNullAssertedOptionalChain": "off"
           }
         }
       }
@@ -21,8 +22,6 @@
         "rules": {
           "complexity": {
             "noExcessiveCognitiveComplexity": "off"
-            "noExtraNonNullAssertion": "off",
-            "noNonNullAssertedOptionalChain": "off"
           }
         }
       }

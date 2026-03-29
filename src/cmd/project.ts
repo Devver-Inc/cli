@@ -1,11 +1,12 @@
 import { Effect } from "effect";
 import { getProjectById, getProjects } from "../api/projects.requests";
-import { getCurrentProject, setCurrentProject } from "../project/storage";
+import {
+  getCurrentProjectId,
+  setCurrentProjectId,
+} from "../util/project/storage";
 import { Prompt } from "../util/prompts";
 import { disposeRuntime, runAuthenticated } from "../util/runtime";
 import { cmd } from "./cmd";
-import { Prompt } from "../util/prompts";
-import { getCurrentProjectId, setCurrentProjectId } from "../util/project/storage";
 
 const ProjectStatusCommand = cmd({
   command: "status",

@@ -1,6 +1,5 @@
 import { Storage } from "../../storage";
 
-
 const REPOSITORY_LINKS_KEY = "repository/links";
 
 interface RepoLink {
@@ -9,7 +8,6 @@ interface RepoLink {
 }
 
 type RepoLinksMap = Record<string, RepoLink>;
-
 
 async function readLinksMap(): Promise<RepoLinksMap> {
   try {

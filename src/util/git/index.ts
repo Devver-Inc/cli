@@ -1,7 +1,6 @@
 import { DeployAbortError } from "../../error";
 import { Prompt } from "../prompts";
 
-
 const aheadBehindRegex = /\s+/;
 
 const getBasename = () =>
@@ -19,7 +18,6 @@ const getCurrentBranchProcess = () =>
   });
 
 const Commands = { getCurrentBranchProcess, getBasename };
-
 
 export async function checkForGitRepo() {
   const gitCheckProcess = Bun.spawn(
@@ -57,7 +55,6 @@ export async function checkForGitRepo() {
 
   await ensureCommitExists();
 }
-
 
 async function ensureCommitExists() {
   const process_ = Bun.spawn(["git", "rev-parse", "HEAD"], {
@@ -103,7 +100,6 @@ async function ensureCommitExists() {
   }
 }
 
-
 export async function getCurrentBranch(): Promise<string> {
   const branchProcess = Commands.getCurrentBranchProcess();
   const exitCode = await branchProcess.exited;
@@ -125,7 +121,6 @@ export async function getCurrentCommit(): Promise<string> {
   await commitProcess.exited;
   return (await new Response(commitProcess.stdout).text()).trim();
 }
-
 
 export async function checkRemoteBranch(pushUrl: string, branch: string) {
   const lsRemoteProcess = Bun.spawn(
@@ -153,7 +148,6 @@ export async function checkRemoteBranch(pushUrl: string, branch: string) {
     console.log(`  ✓ Branch '${branch}' will be created with the deployment`);
   }
 }
-
 
 export async function checkForConflicts(pushUrl: string, branch: string) {
   const fetchProcess = Bun.spawn(["git", "fetch", pushUrl, branch], {
@@ -195,6 +189,5 @@ export async function checkForConflicts(pushUrl: string, branch: string) {
 
   console.log(`  ✓ No conflicts with remote ${branch}`);
 }
-
 
 export const Git = { aheadBehindRegex, Commands };

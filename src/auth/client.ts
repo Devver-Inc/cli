@@ -159,7 +159,7 @@ export function refreshAccessToken(): Promise<string | null> {
   return refreshToken();
 }
 
-export type OrganizationDetails = {
+export interface OrganizationDetails {
   id: string;
   name: string;
   description?: string;

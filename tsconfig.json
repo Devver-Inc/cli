@@ -21,7 +21,7 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false,
-     "plugins": [
+    "plugins": [
       // ... other LSPs (if any) and as last
       {
         "name": "@effect/language-service"
