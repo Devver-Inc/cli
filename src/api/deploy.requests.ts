@@ -1,6 +1,10 @@
 import { Effect, Schema } from "effect";
 import { ApiClient } from "./client";
 
+// ---------------------------------------------------------------------------
+// Schemas (request & response validation via Effect Schema)
+// ---------------------------------------------------------------------------
+
 export const CreateRepositorySchema = Schema.Struct({
   name: Schema.String.pipe(Schema.minLength(1)),
 });
@@ -38,13 +42,12 @@ export const ControlPm2ProcessSchema = Schema.Struct({
   name: Schema.String.pipe(Schema.minLength(1)),
 });
 
-// Response Schemas
 export const GetRepoSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   pushUrl: Schema.String,
   projectId: Schema.String,
-  createdAt: Schema.DateTimeUtc,
+  createdAt: Schema.String,
 });
 
 export const PM2ProcessStatusSchema = Schema.Literal(
@@ -72,9 +75,9 @@ export const GetAgentDeploymentSchema = Schema.Struct({
   repo: Schema.String,
   branch: Schema.String,
   commit: Schema.String,
-  service: Schema.Record({
-    key: Schema.Literal("api", "web"),
-    value: ServiceDeployResultSchema,
+  service: Schema.Struct({
+    api: Schema.optional(ServiceDeployResultSchema),
+    web: Schema.optional(ServiceDeployResultSchema),
   }),
   process: Schema.NullOr(PM2ProcessSchema),
 });
@@ -103,6 +106,10 @@ export const ControlPm2ProcessResultSchema = Schema.Struct({
   action: PM2ActionSchema,
 });
 
+// ---------------------------------------------------------------------------
+// Derived types
+// ---------------------------------------------------------------------------
+
 export type CreateRepositoryDto = Schema.Schema.Type<
   typeof CreateRepositorySchema
 >;
@@ -122,6 +129,10 @@ export type ControlPm2ProcessResultDto = Schema.Schema.Type<
   typeof ControlPm2ProcessResultSchema
 >;
 
+// ---------------------------------------------------------------------------
+// Effect-based API request functions
+// ---------------------------------------------------------------------------
+
 export const listRepos = (projectId: string) =>
   Effect.gen(function* () {
     const api = yield* ApiClient;
@@ -137,6 +148,8 @@ export const createRepository = (
 ) =>
   Effect.gen(function* () {
     const api = yield* ApiClient;
+    console.log(projectId);
+    console.log(body);
     return yield* api.post(`/projects/${projectId}/repos`, body, GetRepoSchema);
   });
 

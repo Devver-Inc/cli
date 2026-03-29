@@ -15,6 +15,14 @@ import {
   type Schema,
 } from "effect";
 
+/**
+ * Effect-based HTTP client built on top of @effect/platform.
+ *
+ * Provides ApiClient (via Effect Context) so that any request function
+ * can `yield* ApiClient` to get an authenticated, schema-validated client.
+ * Auth is injected through the AuthToken service at the Layer level.
+ */
+
 export class ApiError extends Data.TaggedError("ApiError")<{
   readonly status: number;
   readonly message: string;
@@ -123,6 +131,7 @@ export const ApiClientLive = Layer.effect(
   })
 );
 
+/** Full layer: ApiClient + HTTP transport. Provide AuthToken before use. */
 export const ApiClientLayer = ApiClientLive.pipe(
   Layer.provide(FetchHttpClient.layer)
 );

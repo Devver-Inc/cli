@@ -1,6 +1,11 @@
 import { Effect, Schema } from "effect";
 import { ApiClient } from "./client";
 
+// ---------------------------------------------------------------------------
+// Schemas -- *Base objects are shared between input and response schemas
+// to avoid duplication while keeping validation constraints separate.
+// ---------------------------------------------------------------------------
+
 const GetUserLightSchema = Schema.Struct({});
 
 const MachineConfigurationBase = {
@@ -82,6 +87,10 @@ export const PaginatedProjectsSchema = Schema.Struct({
 });
 
 type CreateProjectDto = Schema.Schema.Type<typeof CreateProjectSchema>;
+
+// ---------------------------------------------------------------------------
+// Request functions
+// ---------------------------------------------------------------------------
 
 export const getProjects = Effect.gen(function* () {
   const api = yield* ApiClient;

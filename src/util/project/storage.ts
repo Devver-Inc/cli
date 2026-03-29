@@ -1,8 +1,8 @@
-import { Storage } from "../storage";
+import { Storage } from "../../storage";
 
 const CURRENT_PROJECT_KEY = "project/current";
 
-export async function getCurrentProject(): Promise<string | null> {
+export async function getCurrentProjectId(): Promise<string | null> {
   try {
     const exists = await Storage.fileExists(CURRENT_PROJECT_KEY);
     if (!exists) {
@@ -14,7 +14,7 @@ export async function getCurrentProject(): Promise<string | null> {
   }
 }
 
-export async function setCurrentProject(projectId: string): Promise<void> {
+export async function setCurrentProjectId(projectId: string): Promise<void> {
   await Storage.write(CURRENT_PROJECT_KEY, projectId);
 }
 

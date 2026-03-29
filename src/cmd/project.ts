@@ -1,6 +1,9 @@
 import { Effect } from "effect";
 import { getProjectById, getProjects } from "../api/projects.requests";
-import { getCurrentProject, setCurrentProject } from "../project/storage";
+import {
+  getCurrentProjectId,
+  setCurrentProjectId,
+} from "../util/project/storage";
 import { Prompt } from "../util/prompts";
 import { disposeRuntime, runAuthenticated } from "../util/runtime";
 import { cmd } from "./cmd";
@@ -9,7 +12,7 @@ const ProjectStatusCommand = cmd({
   command: "status",
   describe: "Show current project",
   async handler() {
-    const currentProjectId = await getCurrentProject();
+    const currentProjectId = await getCurrentProjectId();
 
     if (!currentProjectId) {
       console.log("✗ No project selected");
@@ -31,27 +34,12 @@ const ProjectStatusCommand = cmd({
   },
 });
 
-const ProjectUseCommand = cmd({
-  command: "use <id>",
-  describe: "Select active project",
-  builder: (yargs) =>
-    yargs.positional("id", {
-      type: "string",
-      demandOption: true,
-      describe: "Project id",
-    }),
-  async handler(args) {
-    console.log("Using project ", args.id);
-    await new Promise(() => ({}));
-  },
-});
-
 const ProjectListCommand = cmd({
   command: "list",
   describe: "List projects and select one",
   async handler() {
     const projects = await runAuthenticated(getProjects);
-    const currentProjectId = await getCurrentProject();
+    const currentProjectId = await getCurrentProjectId();
 
     if (projects.length === 0) {
       console.log("✗ No projects found");
@@ -61,7 +49,7 @@ const ProjectListCommand = cmd({
 
     if (projects.length === 1 && projects[0]) {
       console.log("You only have one project:", projects[0].name);
-      await setCurrentProject(projects[0].id);
+      await setCurrentProjectId(projects[0].id);
       await disposeRuntime();
       return;
     }
@@ -104,7 +92,7 @@ const ProjectListCommand = cmd({
     );
 
     if (choice) {
-      await setCurrentProject(choice as string);
+      await setCurrentProjectId(choice as string);
     }
 
     await disposeRuntime();
@@ -181,7 +169,6 @@ export const ProjectCommand = cmd({
   builder: (yargs) =>
     yargs
       .command(ProjectStatusCommand)
-      .command(ProjectUseCommand)
       .command(ProjectListCommand)
       .command(ProjectInfoCommand)
       .command(ProjectLinkCommand)

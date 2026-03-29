@@ -1,3 +1,11 @@
+/**
+ * Framework / database detection engine.
+ *
+ * Uses a simple plugin model: detectors register themselves via
+ * registerDetector() (see detectors.ts for the built-in set).
+ * Each detector inspects package.json deps, file presence, or .env vars.
+ * Results feed into config file generation (writeConfigFile).
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { cwd } from "node:process";
@@ -40,6 +48,7 @@ export class FileSystemContext implements DetectionContext {
     this.root = root;
   }
 
+  /** Recursively walks cwd, caching results. Skips node_modules. */
   private scanFiles(): Set<string> {
     if (this.cachedFiles) {
       return this.cachedFiles;

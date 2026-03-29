@@ -3,7 +3,37 @@ import path from "node:path";
 import { cwd } from "node:process";
 import yaml from "js-yaml";
 
-import type { ProjectDetection } from "./detect";
+import { detectProject, type ProjectDetection } from "./detect";
+
+export interface ServiceConfig {
+  root?: string;
+  install?: string;
+  skipInstall?: boolean;
+  build: string;
+  start: string;
+  depends?: string[];
+}
+
+export interface DevverConfigFile {
+  project: string;
+  services: {
+    web?: ServiceConfig;
+    api?: ServiceConfig;
+  };
+  databases?: Record<string, unknown>;
+}
+
+export function readConfigFile(root?: string): DevverConfigFile | null {
+  const targetDir = root ?? cwd();
+  const configPath = path.join(targetDir, ".devver.yaml");
+
+  if (!fs.existsSync(configPath)) {
+    return null;
+  }
+
+  const content = fs.readFileSync(configPath, "utf-8");
+  return yaml.load(content) as DevverConfigFile;
+}
 
 export function writeConfigFile(
   detection: ProjectDetection,
@@ -40,11 +70,13 @@ export function writeConfigFile(
       },
     };
   }
+
   const serviceConfig: Record<string, unknown> = {
     root: ".",
     build: "bun run build",
     start: "bun run start",
   };
+
   if (serviceName === "api" && hasMongo) {
     serviceConfig.depends = ["mongodb"];
   }
@@ -55,4 +87,24 @@ export function writeConfigFile(
   console.log(`\nConfig written to ${configPath}`);
 }
 
-export const DevverConfig = { writeConfigFile };
+export async function checkForConfigFile() {
+  const configPath = path.join(cwd(), ".devver.yaml");
+  if (!fs.existsSync(configPath)) {
+    const detection = await detectProject();
+    console.log("No Config file found, generating...");
+    if (detection.results.length === 0) {
+      console.log("  No frameworks detected");
+    } else {
+      for (const result of detection.results) {
+        console.log(`  ✓ ${result.detected.displayName}`);
+      }
+    }
+    writeConfigFile(detection);
+  }
+}
+
+export const DevverConfig = {
+  writeConfigFile,
+  readConfigFile,
+  checkForConfigFile,
+};

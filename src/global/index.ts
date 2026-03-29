@@ -1,3 +1,7 @@
+/**
+ * XDG base directory paths for all persisted CLI data.
+ * Top-level await ensures dirs exist before any Storage call.
+ */
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

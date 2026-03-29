@@ -1,3 +1,10 @@
+/**
+ * Auth worker -- runs in a separate Bun Worker thread.
+ *
+ * Hosts a temporary HTTP server on REDIRECT_PORT to receive the Logto
+ * OAuth callback, so the main CLI thread stays responsive.
+ * Communicates with the main thread via Rpc.listen / Rpc.emit.
+ */
 import { Rpc } from "../util/rpc";
 import { createLogtoClient } from "./logto";
 

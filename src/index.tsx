@@ -7,6 +7,7 @@ import { ConfigCommand } from "./cmd/config";
 import { DeployCommand } from "./cmd/deploy";
 import { OrganizationCommand } from "./cmd/organization";
 import { ProjectCommand } from "./cmd/project";
+import { RepositoryCommand } from "./cmd/repos";
 import { SecretCommand } from "./cmd/secret";
 import { TuiCommand } from "./cmd/tui/tui";
 import { FormatError } from "./error";
@@ -63,6 +64,7 @@ const cli = yargs(hideBin(process.argv))
   .command(ProjectCommand)
   .command(SecretCommand)
   .command(OrganizationCommand)
+  .command(RepositoryCommand)
   .usage(`\n${UI.logo()}`)
   .completion("completion", "generate shell completion script")
   .fail((msg, err) => {
