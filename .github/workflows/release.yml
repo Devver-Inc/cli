@@ -61,7 +61,7 @@ jobs:
 
       - name: Build standalone binary
         run: |
-          bun build ./src/index.tsx --compile --outfile devver-cli
+          bun run scripts/build.ts
         shell: bash
 
       - name: Create archive (Unix)
