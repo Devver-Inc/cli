@@ -11,15 +11,21 @@ export function writeConfigFile(
 ): void {
   const targetDir = root ?? cwd();
   const configPath = path.join(targetDir, ".devver.yaml");
-  const serviceName = detection.results.find(
+
+  const isWebFramework = detection.results.find(
     (r) => r.detected.name === "react" || r.detected.name === "next"
-  )
-    ? "web"
-    : detection.results.find(
-          (r) => r.detected.name === "nestjs" || r.detected.name === "express"
-        )
-      ? "api"
-      : "web";
+  );
+  const isApiFramework = detection.results.find(
+    (r) => r.detected.name === "nestjs" || r.detected.name === "express"
+  );
+
+  let serviceName = "web";
+  if (isWebFramework) {
+    serviceName = "web";
+  } else if (isApiFramework) {
+    serviceName = "api";
+  }
+
   const config: Record<string, unknown> = {
     project: path.basename(targetDir),
     services: {} as Record<string, unknown>,

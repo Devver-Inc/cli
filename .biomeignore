@@ -1,0 +1,11 @@
+# IDE and editor configs
+.zed/
+.sisyphus/
+
+# Release automation configs (managed by release-please)
+.release-please-manifest.json
+.release-please-versions.json
+
+# Documentation
+SETUP_SUMMARY.md
+RELEASE.md

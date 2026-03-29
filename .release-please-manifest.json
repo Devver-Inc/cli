@@ -1,0 +1,18 @@
+{
+  "release-type": "node",
+  "package-name": "@devver/cli",
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "changelog-sections": [
+    { "type": "feat", "section": "🚀 Features", "hidden": false },
+    { "type": "fix", "section": "🐛 Bug Fixes", "hidden": false },
+    { "type": "refactor", "section": "🚜 Refactor", "hidden": false },
+    { "type": "docs", "section": "📚 Documentation", "hidden": false },
+    { "type": "perf", "section": "⚡ Performance", "hidden": false },
+    { "type": "style", "section": "🎨 Styling", "hidden": false },
+    { "type": "test", "section": "🧪 Testing", "hidden": false },
+    { "type": "chore", "section": "⚙️ Miscellaneous Tasks", "hidden": false },
+    { "type": "ci", "section": "⚙️ Miscellaneous Tasks", "hidden": false }
+  ],
+  "extra-files": ["package.json", "package-lock.json"]
+}

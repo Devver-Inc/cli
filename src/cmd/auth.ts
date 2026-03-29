@@ -1,8 +1,13 @@
-import { getAuthClient, startLogin, terminateAuthClient, getOrganizationDetails } from "../auth/client";
-import { getCurrentOrganization, setCurrentOrganization } from "../auth/organization";
-import { getCurrentProject } from "../project/storage";
 import { getProjectById } from "../api/projects.requests";
-import { runAuthenticated, disposeRuntime } from "../util/runtime";
+import {
+  getAuthClient,
+  getOrganizationDetails,
+  startLogin,
+  terminateAuthClient,
+} from "../auth/client";
+import { getCurrentOrganization } from "../auth/organization";
+import { getCurrentProject } from "../project/storage";
+import { disposeRuntime, runAuthenticated } from "../util/runtime";
 import { cmd } from "./cmd";
 
 const AuthLoginCommand = cmd({
@@ -58,11 +63,13 @@ const AuthStatusCommand = cmd({
             const marker = org.id === currentOrg ? "* " : "  ";
             console.log(`${marker}${org.name}`);
           }
-          const currentOrgData = organizations.find(o => o.id === currentOrg);
+          const currentOrgData = organizations.find((o) => o.id === currentOrg);
           if (currentOrg && currentOrgData) {
             console.log(`\nCurrent organization: ${currentOrgData.name}`);
           } else {
-            console.log(`\nCurrent organization: ${organizations[0]?.name ?? 'Unknown'} (default)`);
+            console.log(
+              `\nCurrent organization: ${organizations[0]?.name ?? "Unknown"} (default)`
+            );
           }
         } else {
           console.log("✗ Not part of any organization");
@@ -72,10 +79,14 @@ const AuthStatusCommand = cmd({
         const currentProjectId = await getCurrentProject();
         if (currentProjectId) {
           try {
-            const project = await runAuthenticated(getProjectById(currentProjectId));
+            const project = await runAuthenticated(
+              getProjectById(currentProjectId)
+            );
             console.log(`\nCurrent project: ${project.name}`);
-          } catch (error) {
-            console.log(`\nCurrent project: ${currentProjectId} (details unavailable)`);
+          } catch {
+            console.log(
+              `\nCurrent project: ${currentProjectId} (details unavailable)`
+            );
           }
         }
       } catch (error) {
@@ -88,7 +99,6 @@ const AuthStatusCommand = cmd({
     await disposeRuntime();
   },
 });
-
 
 export const AuthCommand = cmd({
   command: "auth",

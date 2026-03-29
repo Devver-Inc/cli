@@ -5,12 +5,12 @@ import { hideBin } from "yargs/helpers";
 import { AuthCommand } from "./cmd/auth";
 import { ConfigCommand } from "./cmd/config";
 import { DeployCommand } from "./cmd/deploy";
+import { OrganizationCommand } from "./cmd/organization";
 import { ProjectCommand } from "./cmd/project";
 import { SecretCommand } from "./cmd/secret";
 import { TuiCommand } from "./cmd/tui/tui";
 import { FormatError } from "./error";
 import { UI } from "./ui";
-import { OrganizationCommand } from "./cmd/organization";
 
 process.on("unhandledRejection", (e) => {
   console.error("exception", {
@@ -117,6 +117,6 @@ try {
 } finally {
   // Explicitly exit to avoid any hanging subprocesses.
   // if (process.exitCode) {
-    process.exit();
+  process.exit();
   // }
 }

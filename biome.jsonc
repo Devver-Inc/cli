@@ -6,11 +6,21 @@
   },
   "overrides": [
     {
-      "include": ["src/**/Global.ts"],
+      "includes": ["src/**/Global.ts"],
       "linter": {
         "rules": {
           "suspicious": {
-            "noNonNullAssertion": "off"
+            "noExtraNonNullAssertion": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/cmd/auth.ts"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noExcessiveCognitiveComplexity": "off"
           }
         }
       }

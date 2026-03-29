@@ -1,6 +1,5 @@
 import { Effect, Schema } from "effect";
 import { ApiClient } from "./client";
-import { PaginatedProjectsSchema } from "./projects.requests";
 
 export const CreateRepositorySchema = Schema.Struct({
   name: Schema.String.pipe(Schema.minLength(1)),
@@ -28,10 +27,10 @@ export const CreateDeploymentSchema = Schema.Struct({
     Schema.Record({
       key: Schema.String,
       value: Schema.Record({ key: Schema.String, value: Schema.String }),
-    }),
+    })
   ),
   env: Schema.optional(
-    Schema.Record({ key: Schema.String, value: Schema.String }),
+    Schema.Record({ key: Schema.String, value: Schema.String })
   ),
 });
 
@@ -49,10 +48,10 @@ export const GetRepoSchema = Schema.Struct({
 });
 
 export const PM2ProcessStatusSchema = Schema.Literal(
-  'online',
-  'stopped',
-  'errored',
-  'stopping',
+  "online",
+  "stopped",
+  "errored",
+  "stopping"
 );
 
 export const PM2ProcessSchema = Schema.Struct({
@@ -74,7 +73,7 @@ export const GetAgentDeploymentSchema = Schema.Struct({
   branch: Schema.String,
   commit: Schema.String,
   service: Schema.Record({
-    key: Schema.Literal('api', 'web'),
+    key: Schema.Literal("api", "web"),
     value: ServiceDeployResultSchema,
   }),
   process: Schema.NullOr(PM2ProcessSchema),
@@ -96,14 +95,13 @@ export const RestoreResultSchema = Schema.Struct({
   restoredDeployments: Schema.Number,
 });
 
-export const PM2ActionSchema = Schema.Literal('start', 'stop', 'restart');
+export const PM2ActionSchema = Schema.Literal("start", "stop", "restart");
 
 export const ControlPm2ProcessResultSchema = Schema.Struct({
   success: Schema.Boolean,
   name: Schema.String,
   action: PM2ActionSchema,
 });
-
 
 export type CreateRepositoryDto = Schema.Schema.Type<
   typeof CreateRepositorySchema
@@ -129,40 +127,38 @@ export const listRepos = (projectId: string) =>
     const api = yield* ApiClient;
     return yield* api.get(
       `/projects/${projectId}/repos`,
-      Schema.Array(GetRepoSchema),
+      Schema.Array(GetRepoSchema)
     );
   });
 
-
 export const createRepository = (
   projectId: string,
-  body: CreateRepositoryDto,
+  body: CreateRepositoryDto
 ) =>
   Effect.gen(function* () {
     const api = yield* ApiClient;
     return yield* api.post(`/projects/${projectId}/repos`, body, GetRepoSchema);
   });
 
-
 export const deleteRepo = (projectId: string, name: string) =>
   Effect.gen(function* () {
     const api = yield* ApiClient;
     return yield* api.delete(
       `/projects/${projectId}/repos/${encodeURIComponent(name)}`,
-      Schema.Void,
+      Schema.Void
     );
   });
 
 export const createDeployment = (
   projectId: string,
-  body: CreateDeploymentDto,
+  body: CreateDeploymentDto
 ) =>
   Effect.gen(function* () {
     const api = yield* ApiClient;
     return yield* api.post(
       `/projects/${projectId}/deployments`,
       body,
-      GetAgentDeploymentSchema,
+      GetAgentDeploymentSchema
     );
   });
 
@@ -171,7 +167,7 @@ export const listDeployments = (projectId: string) =>
     const api = yield* ApiClient;
     return yield* api.get(
       `/projects/${projectId}/deployments`,
-      Schema.Array(GetAgentDeploymentSchema),
+      Schema.Array(GetAgentDeploymentSchema)
     );
   });
 
@@ -180,7 +176,7 @@ export const removeDeployment = (projectId: string, deploymentId: string) =>
     const api = yield* ApiClient;
     return yield* api.delete(
       `/projects/${projectId}/deployments/${encodeURIComponent(deploymentId)}`,
-      Schema.Void,
+      Schema.Void
     );
   });
 
@@ -189,20 +185,20 @@ export const getDeploymentLogs = (projectId: string, deploymentId: string) =>
     const api = yield* ApiClient;
     return yield* api.get(
       `/projects/${projectId}/deployments/${encodeURIComponent(deploymentId)}/logs`,
-      GetLogsSchema,
+      GetLogsSchema
     );
   });
 
 export const startPm2Process = (
   projectId: string,
-  body: ControlPm2ProcessDto,
+  body: ControlPm2ProcessDto
 ) =>
   Effect.gen(function* () {
     const api = yield* ApiClient;
     return yield* api.post(
       `/projects/${projectId}/pm2/start`,
       body,
-      ControlPm2ProcessResultSchema,
+      ControlPm2ProcessResultSchema
     );
   });
 
@@ -212,20 +208,20 @@ export const stopPm2Process = (projectId: string, body: ControlPm2ProcessDto) =>
     return yield* api.post(
       `/projects/${projectId}/pm2/stop`,
       body,
-      ControlPm2ProcessResultSchema,
+      ControlPm2ProcessResultSchema
     );
   });
 
 export const restartPm2Process = (
   projectId: string,
-  body: ControlPm2ProcessDto,
+  body: ControlPm2ProcessDto
 ) =>
   Effect.gen(function* () {
     const api = yield* ApiClient;
     return yield* api.post(
       `/projects/${projectId}/pm2/restart`,
       body,
-      ControlPm2ProcessResultSchema,
+      ControlPm2ProcessResultSchema
     );
   });
 
@@ -235,6 +231,6 @@ export const restoreState = (projectId: string) =>
     return yield* api.post(
       `/projects/${projectId}/restore`,
       {},
-      RestoreResultSchema,
+      RestoreResultSchema
     );
   });

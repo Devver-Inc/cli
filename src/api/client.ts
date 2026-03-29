@@ -82,7 +82,11 @@ export const ApiClientLive = Layer.effect(
 
     const addAuth = (request: HttpClientRequest.HttpClientRequest) =>
       token
-        ? HttpClientRequest.setHeader(request, "Authorization", `Bearer ${token}`)
+        ? HttpClientRequest.setHeader(
+            request,
+            "Authorization",
+            `Bearer ${token}`
+          )
         : request;
 
     const makeRequest = <A, I>(
