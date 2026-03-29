@@ -15,8 +15,10 @@ const result = await Bun.build({
     outfile: "devver-cli",
   },
   define: {
-    DEVVER_WORKER_PATH: workerPath,
-    DEVVER_VERSION: `"${pkg.version}"`,
+    // In the compiled binary, the worker entrypoint is at auth/worker.js
+    // relative to the main entrypoint (index.js) inside $bunfs/root/
+    DEVVER_WORKER_PATH: JSON.stringify("./auth/worker.js"),
+    DEVVER_VERSION: JSON.stringify(pkg.version),
   },
 });
 

@@ -22,9 +22,10 @@ let worker: Worker | undefined;
 let client: ReturnType<typeof Rpc.client<typeof rpc>> | undefined;
 
 function getWorkerPath(): string | URL {
-  // In compiled binary, DEVVER_WORKER_PATH will be defined at build time
+  // In compiled binary, use the $bunfs path
+  // The worker entrypoint gets compiled to auth/worker.js inside the bundle
   if (typeof DEVVER_WORKER_PATH !== "undefined") {
-    return DEVVER_WORKER_PATH;
+    return new URL(DEVVER_WORKER_PATH, import.meta.url);
   }
   // In development, use relative import
   return new URL("./worker.ts", import.meta.url);
