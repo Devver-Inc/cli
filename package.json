@@ -1,50 +1,41 @@
 {
-  "name": "@devver/cli",
+  "name": "@devver-inc/cli",
+  "version": "0.0.2",
+  "private": false,
   "description": "Deploy and try your app in seconds",
-  "version": "0.0.1",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "files": [
-    "dist",
-    "README.md"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/myorg/my-package.git"
-  },
   "keywords": [
     "utility",
     "helper"
   ],
-  "author": "Your Name",
+  "homepage": "https://github.com/Devver-Inc/cli#readme",
+  "bugs": {
+    "url": "https://github.com/Devver-Inc/cli/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Devver-Inc/cli.git"
+  },
   "license": "MIT",
-  "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org"
-  },
-
-  "module": "src/index.tsx",
+  "author": "Your Name",
   "type": "module",
-  "private": false,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
-    "devver": "./src/index.tsx"
+    "devver": "src/index.tsx"
   },
+  "directories": {
+    "test": "tests"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "dev": "bun run --watch src/index.tsx",
     "cmd": "bun run src/index.tsx",
     "check": "ultracite check",
     "fix": "ultracite fix",
     "publish": "bun publish"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^2.3.13",
-    "@types/bun": "latest",
-    "@types/js-yaml": "^4.0.9",
-    "@types/react": "^19.2.9",
-    "ultracite": "^7.1.5"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
   },
   "dependencies": {
     "@clack/prompts": "^1.1.0",
@@ -58,5 +49,19 @@
     "js-yaml": "^4.1.1",
     "xdg-basedir": "^5.1.0",
     "yargs": "^18.0.0"
-  }
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.13",
+    "@types/bun": "latest",
+    "@types/js-yaml": "^4.0.9",
+    "@types/react": "^19.2.9",
+    "ultracite": "^7.1.5"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "module": "src/index.tsx"
 }
