@@ -12,6 +12,10 @@ import { TuiCommand } from "./cmd/tui/tui";
 import { FormatError } from "./error";
 import { UI } from "./ui";
 
+declare global {
+  const DEVVER_VERSION: string;
+}
+
 process.on("unhandledRejection", (e) => {
   console.error("exception", {
     e: e instanceof Error ? e.message : e,
@@ -24,7 +28,9 @@ process.on("uncaughtException", (e) => {
   });
 });
 
-export const VERSION = "0.1";
+// Use DEVVER_VERSION if defined (compiled binary), otherwise fall back to package.json
+export const VERSION =
+  typeof DEVVER_VERSION !== "undefined" ? DEVVER_VERSION : "0.0.2";
 export const LOG_FILE_PATH = "";
 
 const cli = yargs(hideBin(process.argv))

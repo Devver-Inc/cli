@@ -5,6 +5,8 @@
  * Compiles the CLI with bundled worker support
  */
 
+import pkg from "../package.json";
+
 const workerPath = "./src/auth/worker.ts";
 
 const result = await Bun.build({
@@ -13,7 +15,8 @@ const result = await Bun.build({
     outfile: "devver-cli",
   },
   define: {
-    DEVVER_WORKER_PATH: `"${workerPath}"`,
+    DEVVER_WORKER_PATH: workerPath,
+    DEVVER_VERSION: `"${pkg.version}"`,
   },
 });
 
@@ -25,4 +28,4 @@ if (!result.success) {
   process.exit(1);
 }
 
-console.log("Build successful!");
+console.log(`Build successful! Version: ${pkg.version}`);
