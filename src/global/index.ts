@@ -1,14 +1,14 @@
+import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import fs from "fs/promises";
 import { xdgCache, xdgConfig, xdgData, xdgState } from "xdg-basedir";
 
 const app = "devver";
 
-const data = path.join(xdgData!, app);
-const cache = path.join(xdgCache!, app);
-const config = path.join(xdgConfig!, app);
-const state = path.join(xdgState!, app);
+const data = path.join(xdgData ?? os.homedir(), app);
+const cache = path.join(xdgCache ?? os.homedir(), app);
+const config = path.join(xdgConfig ?? os.homedir(), app);
+const state = path.join(xdgState ?? os.homedir(), app);
 
 const Path = {
   get home() {

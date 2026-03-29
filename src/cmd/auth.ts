@@ -83,7 +83,7 @@ const AuthStatusCommand = cmd({
               getProjectById(currentProjectId)
             );
             console.log(`\nCurrent project: ${project.name}`);
-          } catch (error) {
+          } catch {
             console.log(
               `\nCurrent project: ${currentProjectId} (details unavailable)`
             );

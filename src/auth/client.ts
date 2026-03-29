@@ -125,17 +125,17 @@ export async function getAccessToken(): Promise<string | null> {
   return refreshToken();
 }
 
-export async function refreshAccessToken(): Promise<string | null> {
+export function refreshAccessToken(): Promise<string | null> {
   // Force refresh - bypass stored token
   return refreshToken();
 }
 
-export type OrganizationDetails = {
+export interface OrganizationDetails {
   id: string;
   name: string;
   description?: string;
   roles?: Array<{ roleId: string; roleName: string }>;
-};
+}
 
 export async function getOrganizationDetails(): Promise<OrganizationDetails[]> {
   const authClient = getAuthClient();

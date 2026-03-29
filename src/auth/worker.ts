@@ -100,7 +100,7 @@ export const rpc = {
           id: string;
           name: string;
           description?: string;
-          roles?: any[];
+          roles?: Array<{ roleId: string; roleName: string }>;
         }>;
 
         let targetOrgId: string | undefined;
@@ -121,7 +121,7 @@ export const rpc = {
         }
 
         return client.getAccessToken("http://localhost:9999", targetOrgId);
-      } catch (error) {
+      } catch {
         // Fallback: try to get token with orgId from ID token if access token claims fail
         const idClaims = await client.getIdTokenClaims();
         const orgIds = idClaims?.organizations ?? [];
