@@ -34,7 +34,8 @@
     "dev": "bun run --watch src/index.tsx",
     "cmd": "bun run src/index.tsx",
     "check": "ultracite check",
-    "fix": "ultracite fix"
+    "fix": "ultracite fix",
+    "test": "bun test"
   },
   "dependencies": {
     "@clack/prompts": "^1.1.0",

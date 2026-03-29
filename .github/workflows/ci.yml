@@ -31,13 +31,7 @@ jobs:
         run: bun run check
 
       - name: Run tests
-        run: |
-          if ls **/*.test.* **/*.spec.* 1> /dev/null 2>&1; then
-            bun test
-          else
-            echo "No test files found, skipping tests"
-          fi
-        shell: bash
+        run: bun test
 
   build:
     name: Build Check
