@@ -68,8 +68,7 @@ export class ApiClient extends Context.Tag("ApiClient")<
   ApiClientService
 >() {}
 
-const BASE_URL = process.env.API_URL ?? "http://localhost:3000/api/v1"; // "https://api.devver.app/api/v1";
-
+const BASE_URL = process.env.API_URL ?? "https://app.devver.app/api/v1"; // "http://localhost:3000/api/v1";
 const checkStatus = (
   response: HttpClientResponse.HttpClientResponse
 ): Effect.Effect<HttpClientResponse.HttpClientResponse, ApiError> =>

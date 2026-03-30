@@ -2,6 +2,18 @@ import { Effect, Schema } from "effect";
 import { ApiClient } from "./client";
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+export const OverlayCommentPermission = {
+  TEAM_ONLY: "team_only",
+  EMAIL_REQUIRED: "email_required",
+} as const;
+
+export type OverlayCommentPermission =
+  (typeof OverlayCommentPermission)[keyof typeof OverlayCommentPermission];
+
+// ---------------------------------------------------------------------------
 // Schemas -- *Base objects are shared between input and response schemas
 // to avoid duplication while keeping validation constraints separate.
 // ---------------------------------------------------------------------------
@@ -9,31 +21,29 @@ import { ApiClient } from "./client";
 const GetUserLightSchema = Schema.Struct({});
 
 const MachineConfigurationBase = {
-  cpuCores: Schema.Int.pipe(Schema.between(1, 16)),
-  ram: Schema.Int.pipe(Schema.between(1, 64)),
+  cpuCores: Schema.Number.pipe(Schema.between(0.5, 2)),
+  ram: Schema.Number.pipe(Schema.between(0.5, 2)),
   storage: Schema.Int.pipe(Schema.between(10, 500)),
 };
-const AccessControlBase = {
-  requireEmailAuth: Schema.Boolean,
-  publicAccess: Schema.Boolean,
-  restrictToTeamMembers: Schema.Boolean,
+
+const OverlayAccessControlBase = {
+  commentPermission: Schema.Literal(
+    OverlayCommentPermission.TEAM_ONLY,
+    OverlayCommentPermission.EMAIL_REQUIRED
+  ),
 };
 
 const MachineConfigurationResponse = Schema.Struct(MachineConfigurationBase);
-const AccessControlResponse = Schema.Struct(AccessControlBase);
+const OverlayAccessControlResponse = Schema.Struct(OverlayAccessControlBase);
 
 const MachineConfigurationInput = Schema.Struct({
   cpuCores: Schema.optionalWith(MachineConfigurationBase.cpuCores, {}),
   ram: Schema.optionalWith(MachineConfigurationBase.ram, {}),
   storage: Schema.optionalWith(MachineConfigurationBase.storage, {}),
 });
-const AccessControlInput = Schema.Struct({
-  requireEmailAuth: Schema.optionalWith(AccessControlBase.requireEmailAuth, {}),
-  publicAccess: Schema.optionalWith(AccessControlBase.publicAccess, {}),
-  restrictToTeamMembers: Schema.optionalWith(
-    AccessControlBase.restrictToTeamMembers,
-    {}
-  ),
+
+const OverlayAccessControlInput = Schema.Struct({
+  commentPermission: OverlayAccessControlBase.commentPermission,
 });
 
 const ProjectBase = {
@@ -42,9 +52,8 @@ const ProjectBase = {
     Schema.maxLength(128),
     Schema.nonEmptyString()
   ),
-  description: Schema.optionalWith(
-    Schema.NonEmptyString.pipe(Schema.maxLength(256)),
-    { exact: true }
+  description: Schema.NullishOr(
+    Schema.NonEmptyString.pipe(Schema.maxLength(256))
   ),
 };
 
@@ -52,7 +61,7 @@ export const CreateProjectSchema = Schema.Struct({
   ...ProjectBase,
   machineConfiguration: MachineConfigurationInput,
   teamMemberIds: Schema.Array(Schema.NonEmptyString),
-  accessControl: AccessControlInput,
+  overlayAccessControl: OverlayAccessControlInput,
 });
 
 export const GetProjectSchema = Schema.Struct({
@@ -62,7 +71,7 @@ export const GetProjectSchema = Schema.Struct({
   createdBy: Schema.NullOr(GetUserLightSchema),
   machineConfiguration: MachineConfigurationResponse,
   teamMembers: Schema.Array(GetUserLightSchema),
-  accessControl: AccessControlResponse,
+  overlayAccessControl: OverlayAccessControlResponse,
   createdAt: Schema.Date,
   updatedAt: Schema.Date,
 });
@@ -70,7 +79,7 @@ export const GetProjectSchema = Schema.Struct({
 export const GetProjectListItemSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
-  description: Schema.optional(Schema.String),
+  description: Schema.NullishOr(Schema.String),
   createdAt: Schema.DateFromString,
 });
 

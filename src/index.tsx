@@ -3,7 +3,7 @@ import { EOL } from "node:os";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { AuthCommand } from "./cmd/auth";
-import { ConfigCommand } from "./cmd/config";
+import { InitConfigCommand } from "./cmd/config";
 import { DeployCommand } from "./cmd/deploy";
 import { OrganizationCommand } from "./cmd/organization";
 import { ProjectCommand } from "./cmd/project";
@@ -59,7 +59,7 @@ const cli = yargs(hideBin(process.argv))
   // })
   .command(TuiCommand)
   .command(AuthCommand)
-  .command(ConfigCommand)
+  .command(InitConfigCommand)
   .command(DeployCommand)
   .command(ProjectCommand)
   .command(SecretCommand)

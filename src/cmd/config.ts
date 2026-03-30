@@ -1,12 +1,18 @@
 import { cmd } from "./cmd";
 import "../config/detectors";
-import { writeConfigFile } from "../config";
+import { readConfigFile, writeConfigFile } from "../config";
 import { detectProject } from "../config/detect";
 
 export const InitConfigCommand = cmd({
   command: "init",
   describe: "init devver config in current directory",
   async handler() {
+    const existing = readConfigFile();
+    if (existing) {
+      console.log("✓ Config file already exists (.devver.yaml)");
+      return;
+    }
+
     const detection = await detectProject();
 
     console.log("\nProject detection:");
@@ -20,17 +26,9 @@ export const InitConfigCommand = cmd({
 
     if (detection.results.length > 0) {
       writeConfigFile(detection);
+    } else {
+      writeConfigFile(detection);
+      console.log("  (config file created anyway)");
     }
-    writeConfigFile(detection);
-    console.log("  (config file created anyway)");
-  },
-});
-
-export const ConfigCommand = cmd({
-  command: "config",
-  describe: "manage devver configuration",
-  builder: (yargs) => yargs.command(InitConfigCommand).demandCommand(),
-  async handler() {
-    await new Promise(() => ({}));
   },
 });

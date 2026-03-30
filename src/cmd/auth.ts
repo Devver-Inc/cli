@@ -40,7 +40,16 @@ const AuthLogoutCommand = cmd({
   describe: "logout from your devver server",
   async handler() {
     const client = getAuthClient();
-    await client.call("logout", undefined);
+    const result = (await client.call("logout", undefined)) as {
+      url?: string;
+    };
+
+    if (result?.url) {
+      console.log("Opening browser to complete logout...");
+      await Bun.spawn(["open", result.url]);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+
     console.log("✓ Logged out");
     await terminateAuthClient();
   },
