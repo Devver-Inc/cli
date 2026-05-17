@@ -127,12 +127,44 @@ export function emit(event: string, data: unknown) {
 }
 
 export function client<T extends Definition>(target: Worker) {
-  const pending: PendingMap = new Map();
-  const listeners: ListenerMap = new Map();
+  const pending = new Map<
+    number,
+    { resolve: (result: unknown) => void; reject: (err: Error) => void }
+  >();
+  const listeners = new Map<string, Set<(data: unknown) => void>>();
   let id = 0;
-  target.addEventListener("message", (evt) =>
-    handleMessage(evt, pending, listeners)
-  );
+  target.addEventListener("message", (evt) => {
+    let parsed;
+    try {
+      parsed = JSON.parse(evt.data);
+    } catch {
+      console.error("[RPC] Non-JSON message from worker:", evt.data);
+      return;
+    }
+    if (parsed.type === "rpc.result") {
+      const entry = pending.get(parsed.id);
+      if (entry) {
+        if (parsed.error) {
+          const err = new Error(parsed.error);
+          if (parsed.stack) {
+            err.stack = parsed.stack;
+          }
+          entry.reject(err);
+        } else {
+          entry.resolve(parsed.result);
+        }
+        pending.delete(parsed.id);
+      }
+    }
+    if (parsed.type === "rpc.event") {
+      const handlers = listeners.get(parsed.event);
+      if (handlers) {
+        for (const handler of handlers) {
+          handler(parsed.data);
+        }
+      }
+    }
+  });
   return {
     call<Method extends keyof T>(
       method: Method,
