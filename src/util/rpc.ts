@@ -20,16 +20,35 @@ export function listen(rpc: Definition) {
     if (parsed.type === "rpc.request") {
       const fn = rpc[parsed.method];
       if (!fn) {
+        postMessage(
+          JSON.stringify({
+            type: "rpc.result",
+            result: null,
+            id: parsed.id,
+          })
+        );
         return;
       }
-      const result = await fn(parsed.input);
-      postMessage(
-        JSON.stringify({
-          type: "rpc.result",
-          result,
-          id: parsed.id,
-        })
-      );
+      try {
+        const result = await fn(parsed.input);
+        postMessage(
+          JSON.stringify({
+            type: "rpc.result",
+            result,
+            id: parsed.id,
+          })
+        );
+      } catch (err) {
+        postMessage(
+          JSON.stringify({
+            type: "rpc.result",
+            result: null,
+            error: err instanceof Error ? err.message : String(err),
+            stack: err instanceof Error ? err.stack : undefined,
+            id: parsed.id,
+          })
+        );
+      }
     }
   });
 }
@@ -39,15 +58,32 @@ export function emit(event: string, data: unknown) {
 }
 
 export function client<T extends Definition>(target: Worker) {
-  const pending = new Map<number, (result: unknown) => void>();
+  const pending = new Map<
+    number,
+    { resolve: (result: unknown) => void; reject: (err: Error) => void }
+  >();
   const listeners = new Map<string, Set<(data: unknown) => void>>();
   let id = 0;
   target.addEventListener("message", (evt) => {
-    const parsed = JSON.parse(evt.data);
+    let parsed;
+    try {
+      parsed = JSON.parse(evt.data);
+    } catch {
+      console.error("[RPC] Non-JSON message from worker:", evt.data);
+      return;
+    }
     if (parsed.type === "rpc.result") {
-      const resolve = pending.get(parsed.id);
-      if (resolve) {
-        resolve(parsed.result);
+      const entry = pending.get(parsed.id);
+      if (entry) {
+        if (parsed.error) {
+          const err = new Error(parsed.error);
+          if (parsed.stack) {
+            err.stack = parsed.stack;
+          }
+          entry.reject(err);
+        } else {
+          entry.resolve(parsed.result);
+        }
         pending.delete(parsed.id);
       }
     }
@@ -66,8 +102,11 @@ export function client<T extends Definition>(target: Worker) {
       input: Parameters<T[Method]>[0]
     ): Promise<ReturnType<T[Method]>> {
       const requestId = id++;
-      return new Promise((resolve) => {
-        pending.set(requestId, resolve as (result: unknown) => void);
+      return new Promise((resolve, reject) => {
+        pending.set(requestId, {
+          resolve: resolve as (result: unknown) => void,
+          reject,
+        });
         target.postMessage(
           JSON.stringify({
             type: "rpc.request",

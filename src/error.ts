@@ -37,9 +37,26 @@ export function FormatError(input: unknown): string | undefined {
 
   // ── Generic Error ────────────────────────────────────────────────────
   if (input instanceof Error) {
-    // Effect's HttpClientError wraps lower-level failures — if the message
-    // isn't helpful, try to keep it concise.
     const msg = input.message || String(input);
+
+    // Effect wraps failed Effects in a FiberFailure (extends Error). When the
+    // underlying cause is a plain object, the message renders as
+    // "[object Object]" — useless. Recover something readable.
+    if (/\[object Object\]/i.test(msg)) {
+      const any = input as { cause?: unknown };
+      if (any.cause !== undefined) {
+        const causeMsg = FormatError(any.cause);
+        if (causeMsg) {
+          return causeMsg;
+        }
+      }
+      try {
+        return JSON.stringify(input, null, 2);
+      } catch {
+        return `${input.name}: ${msg}`;
+      }
+    }
+
     return msg;
   }
 

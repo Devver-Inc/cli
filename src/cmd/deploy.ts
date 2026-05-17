@@ -46,9 +46,16 @@ export const DeployCommand = cmd({
         currentCommit,
       });
     } catch (e) {
+      // Log the raw error so opaque failures (e.g. "Error: [object Object]")
+      // can be diagnosed. Set DEVVER_DEBUG for even more detail.
+      if (process.env.DEVVER_DEBUG) {
+        console.error("[devver] raw deploy error:", e);
+      }
       const msg = FormatError(e);
       if (msg) {
         UI.error(msg);
+      } else {
+        UI.error(`Deployment failed: ${String(e)}`);
       }
     } finally {
       await disposeRuntime();

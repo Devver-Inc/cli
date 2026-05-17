@@ -21,7 +21,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "devver": "src/index.tsx"
+    "devr": "src/index.tsx"
   },
   "directories": {
     "test": "tests"
