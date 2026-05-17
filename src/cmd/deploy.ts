@@ -1,8 +1,13 @@
 import { Effect } from "effect";
-import { createDeployment } from "../api/deploy.requests";
-import { checkForConfigFile, readConfigFile } from "../config";
 import { FormatError } from "../error";
 import { UI } from "../ui";
+import {
+  createDeployment,
+  listMongoDatabases,
+} from "../api/deploy.requests";
+import { getProjectById } from "../api/projects.requests";
+import { checkForConfigFile, ensureGitignore, readConfigFile } from "../config";
+import { getDeploymentEnv, mergeEnv } from "../config/secrets";
 import {
   checkForConflicts,
   checkForGitRepo,
@@ -22,15 +27,22 @@ export const DeployCommand = cmd({
     try {
       await checkForConfigFile();
       await checkForGitRepo();
+      ensureGitignore();
 
-      const { projectId, repoName, pushUrl } = await getValidatedRepository();
+      const { projectId, repoName, pushUrl } =
+        await getValidatedRepository();
       const currentBranch = await getCurrentBranch();
 
       await checkRemoteBranch(pushUrl, currentBranch);
       await checkForConflicts(pushUrl, currentBranch);
 
       const currentCommit = await getCurrentCommit();
-      await confirmAndPush({ repoName, currentBranch, currentCommit, pushUrl });
+      await confirmAndPush({
+        repoName,
+        currentBranch,
+        currentCommit,
+        pushUrl,
+      });
       await createAndReportDeployment({
         projectId,
         repoName,
@@ -89,7 +101,9 @@ async function confirmAndPush(opts: {
     process.exit(1);
   }
 
-  await Effect.runPromise(spinner.stop(`Successfully pushed to ${repoName}`));
+  await Effect.runPromise(
+    spinner.stop(`Successfully pushed to ${repoName}`)
+  );
 }
 
 async function createAndReportDeployment(opts: {
@@ -106,6 +120,12 @@ async function createAndReportDeployment(opts: {
     process.exit(1);
   }
 
+  const projectEnv: Record<string, string> = config.env ?? {};
+  const deploymentEnv = getDeploymentEnv(repoName);
+  const mergedEnv = mergeEnv(projectEnv, deploymentEnv);
+
+  const dbLinks = await resolveDbLinks(projectId);
+
   const spinner = Prompt.spinner();
   await Effect.runPromise(spinner.start("Creating deployment..."));
 
@@ -116,6 +136,8 @@ async function createAndReportDeployment(opts: {
       branch: currentBranch,
       commit: currentCommit,
       service: config.services,
+      env: Object.keys(mergedEnv).length > 0 ? mergedEnv : undefined,
+      dbLinks: dbLinks ?? undefined,
     })
   );
   const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
@@ -130,4 +152,87 @@ async function createAndReportDeployment(opts: {
   if (deployment.service.api) {
     console.log(`    API URL: ${deployment.service.api.url}`);
   }
+}
+
+async function resolveDbLinks(
+  projectId: string
+): Promise<Record<string, string> | undefined> {
+  const project = await runAuthenticated(getProjectById(projectId));
+
+  if (!project.databaseConfiguration || !project.databaseConfiguration.enabled) {
+    return undefined;
+  }
+
+  const dbType = project.databaseConfiguration.type;
+  console.log(`\n  Database detected: ${dbType} (enabled)`);
+
+  if (dbType === "mongo") {
+    return resolveMongoLinks(projectId);
+  }
+
+  // TODO: handle other database types
+  console.log(`  Database type '${dbType}' linking not yet supported.`);
+  return undefined;
+}
+
+async function resolveMongoLinks(
+  projectId: string
+): Promise<Record<string, string> | undefined> {
+  let databases: ReadonlyArray<{ name: string; sizeOnDisk: number; empty: boolean }>;
+
+  try {
+    databases = await runAuthenticated(listMongoDatabases(projectId));
+  } catch {
+    console.log("  ⚠ Could not fetch databases from the server.");
+    return undefined;
+  }
+
+  if (databases.length === 0) {
+    console.log("  No databases found on this project's MongoDB instance.");
+    const shouldCreate = await Prompt.promptYesNo(
+      "Would you like to specify a database name?"
+    );
+    if (!shouldCreate) {
+      return undefined;
+    }
+    const dbName = await Effect.runPromise(
+      Prompt.input("Database name for MONGO_URL")
+    );
+    if (!dbName || dbName === "Canceled") {
+      return undefined;
+    }
+    return { MONGO_URL: dbName };
+  }
+
+  const choices = [
+    ...databases.map((db) => ({
+      value: db.name,
+      label: db.empty ? `${db.name} (empty)` : db.name,
+    })),
+    { value: "__new__", label: "Enter a new database name…" },
+    { value: "__skip__", label: "Skip database linking" },
+  ];
+
+  const selection = await Effect.runPromise(
+    Prompt.select({
+      message: "Select a database to link:",
+      options: choices,
+    })
+  );
+
+  if (selection === "Canceled" || selection === "__skip__") {
+    return undefined;
+  }
+
+  if (selection === "__new__") {
+    const dbName = await Effect.runPromise(
+      Prompt.input("New database name for MONGO_URL")
+    );
+    if (!dbName || dbName === "Canceled") {
+      return undefined;
+    }
+    return { MONGO_URL: dbName };
+  }
+
+  return { MONGO_URL: selection as string };
 }

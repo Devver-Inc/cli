@@ -22,6 +22,7 @@ import { formatBackendError } from "./errors";
  * Provides ApiClient (via Effect Context) so that any request function
  * can `yield* ApiClient` to get an authenticated, schema-validated client.
  * Auth is injected through the AuthToken service at the Layer level.
+ * The API base URL is injected through the ApiBaseUrl service.
  */
 
 export class ApiError extends Data.TaggedError("ApiError")<{
@@ -36,6 +37,11 @@ export class ApiError extends Data.TaggedError("ApiError")<{
 export class AuthToken extends Context.Tag("AuthToken")<
   AuthToken,
   { readonly token: string | null }
+>() {}
+
+export class ApiBaseUrl extends Context.Tag("ApiBaseUrl")<
+  ApiBaseUrl,
+  { readonly url: string }
 >() {}
 
 export type ApiRequestError =
@@ -118,6 +124,7 @@ export const ApiClientLive = Layer.effect(
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
     const { token } = yield* AuthToken;
+    const { url: baseUrl } = yield* ApiBaseUrl;
 
     const addAuth = (request: HttpClientRequest.HttpClientRequest) =>
       token
@@ -142,27 +149,27 @@ export const ApiClientLive = Layer.effect(
 
     return {
       get: (path, schema) =>
-        makeRequest(HttpClientRequest.get(`${BASE_URL}${path}`), schema),
+        makeRequest(HttpClientRequest.get(`${baseUrl}${path}`), schema),
 
       post: (path, body, schema) =>
-        HttpClientRequest.post(`${BASE_URL}${path}`).pipe(
+        HttpClientRequest.post(`${baseUrl}${path}`).pipe(
           HttpClientRequest.bodyJson(body),
           Effect.flatMap((request) => makeRequest(request, schema))
         ),
 
       put: (path, body, schema) =>
-        HttpClientRequest.put(`${BASE_URL}${path}`).pipe(
+        HttpClientRequest.put(`${baseUrl}${path}`).pipe(
           HttpClientRequest.bodyJson(body),
           Effect.flatMap((request) => makeRequest(request, schema))
         ),
 
       delete: (path, schema) =>
-        makeRequest(HttpClientRequest.del(`${BASE_URL}${path}`), schema),
+        makeRequest(HttpClientRequest.del(`${baseUrl}${path}`), schema),
     };
   })
 );
 
-/** Full layer: ApiClient + HTTP transport. Provide AuthToken before use. */
+/** Full layer: ApiClient + HTTP transport. Provide AuthToken and ApiBaseUrl before use. */
 export const ApiClientLayer = ApiClientLive.pipe(
   Layer.provide(FetchHttpClient.layer)
 );

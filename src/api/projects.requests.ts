@@ -13,17 +13,28 @@ export const OverlayCommentPermission = {
 export type OverlayCommentPermission =
   (typeof OverlayCommentPermission)[keyof typeof OverlayCommentPermission];
 
+export const DatabaseType = {
+  MONGO: "mongo",
+} as const;
+
+export type DatabaseType =
+  (typeof DatabaseType)[keyof typeof DatabaseType];
+
 // ---------------------------------------------------------------------------
 // Schemas -- *Base objects are shared between input and response schemas
 // to avoid duplication while keeping validation constraints separate.
 // ---------------------------------------------------------------------------
 
-const GetUserLightSchema = Schema.Struct({});
+const GetUserLightSchema = Schema.Struct({
+  id: Schema.String,
+  email: Schema.NullOr(Schema.String),
+  name: Schema.NullOr(Schema.String),
+  avatarUrl: Schema.NullOr(Schema.String),
+});
 
 const MachineConfigurationBase = {
   cpuCores: Schema.Number.pipe(Schema.between(0.5, 2)),
   ram: Schema.Number.pipe(Schema.between(0.5, 2)),
-  storage: Schema.Int.pipe(Schema.between(10, 500)),
 };
 
 const OverlayAccessControlBase = {
@@ -39,12 +50,36 @@ const OverlayAccessControlResponse = Schema.Struct(OverlayAccessControlBase);
 const MachineConfigurationInput = Schema.Struct({
   cpuCores: Schema.optionalWith(MachineConfigurationBase.cpuCores, {}),
   ram: Schema.optionalWith(MachineConfigurationBase.ram, {}),
-  storage: Schema.optionalWith(MachineConfigurationBase.storage, {}),
 });
 
 const OverlayAccessControlInput = Schema.Struct({
   commentPermission: OverlayAccessControlBase.commentPermission,
 });
+
+// -- Database configuration ------------------------------------------------
+
+const DatabaseConfigurationInput = Schema.Struct({
+  type: Schema.Literal(...Object.values(DatabaseType)),
+  rootUsername: Schema.String.pipe(Schema.minLength(1)),
+  rootPassword: Schema.String.pipe(Schema.minLength(1)),
+  replicaCount: Schema.Int.pipe(Schema.between(1, 3)),
+  ram: Schema.Number.pipe(Schema.greaterThanOrEqualTo(0.5)),
+  cpuCores: Schema.Number.pipe(Schema.greaterThanOrEqualTo(0.1)),
+  storage: Schema.Int.pipe(Schema.between(5, 500)),
+});
+
+export const DatabaseConfigurationResponseSchema = Schema.Struct({
+  type: Schema.Literal(...Object.values(DatabaseType)),
+  enabled: Schema.Boolean,
+  rootUsername: Schema.optional(Schema.String),
+  hasRootPassword: Schema.optional(Schema.Boolean),
+  replicaCount: Schema.optional(Schema.Number),
+  ram: Schema.optional(Schema.Number),
+  cpuCores: Schema.optional(Schema.Number),
+  storage: Schema.optional(Schema.Number),
+});
+
+// -- Project ---------------------------------------------------------------
 
 const ProjectBase = {
   name: Schema.String.pipe(
@@ -62,6 +97,7 @@ export const CreateProjectSchema = Schema.Struct({
   machineConfiguration: MachineConfigurationInput,
   teamMemberIds: Schema.Array(Schema.NonEmptyString),
   overlayAccessControl: OverlayAccessControlInput,
+  databaseConfiguration: Schema.optional(DatabaseConfigurationInput),
 });
 
 export const GetProjectSchema = Schema.Struct({
@@ -72,6 +108,7 @@ export const GetProjectSchema = Schema.Struct({
   machineConfiguration: MachineConfigurationResponse,
   teamMembers: Schema.Array(GetUserLightSchema),
   overlayAccessControl: OverlayAccessControlResponse,
+  databaseConfiguration: Schema.NullOr(DatabaseConfigurationResponseSchema),
   createdAt: Schema.Date,
   updatedAt: Schema.Date,
 });

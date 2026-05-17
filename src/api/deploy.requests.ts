@@ -33,6 +33,9 @@ export const CreateDeploymentSchema = Schema.Struct({
       value: Schema.Record({ key: Schema.String, value: Schema.String }),
     })
   ),
+  dbLinks: Schema.optional(
+    Schema.Record({ key: Schema.String, value: Schema.String })
+  ),
   env: Schema.optional(
     Schema.Record({ key: Schema.String, value: Schema.String })
   ),
@@ -106,6 +109,12 @@ export const ControlPm2ProcessResultSchema = Schema.Struct({
   action: PM2ActionSchema,
 });
 
+export const MongoDatabaseSchema = Schema.Struct({
+  name: Schema.String,
+  sizeOnDisk: Schema.Number,
+  empty: Schema.Boolean,
+});
+
 // ---------------------------------------------------------------------------
 // Derived types
 // ---------------------------------------------------------------------------
@@ -128,6 +137,7 @@ export type RestoreResultDto = Schema.Schema.Type<typeof RestoreResultSchema>;
 export type ControlPm2ProcessResultDto = Schema.Schema.Type<
   typeof ControlPm2ProcessResultSchema
 >;
+export type MongoDatabaseDto = Schema.Schema.Type<typeof MongoDatabaseSchema>;
 
 // ---------------------------------------------------------------------------
 // Effect-based API request functions
@@ -245,5 +255,14 @@ export const restoreState = (projectId: string) =>
       `/projects/${projectId}/restore`,
       {},
       RestoreResultSchema
+    );
+  });
+
+export const listMongoDatabases = (projectId: string) =>
+  Effect.gen(function* () {
+    const api = yield* ApiClient;
+    return yield* api.get(
+      `/projects/${projectId}/mongo/databases`,
+      Schema.Array(MongoDatabaseSchema)
     );
   });

@@ -2,7 +2,7 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { AuthCommand } from "./cmd/auth";
-import { InitConfigCommand } from "./cmd/config";
+import { ConfigCommand } from "./cmd/config";
 import { DeployCommand } from "./cmd/deploy";
 import { OrganizationCommand } from "./cmd/organization";
 import { ProjectCommand } from "./cmd/project";
@@ -10,6 +10,7 @@ import { RepositoryCommand } from "./cmd/repos";
 import { SecretCommand } from "./cmd/secret";
 import { TuiCommand } from "./cmd/tui/tui";
 import { FormatError } from "./error";
+import { setExplicitApiUrl } from "./util/runtime";
 import { UI } from "./ui";
 
 declare global {
@@ -42,24 +43,19 @@ const cli = yargs(hideBin(process.argv))
   .alias("help", "h")
   .version("version", "show version number", VERSION)
   .alias("version", "v")
-  // .option("print-logs", {
-  // 	describe: "print logs to stderr",
-  // 	type: "boolean",
-  // })
-  // .option("log-level", {
-  // 	describe: "log level",
-  // 	type: "string",
-  // 	choices: ["DEBUG", "INFO", "WARN", "ERROR"],
-  // })
-  // .middleware(async (opts) => {
-  // 	console.info("devver", {
-  // 		version: VERSION,
-  // 		args: process.argv.slice(2),
-  // 	});
-  // })
+  .option("api-url", {
+    describe:
+      "Override the API base URL (useful for self-hosted or local development)",
+    type: "string",
+  })
+  .middleware(async (opts) => {
+    if (typeof opts["api-url"] === "string") {
+      setExplicitApiUrl(opts["api-url"]);
+    }
+  })
   .command(TuiCommand)
   .command(AuthCommand)
-  .command(InitConfigCommand)
+  .command(ConfigCommand)
   .command(DeployCommand)
   .command(ProjectCommand)
   .command(SecretCommand)
@@ -88,6 +84,28 @@ const cli = yargs(hideBin(process.argv))
 try {
   await cli.parse();
 } catch (e) {
+  const data: Record<string, unknown> = {};
+
+  if (e instanceof Error) {
+    Object.assign(data, {
+      name: e.name,
+      message: e.message,
+      cause: e.cause?.toString(),
+      stack: e.stack,
+    });
+  }
+
+  if (e instanceof ResolveMessage) {
+    Object.assign(data, {
+      name: e.name,
+      message: e.message,
+      code: e.code,
+      specifier: e.referrer,
+      position: e.position,
+      importKind: e.importKind,
+    });
+  }
+  console.error("fatal", data);
   const formatted = FormatError(e);
   if (formatted) {
     UI.error(formatted);

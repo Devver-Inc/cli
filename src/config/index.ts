@@ -21,6 +21,7 @@ export interface DevverConfigFile {
     api?: ServiceConfig;
   };
   databases?: Record<string, unknown>;
+  env?: Record<string, string>;
 }
 
 export function readConfigFile(root?: string): DevverConfigFile | null {
@@ -83,12 +84,16 @@ export function writeConfigFile(
   config.services = {
     [serviceName]: serviceConfig,
   };
+  config.env = {
+    NODE_ENV: "production",
+  };
   fs.writeFileSync(configPath, yaml.dump(config));
   console.log(`\nConfig written to ${configPath}`);
 }
 
 export async function checkForConfigFile() {
-  const configPath = path.join(cwd(), ".devver.yaml");
+  const targetDir = cwd();
+  const configPath = path.join(targetDir, ".devver.yaml");
   if (!fs.existsSync(configPath)) {
     const detection = await detectProject();
     console.log("No Config file found, generating...");
@@ -101,6 +106,38 @@ export async function checkForConfigFile() {
     }
     writeConfigFile(detection);
   }
+
+  ensureGitignore(targetDir);
+}
+
+export function ensureGitignore(targetDir?: string): void {
+  const dir = targetDir ?? cwd();
+  const gitignorePath = path.join(dir, ".gitignore");
+
+  const ENTRY = ".devver/";
+
+  let content = "";
+  if (fs.existsSync(gitignorePath)) {
+    content = fs.readFileSync(gitignorePath, "utf-8");
+    // Already present — nothing to do
+    const lines = content.split(/\r?\n/);
+    if (lines.some((line) => line.trim() === ENTRY)) {
+      return;
+    }
+    // Ensure trailing newline before appending
+    if (content && !content.endsWith("\n")) {
+      content += "\n";
+    }
+  }
+
+  const block = [
+    "",
+    "# devver local secrets (deployment-specific env vars)",
+    ENTRY,
+  ].join("\n");
+
+  fs.writeFileSync(gitignorePath, content + block + "\n");
+  console.log(`  Added \`${ENTRY}\` to .gitignore`);
 }
 
 export const DevverConfig = {
