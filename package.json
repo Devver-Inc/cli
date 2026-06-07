@@ -38,11 +38,11 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.1.0",
-    "@effect/platform": "^0.94.3",
+    "@effect/platform": "^0.96.1",
     "@flystorage/file-storage": "^1.2.2",
     "@flystorage/local-fs": "^1.2.0",
     "@logto/node": "^3.1.8",
-    "@opentui/react": "^0.1.74",
+    "@opentui/react": "^0.3.3",
     "@types/yargs": "^17.0.35",
     "effect": "^3.19.15",
     "js-yaml": "^4.1.1",
