@@ -8,3 +8,4 @@
 {"v":1,"id":["01KTH2NWN19ADAGEAY909JB36A","01KTH2NWN0RN31GR5MRJHDBNDH"],"lock.node":{"id":"00JR3R8E00A1Z4X9FGP9DV0SM5"}}
 {"v":1,"id":["01KTH2NWN22227C9QY7E96EFAJ","01KTH2NWN19ADAGEAY909JB36A"],"lock.node":{"id":"00KM6CZ900T7180RM46K0JAYNF"}}
 {"v":1,"id":["01KTH2QRYKGAZJGDE8T61Q8XZS","01KTH2NWN22227C9QY7E96EFAJ"],"add.issue":{"id":"01KTH2QRYFTQZJWHV667R3M6R8","parent":"01KTH2NWMSVFPDNDTAZVM6G5Z2","name":"Organization management","rank":"7fffffffffffffffffffffff"}}
+{"v":1,"id":["01KTH2V32HJY4SGN7V8KN7H5QG","01KTH2QRYKGAZJGDE8T61Q8XZS"],"edit.description":{"id":"01KTH2QRYFTQZJWHV667R3M6R8","md":"Doing org list to show both listing and being able to select is redondant.\nmaking it only devver org is better "}}
