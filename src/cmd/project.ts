@@ -1,5 +1,7 @@
 import { Effect } from "effect";
 import { getProjectById, getProjects } from "../api/projects.requests";
+import { FormatError } from "../error";
+import { UI } from "../ui";
 import {
   getCurrentProjectId,
   setCurrentProjectId,
@@ -26,7 +28,8 @@ const ProjectStatusCommand = cmd({
       console.log("✓ Current project:");
       console.log(`  ${project.name} (${project.id})`);
     } catch (error) {
-      console.error("✗ Failed to fetch project details:", error);
+      const msg = FormatError(error);
+      UI.error(msg ?? "Failed to fetch project details");
       console.log(`  Project ID: ${currentProjectId}`);
     }
 
@@ -38,7 +41,17 @@ const ProjectListCommand = cmd({
   command: "list",
   describe: "List projects and select one",
   async handler() {
-    const projects = await runAuthenticated(getProjects);
+    const result = await runAuthenticated(getProjects).catch(
+      (error: unknown) => {
+        UI.error(FormatError(error) ?? "Failed to fetch projects");
+        return null;
+      }
+    );
+    if (!result) {
+      await disposeRuntime();
+      return;
+    }
+    const projects = result;
     const currentProjectId = await getCurrentProjectId();
 
     if (projects.length === 0) {
@@ -110,8 +123,12 @@ const ProjectInfoCommand = cmd({
       describe: "Project id",
     }),
   async handler(args) {
-    const project = await runAuthenticated(getProjectById(args.id));
-    console.log(`${project.id}: ${project.name}`);
+    try {
+      const project = await runAuthenticated(getProjectById(args.id));
+      console.log(`${project.id}: ${project.name}`);
+    } catch (error) {
+      UI.error(FormatError(error) ?? "Failed to fetch project");
+    }
     await disposeRuntime();
   },
 });

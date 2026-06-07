@@ -1,9 +1,15 @@
 import { Effect } from "effect";
-import { getOrganizationDetails, refreshAccessToken } from "../auth/client";
+import {
+  getOrganizationDetails,
+  type OrganizationDetails,
+  refreshAccessToken,
+} from "../auth/client";
 import {
   getCurrentOrganization,
   setCurrentOrganization,
 } from "../auth/organization";
+import { FormatError } from "../error";
+import { UI } from "../ui";
 import { Prompt } from "../util/prompts";
 import { cmd } from "./cmd";
 
@@ -11,7 +17,13 @@ const SelectOrganizationCommand = cmd({
   command: "list",
   describe: "list all orgs and select one",
   async handler() {
-    const organizations = await getOrganizationDetails();
+    let organizations: OrganizationDetails[];
+    try {
+      organizations = await getOrganizationDetails();
+    } catch (error) {
+      UI.error(FormatError(error) ?? "Failed to fetch organizations");
+      return;
+    }
     const currentOrg = await getCurrentOrganization();
 
     if (organizations.length === 0) {
@@ -73,9 +85,8 @@ const SelectOrganizationCommand = cmd({
       try {
         await refreshAccessToken();
       } catch (error) {
-        console.error(
-          "Warning: Failed to fetch access token for organization:",
-          error
+        UI.error(
+          `Warning: Failed to fetch access token for organization: ${FormatError(error) ?? String(error)}`
         );
       }
     }

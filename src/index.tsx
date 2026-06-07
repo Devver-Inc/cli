@@ -1,5 +1,4 @@
 #!/usr/bin/env -S bun run
-import { EOL } from "node:os";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { AuthCommand } from "./cmd/auth";
@@ -18,21 +17,22 @@ declare global {
 }
 
 process.on("unhandledRejection", (e) => {
-  console.error("exception", {
-    e: e instanceof Error ? e.message : e,
-  });
+  const formatted = FormatError(e);
+  if (formatted) {
+    UI.error(formatted);
+  }
 });
 
 process.on("uncaughtException", (e) => {
-  console.error("exception", {
-    e: e instanceof Error ? e.message : e,
-  });
+  const formatted = FormatError(e);
+  if (formatted) {
+    UI.error(formatted);
+  }
 });
 
 // Use DEVVER_VERSION if defined (compiled binary), otherwise fall back to package.json
 export const VERSION =
   typeof DEVVER_VERSION !== "undefined" ? DEVVER_VERSION : "0.0.2";
-export const LOG_FILE_PATH = "";
 
 const cli = yargs(hideBin(process.argv))
   .parserConfiguration({ "populate--": true })
@@ -88,43 +88,12 @@ const cli = yargs(hideBin(process.argv))
 try {
   await cli.parse();
 } catch (e) {
-  const data: Record<string, unknown> = {};
-
-  if (e instanceof Error) {
-    Object.assign(data, {
-      name: e.name,
-      message: e.message,
-      cause: e.cause?.toString(),
-      stack: e.stack,
-    });
-  }
-
-  if (e instanceof ResolveMessage) {
-    Object.assign(data, {
-      name: e.name,
-      message: e.message,
-      code: e.code,
-      specifier: e.specifier,
-      referrer: e.referrer,
-      position: e.position,
-      importKind: e.importKind,
-    });
-  }
-  console.error("fatal", data);
   const formatted = FormatError(e);
   if (formatted) {
     UI.error(formatted);
   }
-  if (formatted === undefined) {
-    UI.error(
-      `Unexpected error, check log file at ${LOG_FILE_PATH} for more details${EOL}`
-    );
-    console.error(e instanceof Error ? e.message : String(e));
-  }
   process.exitCode = 1;
 } finally {
   // Explicitly exit to avoid any hanging subprocesses.
-  // if (process.exitCode) {
   process.exit();
-  // }
 }

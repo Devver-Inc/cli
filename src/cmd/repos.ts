@@ -1,5 +1,7 @@
 import { Effect } from "effect";
 import { createRepository, listRepos } from "../api/deploy.requests";
+import { FormatError } from "../error";
+import { UI } from "../ui";
 import { getCurrentProjectId } from "../util/project/storage";
 import { Prompt } from "../util/prompts";
 import {
@@ -22,7 +24,12 @@ const ListRepositoriesCommand = cmd({
       return;
     }
 
-    const repositories = await runAuthenticated(listRepos(currentProjectId));
+    const repositories = await runAuthenticated(
+      listRepos(currentProjectId)
+    ).catch((error) => {
+      UI.error(FormatError(error) ?? "Failed to fetch repositories");
+      process.exit(1);
+    });
     const linked = await getLinkedRepoForCwd();
     const spinner = Prompt.spinner();
 
@@ -75,7 +82,10 @@ const ListRepositoriesCommand = cmd({
       );
       const newRepository = await runAuthenticated(
         createRepository(currentProjectId, { name })
-      );
+      ).catch((error) => {
+        UI.error(FormatError(error) ?? "Failed to create repository");
+        process.exit(1);
+      });
       await linkRepoForCwd(newRepository.name, newRepository.pushUrl);
       await Effect.runPromise(
         Effect.gen(function* () {
