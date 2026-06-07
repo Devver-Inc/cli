@@ -14,6 +14,7 @@ import {
   type ParseResult,
   type Schema,
 } from "effect";
+import { formatBackendError } from "./errors";
 
 /**
  * Effect-based HTTP client built on top of @effect/platform.
@@ -26,6 +27,10 @@ import {
 export class ApiError extends Data.TaggedError("ApiError")<{
   readonly status: number;
   readonly message: string;
+  /** Machine-readable error code from the backend (e.g. "PROJECT_NOT_FOUND"). */
+  readonly code?: string;
+  /** Full parsed response body from the backend, if available. */
+  readonly body?: Record<string, unknown>;
 }> {}
 
 export class AuthToken extends Context.Tag("AuthToken")<
@@ -68,18 +73,45 @@ export class ApiClient extends Context.Tag("ApiClient")<
   ApiClientService
 >() {}
 
-const BASE_URL = process.env.API_URL ?? "https://app.devver.app/api/v1"; // "http://localhost:3000/api/v1";
+const BASE_URL = process.env.API_URL ?? "https://app.devver.app/api/v1";
+
+/**
+ * Check HTTP response status. On failure, reads the response body to extract
+ * the backend error code and details so the CLI can show actionable messages.
+ */
 const checkStatus = (
   response: HttpClientResponse.HttpClientResponse
 ): Effect.Effect<HttpClientResponse.HttpClientResponse, ApiError> =>
   response.status >= 200 && response.status < 300
     ? Effect.succeed(response)
-    : Effect.fail(
-        new ApiError({
-          status: response.status,
-          message: `Request failed with status ${response.status}`,
-        })
-      );
+    : Effect.gen(function* () {
+        // Try to parse the response body as JSON for error details.
+        // NestJS responses look like:
+        //   { statusCode: 404, message: "PROJECT_NOT_FOUND", error: "Not Found" }
+        let body: Record<string, unknown> | undefined;
+        try {
+          body = (yield* Effect.orDie(
+            response.json as Effect.Effect<unknown, never>
+          )) as Record<string, unknown>;
+        } catch {
+          // Body is not JSON — we still have the status code
+        }
+
+        const code =
+          typeof body?.message === "string" ? body.message : undefined;
+        const detail = body
+          ? formatBackendError(body as Parameters<typeof formatBackendError>[0])
+          : undefined;
+
+        return yield* Effect.fail(
+          new ApiError({
+            status: response.status,
+            message: detail ?? `Request failed with status ${response.status}`,
+            code,
+            body,
+          })
+        );
+      });
 
 export const ApiClientLive = Layer.effect(
   ApiClient,

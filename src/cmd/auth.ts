@@ -7,6 +7,8 @@ import {
   terminateAuthClient,
 } from "../auth/client";
 import { getCurrentOrganization } from "../auth/organization";
+import { FormatError } from "../error";
+import { UI } from "../ui";
 import { getCurrentProjectId } from "../util/project/storage";
 import { getLinkedRepoForCwd } from "../util/repository/storage";
 import { disposeRuntime, runAuthenticated } from "../util/runtime";
@@ -26,7 +28,7 @@ const AuthLoginCommand = cmd({
         resolve();
       });
       onError((e) => {
-        console.error("✗ Login failed:", e.error);
+        UI.error(`Login failed: ${e.error}`);
         reject(new Error(e.error));
       });
     });
@@ -92,9 +94,10 @@ const AuthStatusCommand = cmd({
               getProjectById(currentProjectId)
             );
             console.log(`\nCurrent project: ${project.name}`);
-          } catch {
+          } catch (error) {
+            const msg = FormatError(error);
             console.log(
-              `\nCurrent project: ${currentProjectId} (details unavailable)`
+              `\nCurrent project: ${currentProjectId} (${msg ?? "details unavailable"})`
             );
           }
         }
@@ -105,7 +108,9 @@ const AuthStatusCommand = cmd({
         const accessToken = await getAccessToken();
         console.log(accessToken);
       } catch (error) {
-        console.error("✗ Failed to fetch organization details:", error);
+        UI.error(
+          `Failed to fetch organization details: ${FormatError(error) ?? String(error)}`
+        );
       }
     } else {
       console.log("✗ Not logged in");

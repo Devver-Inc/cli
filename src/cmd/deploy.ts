@@ -1,7 +1,8 @@
 import { Effect } from "effect";
 import { createDeployment } from "../api/deploy.requests";
 import { checkForConfigFile, readConfigFile } from "../config";
-import { DeployAbortError } from "../error";
+import { FormatError } from "../error";
+import { UI } from "../ui";
 import {
   checkForConflicts,
   checkForGitRepo,
@@ -36,6 +37,11 @@ export const DeployCommand = cmd({
         currentBranch,
         currentCommit,
       });
+    } catch (e) {
+      const msg = FormatError(e);
+      if (msg) {
+        UI.error(msg);
+      }
     } finally {
       await disposeRuntime();
     }
@@ -62,7 +68,10 @@ async function confirmAndPush(opts: {
 
   const shouldProceed = await Prompt.promptYesNo("Proceed with deployment?");
   if (!shouldProceed) {
-    throw new DeployAbortError("Deployment cancelled.");
+    UI.println(
+      `${UI.Style.TEXT_WARNING}Deployment cancelled.${UI.Style.TEXT_NORMAL}`
+    );
+    process.exit(0);
   }
 
   const spinner = Prompt.spinner();
@@ -76,7 +85,8 @@ async function confirmAndPush(opts: {
   if (pushExitCode !== 0) {
     await Effect.runPromise(spinner.stop("Push failed"));
     const stderr = await new Response(pushProcess.stderr).text();
-    throw new DeployAbortError(`Failed to push to remote: ${stderr}`);
+    UI.error(`Failed to push to remote: ${stderr}`);
+    process.exit(1);
   }
 
   await Effect.runPromise(spinner.stop(`Successfully pushed to ${repoName}`));
@@ -92,9 +102,8 @@ async function createAndReportDeployment(opts: {
 
   const config = readConfigFile();
   if (!config) {
-    throw new DeployAbortError(
-      "Config file not found. This should not happen."
-    );
+    UI.error("Config file not found. Run 'devver init' to create one.");
+    process.exit(1);
   }
 
   const spinner = Prompt.spinner();
