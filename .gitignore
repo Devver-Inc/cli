@@ -22,6 +22,9 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 .env.production.local
 .env.local
 
+# devver local secrets (deployment-specific env vars)
+.devver/
+
 # caches
 .eslintcache
 .cache
@@ -32,3 +35,7 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Finder (MacOS) folder config
 .DS_Store
+
+# [epiq]: local hydrated state is never committed
+.epiq/events/
+.epiq/log/
