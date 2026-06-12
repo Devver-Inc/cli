@@ -50,6 +50,9 @@
       "hidden": false
     }
   ],
-  "extra-files": ["package.json", "package-lock.json"],
-  ".": "1.1.0"
+  "extra-files": [
+    "package.json",
+    "package-lock.json"
+  ],
+  ".": "1.1.1"
 }

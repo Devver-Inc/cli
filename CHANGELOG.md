@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1](https://github.com/Devver-Inc/cli/compare/v1.1.0...v1.1.1) (2026-06-12)
+
+
+### Bug Fixes
+
+* Replace 'Run checks' with 'Run linter' in CI ([#35](https://github.com/Devver-Inc/cli/issues/35)) ([eab9a12](https://github.com/Devver-Inc/cli/commit/eab9a121bbc601ad0475ce41b5063809491c93f6))
+
 ## [1.1.0](https://github.com/Devver-Inc/cli/compare/v1.0.1...v1.1.0) (2026-06-12)
 
 
