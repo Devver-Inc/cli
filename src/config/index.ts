@@ -5,6 +5,8 @@ import yaml from "js-yaml";
 
 import { detectProject, type ProjectDetection } from "./detect";
 
+const regex = /\r?\n/;
+
 export interface ServiceConfig {
   root?: string;
   install?: string;
@@ -120,7 +122,7 @@ export function ensureGitignore(targetDir?: string): void {
   if (fs.existsSync(gitignorePath)) {
     content = fs.readFileSync(gitignorePath, "utf-8");
     // Already present — nothing to do
-    const lines = content.split(/\r?\n/);
+    const lines = content.split(regex);
     if (lines.some((line) => line.trim() === ENTRY)) {
       return;
     }
@@ -136,7 +138,7 @@ export function ensureGitignore(targetDir?: string): void {
     ENTRY,
   ].join("\n");
 
-  fs.writeFileSync(gitignorePath, content + block + "\n");
+  fs.writeFileSync(gitignorePath, `${content}${block}\n`);
   console.log(`  Added \`${ENTRY}\` to .gitignore`);
 }
 

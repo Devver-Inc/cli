@@ -21,7 +21,6 @@ export interface CliConfig {
 
 const CONFIG_KEY = "config/cli";
 
-
 export async function readConfig(): Promise<CliConfig> {
   const exists = await Storage.fileExists(CONFIG_KEY);
   if (!exists) {

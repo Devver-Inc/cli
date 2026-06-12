@@ -1,15 +1,12 @@
 import { cmd } from "./cmd";
 import "../config/detectors";
-import {
-  readConfigFile,
-  writeConfigFile,
-} from "../config";
-import { detectProject } from "../config/detect";
+import { readConfigFile, writeConfigFile } from "../config";
 import {
   readConfig as readCliConfig,
   setConfigValue,
   unsetConfigValue,
 } from "../config/api";
+import { detectProject } from "../config/detect";
 
 export const InitConfigCommand = cmd({
   command: "init",
@@ -95,7 +92,6 @@ const ConfigSetCommand = cmd({
   },
 });
 
-
 const ConfigUnsetCommand = cmd({
   command: "unset <key>",
   describe: "Remove a config value",
@@ -129,7 +125,6 @@ const ConfigListCommand = cmd({
     }
   },
 });
-
 
 export const ConfigCommand = cmd({
   command: "config",

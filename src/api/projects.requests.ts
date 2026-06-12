@@ -17,8 +17,7 @@ export const DatabaseType = {
   MONGO: "mongo",
 } as const;
 
-export type DatabaseType =
-  (typeof DatabaseType)[keyof typeof DatabaseType];
+export type DatabaseType = (typeof DatabaseType)[keyof typeof DatabaseType];
 
 // ---------------------------------------------------------------------------
 // Schemas -- *Base objects are shared between input and response schemas

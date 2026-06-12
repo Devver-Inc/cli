@@ -13,8 +13,8 @@ import {
   ApiClientLayer,
   AuthToken,
 } from "../api/client";
-import { resolveApiUrl } from "../config/api";
 import { getAccessToken } from "../auth/client";
+import { resolveApiUrl } from "../config/api";
 
 type AppRuntime = ManagedRuntime.ManagedRuntime<ApiClient, never>;
 

@@ -16,14 +16,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { cwd } from "node:process";
 
-
 export interface DeploymentSecrets {
   name: string;
   env: Record<string, string>;
 }
 
 export type SecretsFile = Record<string, DeploymentSecrets>;
-
 
 const DEVVER_DIR = ".devver";
 const SECRETS_FILE = ".secrets";
@@ -39,7 +37,6 @@ function ensureDevverDir(root?: string): void {
     fs.mkdirSync(dir, { recursive: true });
   }
 }
-
 
 export function readSecretsFile(root?: string): SecretsFile {
   const filePath = secretsFilePath(root);
@@ -59,7 +56,6 @@ export function writeSecretsFile(secrets: SecretsFile, root?: string): void {
   const filePath = secretsFilePath(root);
   fs.writeFileSync(filePath, `${JSON.stringify(secrets, null, 2)}\n`);
 }
-
 
 export function getDeploymentEnv(
   deploymentKey: string,
@@ -98,10 +94,7 @@ export function removeDeploymentEnvKey(
   }
 }
 
-export function removeDeployment(
-  deploymentKey: string,
-  root?: string
-): void {
+export function removeDeployment(deploymentKey: string, root?: string): void {
   const secrets = readSecretsFile(root);
   delete secrets[deploymentKey];
   writeSecretsFile(secrets, root);

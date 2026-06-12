@@ -1,13 +1,10 @@
 import { Effect } from "effect";
-import { FormatError } from "../error";
-import { UI } from "../ui";
-import {
-  createDeployment,
-  listMongoDatabases,
-} from "../api/deploy.requests";
+import { createDeployment, listMongoDatabases } from "../api/deploy.requests";
 import { getProjectById } from "../api/projects.requests";
 import { checkForConfigFile, ensureGitignore, readConfigFile } from "../config";
 import { getDeploymentEnv, mergeEnv } from "../config/secrets";
+import { FormatError } from "../error";
+import { UI } from "../ui";
 import {
   checkForConflicts,
   checkForGitRepo,
@@ -29,8 +26,7 @@ export const DeployCommand = cmd({
       await checkForGitRepo();
       ensureGitignore();
 
-      const { projectId, repoName, pushUrl } =
-        await getValidatedRepository();
+      const { projectId, repoName, pushUrl } = await getValidatedRepository();
       const currentBranch = await getCurrentBranch();
 
       await checkRemoteBranch(pushUrl, currentBranch);
@@ -101,9 +97,7 @@ async function confirmAndPush(opts: {
     process.exit(1);
   }
 
-  await Effect.runPromise(
-    spinner.stop(`Successfully pushed to ${repoName}`)
-  );
+  await Effect.runPromise(spinner.stop(`Successfully pushed to ${repoName}`));
 }
 
 async function createAndReportDeployment(opts: {
@@ -159,7 +153,8 @@ async function resolveDbLinks(
 ): Promise<Record<string, string> | undefined> {
   const project = await runAuthenticated(getProjectById(projectId));
 
-  if (!project.databaseConfiguration || !project.databaseConfiguration.enabled) {
+  console.log("PROJECT ?", project);
+  if (!project.databaseConfiguration?.enabled) {
     return undefined;
   }
 
@@ -178,7 +173,11 @@ async function resolveDbLinks(
 async function resolveMongoLinks(
   projectId: string
 ): Promise<Record<string, string> | undefined> {
-  let databases: ReadonlyArray<{ name: string; sizeOnDisk: number; empty: boolean }>;
+  let databases: ReadonlyArray<{
+    name: string;
+    sizeOnDisk: number;
+    empty: boolean;
+  }>;
 
   try {
     databases = await runAuthenticated(listMongoDatabases(projectId));

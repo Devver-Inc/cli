@@ -10,8 +10,8 @@ import { RepositoryCommand } from "./cmd/repos";
 import { SecretCommand } from "./cmd/secret";
 import { TuiCommand } from "./cmd/tui/tui";
 import { FormatError } from "./error";
-import { setExplicitApiUrl } from "./util/runtime";
 import { UI } from "./ui";
+import { setExplicitApiUrl } from "./util/runtime";
 
 declare global {
   const DEVVER_VERSION: string;
@@ -48,7 +48,7 @@ const cli = yargs(hideBin(process.argv))
       "Override the API base URL (useful for self-hosted or local development)",
     type: "string",
   })
-  .middleware(async (opts) => {
+  .middleware((opts) => {
     if (typeof opts["api-url"] === "string") {
       setExplicitApiUrl(opts["api-url"]);
     }

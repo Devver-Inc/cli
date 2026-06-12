@@ -79,7 +79,7 @@ export class ApiClient extends Context.Tag("ApiClient")<
   ApiClientService
 >() {}
 
-const BASE_URL = process.env.API_URL ?? "https://app.devver.app/api/v1";
+// const BASE_URL = process.env.API_URL ?? "https://app.devver.app/api/v1";
 
 /**
  * Check HTTP response status. On failure, reads the response body to extract
