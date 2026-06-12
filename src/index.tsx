@@ -1,4 +1,5 @@
 #!/usr/bin/env -S bun run
+import pkg from "../package.json" with { type: "json" };
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { AuthCommand } from "./cmd/auth";
@@ -33,7 +34,7 @@ process.on("uncaughtException", (e) => {
 
 // Use DEVVER_VERSION if defined (compiled binary), otherwise fall back to package.json
 export const VERSION =
-  typeof DEVVER_VERSION !== "undefined" ? DEVVER_VERSION : "0.0.2";
+  typeof DEVVER_VERSION !== "undefined" ? DEVVER_VERSION : pkg.version;
 
 const cli = yargs(hideBin(process.argv))
   .parserConfiguration({ "populate--": true })
