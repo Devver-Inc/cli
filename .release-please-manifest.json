@@ -54,5 +54,5 @@
     "package.json",
     "package-lock.json"
   ],
-  ".": "1.1.1"
+  ".": "1.1.2"
 }
