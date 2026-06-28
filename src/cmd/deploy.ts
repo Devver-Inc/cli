@@ -160,7 +160,6 @@ async function resolveDbLinks(
 ): Promise<Record<string, string> | undefined> {
   const project = await runAuthenticated(getProjectById(projectId));
 
-  console.log("PROJECT ?", project);
   if (!project.databaseConfiguration?.enabled) {
     return undefined;
   }

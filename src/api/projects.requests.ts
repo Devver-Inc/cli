@@ -124,7 +124,7 @@ export const GetProjectSchema = Schema.Struct({
   machineConfiguration: MachineConfigurationResponse,
   teamMembers: Schema.Array(GetUserLightSchema),
   overlayAccessControl: OverlayAccessControlResponse,
-  databaseConfiguration: Schema.optional(DatabaseConfigurationResponseSchema),
+  databaseConfiguration: Schema.NullishOr(DatabaseConfigurationResponseSchema),
   createdAt: Schema.Date,
   updatedAt: Schema.Date,
 });
