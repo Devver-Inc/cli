@@ -1,5 +1,11 @@
 import { Effect } from "effect";
-import { getProjectById, getProjects } from "../api/projects.requests";
+import {
+  createProject,
+  DatabaseType,
+  getProjectById,
+  getProjects,
+  OverlayCommentPermission,
+} from "../api/projects.requests";
 import { FormatError } from "../error";
 import { UI } from "../ui";
 import {
@@ -9,6 +15,10 @@ import {
 import { Prompt } from "../util/prompts";
 import { disposeRuntime, runAuthenticated } from "../util/runtime";
 import { cmd } from "./cmd";
+
+type DatabaseConfigurationDto = NonNullable<
+  Parameters<typeof createProject>[0]["databaseConfiguration"]
+>;
 
 const ProjectStatusCommand = cmd({
   command: "status",
@@ -133,6 +143,168 @@ const ProjectInfoCommand = cmd({
   },
 });
 
+// Default cluster limits enforced by the backend (see DatabaseConfigurationDto).
+const DEFAULT_DB = {
+  replicaCount: 1,
+  ram: 0.5,
+  cpuCores: 0.1,
+  storage: 5,
+} as const;
+
+async function promptDatabaseConfiguration(): Promise<
+  DatabaseConfigurationDto | undefined
+> {
+  const wantDb = await Prompt.promptYesNo("Attach a database to this project?");
+  if (!wantDb) {
+    return undefined;
+  }
+
+  // For now the backend only supports Mongo.
+  const type = DatabaseType.MONGO;
+
+  const rootUsername = await Effect.runPromise(
+    Prompt.input("Mongo root username")
+  );
+  if (!rootUsername || rootUsername === "Canceled") {
+    return undefined;
+  }
+
+  const rootPassword = await Effect.runPromise(
+    Prompt.input("Mongo root password")
+  );
+  if (!rootPassword || rootPassword === "Canceled") {
+    return undefined;
+  }
+
+  const replicaCountStr = await Effect.runPromise(
+    Prompt.input(`Replicas (1-3) [${DEFAULT_DB.replicaCount}]`)
+  );
+  const replicaCount = Number(replicaCountStr) || DEFAULT_DB.replicaCount;
+
+  const ramStr = await Effect.runPromise(
+    Prompt.input(`RAM (Gi, >=0.5) [${DEFAULT_DB.ram}]`)
+  );
+  const ram = Number(ramStr) || DEFAULT_DB.ram;
+
+  const cpuCoresStr = await Effect.runPromise(
+    Prompt.input(`CPU cores (>=0.1) [${DEFAULT_DB.cpuCores}]`)
+  );
+  const cpuCores = Number(cpuCoresStr) || DEFAULT_DB.cpuCores;
+
+  const storageStr = await Effect.runPromise(
+    Prompt.input(`Storage (Gi, 5-500) [${DEFAULT_DB.storage}]`)
+  );
+  const storage = Number(storageStr) || DEFAULT_DB.storage;
+
+  return {
+    type,
+    rootUsername,
+    rootPassword,
+    replicaCount,
+    ram,
+    cpuCores,
+    storage,
+  };
+}
+
+const ProjectCreateCommand = cmd({
+  command: "create <name>",
+  describe: "Create a new project (with optional database)",
+  builder: (yargs) =>
+    yargs
+      .positional("name", {
+        type: "string",
+        demandOption: true,
+        describe: "Project name",
+      })
+      .option("description", {
+        alias: "d",
+        type: "string",
+        describe: "Project description",
+      })
+      .option("cpu", {
+        type: "number",
+        describe: "Machine CPU cores (0.5-2)",
+      })
+      .option("ram", {
+        type: "number",
+        describe: "Machine RAM in Gi (0.5-2)",
+      })
+      .option("team", {
+        type: "array",
+        string: true,
+        describe: "Team member user ids",
+        default: [] as string[],
+      })
+      .option("comments", {
+        type: "string",
+        choices: Object.values(OverlayCommentPermission) as string[],
+        default: OverlayCommentPermission.TEAM_ONLY,
+        describe: "Overlay comment permission",
+      })
+      .option("with-db", {
+        type: "boolean",
+        default: false,
+        describe: "Interactively attach a Mongo database during creation",
+      }),
+  async handler(args) {
+    try {
+      const cpuCores = args.cpu ?? 0.5;
+      const ram = args.ram ?? 0.5;
+
+      let databaseConfiguration: DatabaseConfigurationDto | undefined;
+      if (args.withDb) {
+        databaseConfiguration = await promptDatabaseConfiguration();
+      }
+
+      // Build the create payload. Only include `description` when actually
+      // provided: the backend's @Optional() (class-validator-extended) skips
+      // validation only for `undefined`, NOT `null`, so sending `null` trips
+      // @IsString/@MaxLength. Omit the key entirely when absent.
+      const payload: Parameters<typeof createProject>[0] = {
+        name: args.name,
+        machineConfiguration: { cpuCores, ram },
+        teamMemberIds: args.team ?? [],
+        overlayAccessControl: {
+          commentPermission:
+            args.comments as (typeof OverlayCommentPermission)[keyof typeof OverlayCommentPermission],
+        },
+        databaseConfiguration,
+        ...(args.description ? { description: args.description } : {}),
+      };
+
+      const spinner = Prompt.spinner();
+      await Effect.runPromise(spinner.start("Creating project..."));
+
+      const startTime = performance.now();
+      const project = await runAuthenticated(createProject(payload));
+      const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+
+      await Effect.runPromise(
+        spinner.stop(`Project created successfully! (${elapsed}s)`)
+      );
+      console.log(`    Project ID: ${project.id}`);
+      if (databaseConfiguration) {
+        console.log(
+          `    Database: ${databaseConfiguration.type} (provisioning)`
+        );
+        console.log("    Run 'devver deploy' to link it to a deployment.");
+      }
+
+      await setCurrentProjectId(project.id);
+    } catch (e) {
+      if (process.env.DEVVER_DEBUG) {
+        console.error("[devver] raw create error:", e);
+      }
+      const msg = FormatError(e);
+      UI.error(msg ?? `Project creation failed: ${String(e)}`);
+    } finally {
+      await disposeRuntime();
+      process.exit(0);
+    }
+  },
+});
+
 const ProjectLinkCommand = cmd({
   command: "link <url>",
   describe: "Link external repo (use --name for new, --id to update)",
@@ -188,6 +360,7 @@ export const ProjectCommand = cmd({
       .command(ProjectStatusCommand)
       .command(ProjectListCommand)
       .command(ProjectInfoCommand)
+      .command(ProjectCreateCommand)
       .command(ProjectLinkCommand)
       .demandCommand(),
   async handler() {

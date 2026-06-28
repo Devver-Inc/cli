@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect";
-import { ApiClient } from "./client";
+import { ApiClient, type ApiRequestError } from "./client";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -80,24 +80,41 @@ export const DatabaseConfigurationResponseSchema = Schema.Struct({
 
 // -- Project ---------------------------------------------------------------
 
+const ProjectNameField = Schema.String.pipe(
+  Schema.minLength(1),
+  Schema.maxLength(128),
+  Schema.nonEmptyString()
+);
+
+const ProjectDescriptionField = Schema.NullishOr(
+  Schema.NonEmptyString.pipe(Schema.maxLength(256))
+);
+
 const ProjectBase = {
-  name: Schema.String.pipe(
-    Schema.minLength(1),
-    Schema.maxLength(128),
-    Schema.nonEmptyString()
-  ),
-  description: Schema.NullishOr(
-    Schema.NonEmptyString.pipe(Schema.maxLength(256))
-  ),
+  name: ProjectNameField,
+  description: ProjectDescriptionField,
 };
 
 export const CreateProjectSchema = Schema.Struct({
-  ...ProjectBase,
+  name: ProjectNameField,
+  // Optional on the way in: matches the backend @Optional() which only
+  // skips for `undefined` (not `null`), so omit the key when absent.
+  description: Schema.optional(ProjectDescriptionField),
   machineConfiguration: MachineConfigurationInput,
   teamMemberIds: Schema.Array(Schema.NonEmptyString),
   overlayAccessControl: OverlayAccessControlInput,
   databaseConfiguration: Schema.optional(DatabaseConfigurationInput),
 });
+
+export const CreateProjectResponseSchema = Schema.Struct({
+  id: Schema.NonEmptyString,
+  ...ProjectBase,
+  createdAt: Schema.DateFromString,
+});
+
+type CreateProjectResponse = Schema.Schema.Type<
+  typeof CreateProjectResponseSchema
+>;
 
 export const GetProjectSchema = Schema.Struct({
   id: Schema.NonEmptyString,
@@ -149,10 +166,12 @@ export const getProjectById = (id: string) =>
     return yield* api.get(`/projects/${id}`, GetProjectSchema);
   });
 
-export const createProject = (dto: CreateProjectDto) =>
+export const createProject = (
+  dto: CreateProjectDto
+): Effect.Effect<CreateProjectResponse, ApiRequestError, ApiClient> =>
   Effect.gen(function* () {
     const api = yield* ApiClient;
-    return yield* api.post("/projects", dto, CreateProjectSchema);
+    return yield* api.post("/projects", dto, CreateProjectResponseSchema);
   });
 
 export const deleteProjectById = (id: string) =>

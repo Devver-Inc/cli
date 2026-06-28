@@ -14,22 +14,110 @@ interface Definition {
   [method: string]: (input: unknown) => unknown;
 }
 
+type PendingMap = Map<
+  number,
+  { resolve: (result: unknown) => void; reject: (err: Error) => void }
+>;
+type ListenerMap = Map<string, Set<(data: unknown) => void>>;
+
+type RpcMessage =
+  | {
+      type: "rpc.result";
+      id: number;
+      error?: string;
+      stack?: string;
+      result?: unknown;
+    }
+  | { type: "rpc.event"; event: string; data: unknown };
+
+/** Parse and dispatch a worker message to pending callers / event listeners. */
+function handleMessage(
+  evt: MessageEvent,
+  pending: PendingMap,
+  listeners: ListenerMap
+): void {
+  let parsed: RpcMessage;
+  try {
+    parsed = JSON.parse(evt.data);
+  } catch {
+    console.error("[RPC] Non-JSON message from worker:", evt.data);
+    return;
+  }
+
+  if (parsed.type === "rpc.result") {
+    dispatchResult(parsed, pending);
+  } else {
+    dispatchEvent(parsed, listeners);
+  }
+}
+
+function dispatchResult(
+  msg: Extract<RpcMessage, { type: "rpc.result" }>,
+  pending: PendingMap
+): void {
+  const entry = pending.get(msg.id);
+  if (!entry) {
+    return;
+  }
+  if (msg.error) {
+    const err = new Error(msg.error);
+    if (msg.stack) {
+      err.stack = msg.stack;
+    }
+    entry.reject(err);
+  } else {
+    entry.resolve(msg.result);
+  }
+  pending.delete(msg.id);
+}
+
+function dispatchEvent(
+  msg: Extract<RpcMessage, { type: "rpc.event" }>,
+  listeners: ListenerMap
+): void {
+  const handlers = listeners.get(msg.event);
+  if (handlers) {
+    for (const handler of handlers) {
+      handler(msg.data);
+    }
+  }
+}
+
 export function listen(rpc: Definition) {
   self.addEventListener("message", async (evt) => {
     const parsed = JSON.parse(evt.data);
     if (parsed.type === "rpc.request") {
       const fn = rpc[parsed.method];
       if (!fn) {
+        postMessage(
+          JSON.stringify({
+            type: "rpc.result",
+            result: null,
+            id: parsed.id,
+          })
+        );
         return;
       }
-      const result = await fn(parsed.input);
-      postMessage(
-        JSON.stringify({
-          type: "rpc.result",
-          result,
-          id: parsed.id,
-        })
-      );
+      try {
+        const result = await fn(parsed.input);
+        postMessage(
+          JSON.stringify({
+            type: "rpc.result",
+            result,
+            id: parsed.id,
+          })
+        );
+      } catch (err) {
+        postMessage(
+          JSON.stringify({
+            type: "rpc.result",
+            result: null,
+            error: err instanceof Error ? err.message : String(err),
+            stack: err instanceof Error ? err.stack : undefined,
+            id: parsed.id,
+          })
+        );
+      }
     }
   });
 }
@@ -39,35 +127,23 @@ export function emit(event: string, data: unknown) {
 }
 
 export function client<T extends Definition>(target: Worker) {
-  const pending = new Map<number, (result: unknown) => void>();
-  const listeners = new Map<string, Set<(data: unknown) => void>>();
+  const pending: PendingMap = new Map();
+  const listeners: ListenerMap = new Map();
   let id = 0;
-  target.addEventListener("message", (evt) => {
-    const parsed = JSON.parse(evt.data);
-    if (parsed.type === "rpc.result") {
-      const resolve = pending.get(parsed.id);
-      if (resolve) {
-        resolve(parsed.result);
-        pending.delete(parsed.id);
-      }
-    }
-    if (parsed.type === "rpc.event") {
-      const handlers = listeners.get(parsed.event);
-      if (handlers) {
-        for (const handler of handlers) {
-          handler(parsed.data);
-        }
-      }
-    }
-  });
+  target.addEventListener("message", (evt) =>
+    handleMessage(evt, pending, listeners)
+  );
   return {
     call<Method extends keyof T>(
       method: Method,
       input: Parameters<T[Method]>[0]
     ): Promise<ReturnType<T[Method]>> {
       const requestId = id++;
-      return new Promise((resolve) => {
-        pending.set(requestId, resolve as (result: unknown) => void);
+      return new Promise((resolve, reject) => {
+        pending.set(requestId, {
+          resolve: resolve as (result: unknown) => void,
+          reject,
+        });
         target.postMessage(
           JSON.stringify({
             type: "rpc.request",

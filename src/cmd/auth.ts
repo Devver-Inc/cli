@@ -20,20 +20,27 @@ const AuthLoginCommand = cmd({
   async handler() {
     console.log("Opening browser for login...");
 
-    const { onSuccess, onError } = await startLogin();
+    try {
+      const { onSuccess, onError } = await startLogin();
 
-    await new Promise<void>((resolve, reject) => {
-      onSuccess(() => {
-        console.log("✓ Login successful!");
-        resolve();
+      await new Promise<void>((resolve, reject) => {
+        onSuccess(() => {
+          console.log("✓ Login successful!");
+          resolve();
+        });
+        onError((e) => {
+          const msg = FormatError(new Error(e.error)) ?? e.error;
+          UI.error(`Login failed: ${msg}`);
+          reject(new Error(msg));
+        });
       });
-      onError((e) => {
-        UI.error(`Login failed: ${e.error}`);
-        reject(new Error(e.error));
-      });
-    });
 
-    await terminateAuthClient();
+      await terminateAuthClient();
+    } catch (e) {
+      const msg = FormatError(e) ?? String(e);
+      UI.error(`Login failed: ${msg}`);
+      await terminateAuthClient();
+    }
   },
 });
 

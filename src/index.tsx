@@ -1,7 +1,7 @@
 #!/usr/bin/env -S bun run
-import pkg from "../package.json" with { type: "json" };
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
+import pkg from "../package.json" with { type: "json" };
 import { AuthCommand } from "./cmd/auth";
 import { ConfigCommand } from "./cmd/config";
 import { DeployCommand } from "./cmd/deploy";
