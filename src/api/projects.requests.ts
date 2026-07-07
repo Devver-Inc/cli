@@ -97,8 +97,6 @@ const ProjectBase = {
 
 export const CreateProjectSchema = Schema.Struct({
   name: ProjectNameField,
-  // Optional on the way in: matches the backend @Optional() which only
-  // skips for `undefined` (not `null`), so omit the key when absent.
   description: Schema.optional(ProjectDescriptionField),
   machineConfiguration: MachineConfigurationInput,
   teamMemberIds: Schema.Array(Schema.NonEmptyString),
