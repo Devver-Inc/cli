@@ -55,5 +55,5 @@ jobs:
 
       - name: Test standalone build
         run: |
-          bun build ./src/index.tsx --compile --target=bun --outfile devver-cli-test
-          ./devver-cli-test --version || echo "Build successful"
+          bun build ./src/index.tsx --compile --target=bun --outfile devver-test
+          ./devver-test --version || echo "Build successful"
