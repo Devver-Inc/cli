@@ -1,6 +1,6 @@
 {
   "name": "@devver/cli",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "private": false,
   "description": "Deploy and try your app in seconds",
   "keywords": [

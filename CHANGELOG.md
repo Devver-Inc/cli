@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0](https://github.com/Devver-Inc/cli/compare/v1.1.2...v1.2.0) (2026-07-24)
+
+
+### Features
+
+* add npm release workflow ([bdff144](https://github.com/Devver-Inc/cli/commit/bdff144659efbd33e3f0a670147f3989a7d0cfb1))
+* add npm release workflow ([fee4d9d](https://github.com/Devver-Inc/cli/commit/fee4d9db5f677cc18799bbd9aaaf99aac5e73da2))
+* db config ([#42](https://github.com/Devver-Inc/cli/issues/42)) ([6076987](https://github.com/Devver-Inc/cli/commit/6076987a28c465995f5d77f48c278e051849f72b))
+
+
+### Bug Fixes
+
+* better errors ([642826c](https://github.com/Devver-Inc/cli/commit/642826ce0f23dbd193af97982bf540a48155071a))
+* better errors ([6076987](https://github.com/Devver-Inc/cli/commit/6076987a28c465995f5d77f48c278e051849f72b))
+* change cli name from devver-cli to devver ([#45](https://github.com/Devver-Inc/cli/issues/45)) ([45b5f83](https://github.com/Devver-Inc/cli/commit/45b5f83a55e9400b89225431d799812c585bab52))
+* **cli:** accept null database configuration ([f294aac](https://github.com/Devver-Inc/cli/commit/f294aac278a6cd179746dc67fa543ed7b5f13285))
+* optional dbconfig ([642826c](https://github.com/Devver-Inc/cli/commit/642826ce0f23dbd193af97982bf540a48155071a))
+* optional dbconfig ([6076987](https://github.com/Devver-Inc/cli/commit/6076987a28c465995f5d77f48c278e051849f72b))
+* undefined databasec onfig ([#44](https://github.com/Devver-Inc/cli/issues/44)) ([642826c](https://github.com/Devver-Inc/cli/commit/642826ce0f23dbd193af97982bf540a48155071a))
+
 ## [1.1.2](https://github.com/Devver-Inc/cli/compare/v1.1.1...v1.1.2) (2026-06-12)
 
 
