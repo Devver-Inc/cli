@@ -176,10 +176,10 @@ Test the standalone build:
 
 ```bash
 # Build for your platform
-bun build ./src/index.tsx --compile --outfile devver-cli-test
+bun build ./src/index.tsx --compile --outfile devver-test
 
 # Test the binary
-./devver-cli-test --version
+./devver-test --version
 ```
 
 ## Resources
@@ -188,4 +188,3 @@ bun build ./src/index.tsx --compile --outfile devver-cli-test
 - [release-please documentation](https://github.com/googleapis/release-please)
 - [git-cliff documentation](https://git-cliff.org/docs/)
 - [Semantic Versioning](https://semver.org/)
-

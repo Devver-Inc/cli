@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * Build script for devver-cli
+ * Build script for devver
  * Compiles the CLI with bundled worker support
  */
 
@@ -12,7 +12,7 @@ const workerPath = "./src/auth/worker.ts";
 const result = await Bun.build({
   entrypoints: ["./src/index.tsx", workerPath],
   compile: {
-    outfile: "devver-cli",
+    outfile: "devver",
   },
   define: {
     // In the compiled binary, the worker entrypoint is at auth/worker.js

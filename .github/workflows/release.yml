@@ -67,14 +67,14 @@ jobs:
       - name: Create archive (Unix)
         if: runner.os != 'Windows'
         run: |
-          tar czf devver-cli-${{ matrix.target }}.tar.gz devver-cli
+          tar czf devver-cli-${{ matrix.target }}.tar.gz devver
           shasum -a 256 devver-cli-${{ matrix.target }}.tar.gz > devver-cli-${{ matrix.target }}.tar.gz.sha256
 
       - name: Create archive (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          7z a devver-cli-${{ matrix.target }}.zip devver-cli.exe
+          7z a devver-cli-${{ matrix.target }}.zip devver.exe
           (Get-FileHash devver-cli-${{ matrix.target }}.zip -Algorithm SHA256).Hash.ToLower() + "  devver-cli-${{ matrix.target }}.zip" | Out-File -Encoding utf8 devver-cli-${{ matrix.target }}.zip.sha256
 
       - name: Upload artifact (Unix)
@@ -215,11 +215,11 @@ jobs:
             end
 
             def install
-              bin.install "devver-cli"
+              bin.install "devver"
             end
 
             test do
-              assert_match version.to_s, shell_output("#{bin}/devver-cli --version")
+              assert_match version.to_s, shell_output("#{bin}/devver --version")
             end
           end
           EOF
