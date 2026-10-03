@@ -12,6 +12,29 @@
  * This module turns those codes into clear, actionable messages.
  */
 
+import { Schema } from "effect";
+
+export const BackendErrorBodySchema = Schema.Struct({
+  message: Schema.optional(
+    Schema.Union([Schema.String, Schema.Array(Schema.String)])
+  ),
+  error: Schema.optional(Schema.String),
+  statusCode: Schema.optional(Schema.Number),
+  field: Schema.optional(Schema.String),
+  value: Schema.optional(Schema.String),
+  errors: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        field: Schema.String,
+        message: Schema.String,
+        value: Schema.optional(Schema.String),
+      })
+    )
+  ),
+});
+
+export type BackendErrorBody = typeof BackendErrorBodySchema.Type;
+
 const ERROR_MESSAGES: Record<string, string> = {
   // ── Deploy Agent ────────────────────────────────────────────────────
   REPO_NOT_FOUND:
@@ -127,14 +150,7 @@ export function getErrorMessage(code: string, fallback?: string): string {
  * Accepts the parsed JSON body from the NestJS error response and produces
  * a single-line message suitable for CLI output.
  */
-export function formatBackendError(body: {
-  message?: string | string[];
-  error?: string;
-  statusCode?: number;
-  field?: string;
-  value?: string;
-  errors?: Array<{ field: string; message: string; value?: string }>;
-}): string {
+export function formatBackendError(body: BackendErrorBody): string {
   const code = typeof body.message === "string" ? body.message : undefined;
   const statusLabel = body.statusCode ? `(${body.statusCode})` : "";
 

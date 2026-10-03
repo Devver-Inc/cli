@@ -1,4 +1,5 @@
 import { EOL } from "node:os";
+import readline from "node:readline";
 
 const LOGO = [
   "█▀▀▄ █▀▀▀ █  █ █  █ █▀▀▀ █▀▀█",
@@ -27,12 +28,12 @@ let blank = false;
 
 export function println(...message: string[]) {
   print(...message);
-  globalThis.Bun.stderr.write(EOL);
+  process.stderr.write(EOL);
 }
 
 export function print(...message: string[]) {
   blank = false;
-  globalThis.Bun.stderr.write(message.join(" "));
+  process.stderr.write(message.join(" "));
 }
 
 export function empty() {
@@ -49,7 +50,7 @@ export function logo(pad?: string) {
     if (pad) {
       result.push(pad);
     }
-    result.push(globalThis.Bun.color("gray", "ansi"));
+    result.push(Style.TEXT_DIM);
     result.push(row);
     result.push("\x1b[0m");
     result.push(EOL);
@@ -58,7 +59,6 @@ export function logo(pad?: string) {
 }
 
 export function input(prompt: string): Promise<string> {
-  const readline = require("node:readline");
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,

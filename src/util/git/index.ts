@@ -1,193 +1,182 @@
+import { spawn } from "node:child_process";
 import { DeployAbortError } from "../../error";
 import { Prompt } from "../prompts";
 
-const aheadBehindRegex = /\s+/;
+const commitHash = /^[a-f0-9]{40,64}$/i;
+const aheadBehind = /^(\d+)\s+(\d+)$/;
 
-const getBasename = () =>
-  Bun.spawn(["basename", "$(git rev-parse --show-toplevel)"], {
-    cwd: process.cwd(),
-    stdout: "pipe",
-    stderr: "pipe",
+function git(...args: string[]): Promise<{
+  code: number | null;
+  stdout: string;
+  stderr: string;
+}> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("git", args, { cwd: process.cwd() });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    child.once("error", reject);
+    child.once("close", (code) =>
+      resolve({
+        code,
+        stdout: Buffer.concat(stdout).toString("utf8").trim(),
+        stderr: Buffer.concat(stderr).toString("utf8").trim(),
+      })
+    );
   });
+}
 
-const getCurrentBranchProcess = () =>
-  Bun.spawn(["git", "rev-parse", "--abbrev-ref", "HEAD"], {
-    cwd: process.cwd(),
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
-const Commands = { getCurrentBranchProcess, getBasename };
+function requireSuccess(
+  result: Awaited<ReturnType<typeof git>>,
+  command: string
+): string {
+  if (result.code !== 0) {
+    throw new DeployAbortError(
+      `Git ${command} failed (exit ${result.code ?? "signal"})`
+    );
+  }
+  return result.stdout;
+}
 
 export async function checkForGitRepo() {
-  const gitCheckProcess = Bun.spawn(
-    ["git", "rev-parse", "--is-inside-work-tree"],
-    { cwd: process.cwd(), stdout: "pipe", stderr: "pipe" }
-  );
-
-  const exitCode = await gitCheckProcess.exited;
-  if (exitCode !== 0) {
+  const result = await git("rev-parse", "--is-inside-work-tree");
+  if (result.code !== 0) {
+    if (!result.stderr.includes("not a git repository")) {
+      requireSuccess(result, "rev-parse");
+    }
     console.log("✗ No git repository found in current directory");
-
-    const shouldInit = await Prompt.promptYesNo(
-      "Would you like to initialize a git repository?"
-    );
-    if (!shouldInit) {
+    if (
+      !(await Prompt.promptYesNo(
+        "Would you like to initialize a git repository?"
+      ))
+    ) {
       throw new DeployAbortError(
         "Deployment requires a git repository. Aborting."
       );
     }
-
-    const initProcess = Bun.spawn(["git", "init"], {
-      cwd: process.cwd(),
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const initExit = await initProcess.exited;
-    if (initExit !== 0) {
-      const stderr = await new Response(initProcess.stderr).text();
-      throw new DeployAbortError(
-        `Failed to initialize git repository: ${stderr}`
-      );
-    }
+    requireSuccess(await git("init"), "init");
     console.log("  ✓ Git repository initialized");
+  } else if (result.stdout !== "true") {
+    throw new DeployAbortError(
+      "Current directory is not inside a Git work tree"
+    );
   }
 
-  await ensureCommitExists();
-}
-
-async function ensureCommitExists() {
-  const process_ = Bun.spawn(["git", "rev-parse", "HEAD"], {
-    cwd: process.cwd(),
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const exitCode = await process_.exited;
-
-  if (exitCode !== 0) {
+  // An unborn branch has no commits; other rev-parse failures must not be
+  // mistaken for permission/transport success.
+  const head = await git("rev-parse", "--verify", "HEAD");
+  if (head.code !== 0) {
+    if (!head.stderr.includes("Needed a single revision")) {
+      requireSuccess(head, "rev-parse HEAD");
+    }
     console.log("✗ No commits found in this repository");
-
-    const shouldCommit = await Prompt.promptYesNo(
-      "Would you like to create an initial commit?"
-    );
-    if (!shouldCommit) {
+    if (
+      !(await Prompt.promptYesNo("Would you like to create an initial commit?"))
+    ) {
       throw new DeployAbortError(
         "Deployment requires at least one commit. Aborting."
       );
     }
-
-    const addProcess = Bun.spawn(["git", "add", "."], {
-      cwd: process.cwd(),
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    if ((await addProcess.exited) !== 0) {
-      const stderr = await new Response(addProcess.stderr).text();
-      throw new DeployAbortError(`Failed to stage files: ${stderr}`);
-    }
-
-    const commitProcess = Bun.spawn(["git", "commit", "-m", "Initial commit"], {
-      cwd: process.cwd(),
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    if ((await commitProcess.exited) !== 0) {
-      const stderr = await new Response(commitProcess.stderr).text();
-      throw new DeployAbortError(`Failed to create commit: ${stderr}`);
-    }
-
+    requireSuccess(await git("add", "."), "add");
+    requireSuccess(await git("commit", "-m", "Initial commit"), "commit");
     console.log("  ✓ Initial commit created");
+  } else if (!head.stdout) {
+    throw new DeployAbortError("Git rev-parse HEAD returned an empty commit");
   }
 }
 
 export async function getCurrentBranch(): Promise<string> {
-  const branchProcess = Commands.getCurrentBranchProcess();
-  const exitCode = await branchProcess.exited;
-  if (exitCode !== 0) {
-    throw new DeployAbortError("Failed to get current branch");
+  const branch = requireSuccess(
+    await git("rev-parse", "--abbrev-ref", "HEAD"),
+    "rev-parse branch"
+  );
+  if (!branch || branch === "HEAD") {
+    throw new DeployAbortError("Cannot deploy without a named Git branch");
   }
-
-  const branch = (await new Response(branchProcess.stdout).text()).trim();
   console.log(`  Current branch: ${branch}`);
   return branch;
 }
 
 export async function getCurrentCommit(): Promise<string> {
-  const commitProcess = Bun.spawn(["git", "rev-parse", "HEAD"], {
-    cwd: process.cwd(),
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  await commitProcess.exited;
-  return (await new Response(commitProcess.stdout).text()).trim();
+  const commit = requireSuccess(
+    await git("rev-parse", "--verify", "HEAD"),
+    "rev-parse HEAD"
+  );
+  if (!commitHash.test(commit)) {
+    throw new DeployAbortError("Git rev-parse returned an invalid commit");
+  }
+  return commit;
 }
 
-export async function checkRemoteBranch(pushUrl: string, branch: string) {
-  const lsRemoteProcess = Bun.spawn(
-    ["git", "ls-remote", "--heads", pushUrl, branch],
-    { cwd: process.cwd(), stdout: "pipe", stderr: "pipe" }
+/** True only if the remote has this branch; network/auth errors always fail. */
+export async function checkRemoteBranch(
+  pushUrl: string,
+  branch: string,
+  confirm: (message: string) => Promise<boolean> = Prompt.promptYesNo
+): Promise<boolean> {
+  const output = requireSuccess(
+    await git("ls-remote", "--heads", pushUrl, `refs/heads/${branch}`),
+    "ls-remote"
   );
-  await lsRemoteProcess.exited;
-
-  const output = (await new Response(lsRemoteProcess.stdout).text()).trim();
-
-  if (output.length > 0) {
+  if (output) {
     console.log(`  ✓ Branch '${branch}' exists on remote`);
-  } else {
-    console.log(`  Branch '${branch}' does not exist on remote yet`);
-
-    const shouldCreate = await Prompt.promptYesNo(
+    return true;
+  }
+  console.log(`  Branch '${branch}' does not exist on remote yet`);
+  if (
+    !(await confirm(
       `Would you like to create branch '${branch}' on the remote?`
+    ))
+  ) {
+    throw new DeployAbortError(
+      "Deployment requires the branch to exist. Aborting."
     );
-    if (!shouldCreate) {
-      throw new DeployAbortError(
-        "Deployment requires the branch to exist. Aborting."
-      );
-    }
+  }
+  console.log(`  ✓ Branch '${branch}' will be created with the deployment`);
+  return false;
+}
 
-    console.log(`  ✓ Branch '${branch}' will be created with the deployment`);
+export async function pushBranch(
+  pushUrl: string,
+  branch: string
+): Promise<void> {
+  const result = await git("push", pushUrl, `${branch}:${branch}`);
+  if (result.code !== 0) {
+    throw new DeployAbortError(
+      `Failed to push to remote: ${result.stderr || `git push exited ${result.code ?? "on a signal"}`}`
+    );
   }
 }
 
-export async function checkForConflicts(pushUrl: string, branch: string) {
-  const fetchProcess = Bun.spawn(["git", "fetch", pushUrl, branch], {
-    cwd: process.cwd(),
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const fetchExit = await fetchProcess.exited;
-
-  if (fetchExit !== 0) {
+export async function checkForConflicts(
+  pushUrl: string,
+  branch: string,
+  remoteBranchExists: boolean
+): Promise<void> {
+  if (!remoteBranchExists) {
     return;
   }
-
-  const mergeBaseProcess = Bun.spawn(
-    ["git", "merge-base", "HEAD", "FETCH_HEAD"],
-    { cwd: process.cwd(), stdout: "pipe", stderr: "pipe" }
-  );
-  if ((await mergeBaseProcess.exited) !== 0) {
-    return;
+  requireSuccess(await git("fetch", pushUrl, `refs/heads/${branch}`), "fetch");
+  requireSuccess(await git("merge-base", "HEAD", "FETCH_HEAD"), "merge-base");
+  const counts = requireSuccess(
+    await git("rev-list", "--left-right", "--count", "HEAD...FETCH_HEAD"),
+    "rev-list"
+  ).match(aheadBehind);
+  if (!counts) {
+    throw new DeployAbortError(
+      "Git rev-list returned invalid ahead/behind counts"
+    );
   }
-
-  const aheadBehindProcess = Bun.spawn(
-    ["git", "rev-list", "--left-right", "--count", "HEAD...FETCH_HEAD"],
-    { cwd: process.cwd(), stdout: "pipe", stderr: "pipe" }
-  );
-  await aheadBehindProcess.exited;
-
-  const aheadBehind = (
-    await new Response(aheadBehindProcess.stdout).text()
-  ).trim();
-  const [, behind] = aheadBehind.split(aheadBehindRegex).map(Number);
-
-  if (behind && behind > 0) {
+  const behind = Number(counts[2]);
+  if (!Number.isSafeInteger(behind)) {
+    throw new DeployAbortError("Git rev-list returned invalid behind count");
+  }
+  if (behind > 0) {
     console.log(`  ⚠ Your branch is ${behind} commit(s) behind the remote`);
     throw new DeployAbortError(
       "Please pull and resolve conflicts before deploying."
     );
   }
-
   console.log(`  ✓ No conflicts with remote ${branch}`);
 }
-
-export const Git = { aheadBehindRegex, Commands };

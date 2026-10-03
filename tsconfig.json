@@ -1,5 +1,4 @@
 {
-  "$schema": "./node_modules/@effect/language-service/schema.json",
   "compilerOptions": {
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "target": "ESNext",
@@ -20,12 +19,6 @@
     "noImplicitOverride": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noPropertyAccessFromIndexSignature": false,
-    "plugins": [
-      // ... other LSPs (if any) and as last
-      {
-        "name": "@effect/language-service"
-      }
-    ]
+    "noPropertyAccessFromIndexSignature": false
   }
 }

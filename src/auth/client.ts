@@ -1,149 +1,122 @@
-/**
- * Main-thread auth facade.
- *
- * The actual Logto client lives in a Bun Worker (worker.ts) because it
- * spins up a local HTTP server for the OAuth callback. We communicate
- * with it via the Rpc helper.
- *
- * Token caching: tokens are persisted by Logto's storage adapter
- * (see logto.ts). getAccessToken() first checks the stored token's
- * expiry; if still valid (with a 60 s buffer), it returns immediately
- * without spawning the worker.
- */
-
+import { Schema } from "effect";
 import { Storage } from "../storage";
-import { Rpc } from "../util/rpc";
 import { getCurrentOrganization } from "./organization";
-import type { rpc } from "./worker";
+import {
+  API_RESOURCE,
+  getAccessTokenFor,
+  getOrganizations,
+  type Organization,
+} from "./session";
 
-const API_RESOURCE = "http://localhost:9999";
 const TOKEN_EXPIRY_BUFFER_SECONDS = 60;
 
-interface StoredTokenEntry {
-  token: string;
-  scope: string;
-  expiresAt: number;
-}
+const StoredTokensSchema = Schema.Record(
+  Schema.String,
+  Schema.Struct({
+    token: Schema.String,
+    expiresAt: Schema.Number,
+    scope: Schema.optional(Schema.String),
+  })
+);
 
-type StoredTokens = Record<string, StoredTokenEntry>;
+const IdTokenClaimsSchema = Schema.Struct({
+  organizations: Schema.optional(Schema.Array(Schema.String)),
+});
 
-declare global {
-  const DEVVER_WORKER_PATH: string;
-}
+const decodeStoredTokens = Schema.decodeUnknownSync(StoredTokensSchema);
+const decodeIdTokenClaims = Schema.decodeUnknownSync(IdTokenClaimsSchema);
 
-let worker: Worker | undefined;
-let client: ReturnType<typeof Rpc.client<typeof rpc>> | undefined;
+export type OrganizationDetails = Organization;
 
-function getWorkerPath(): string | URL {
-  // In compiled binary, use the $bunfs path
-  // The worker entrypoint gets compiled to auth/worker.js inside the bundle
-  if (typeof DEVVER_WORKER_PATH !== "undefined") {
-    return new URL(DEVVER_WORKER_PATH, import.meta.url);
-  }
-  // In development, use relative import
-  return new URL("./worker.ts", import.meta.url);
-}
-
-export function getAuthClient() {
-  if (!worker) {
-    const workerPath = getWorkerPath();
-    worker = new Worker(workerPath);
-    worker.onerror = (e) => {
-      console.error("Worker error:", e);
-    };
-    client = Rpc.client<typeof rpc>(worker);
-  }
-  if (!client) {
-    throw new Error("Auth client not initialized");
-  }
-  return client;
-}
-
-export async function terminateAuthClient() {
-  if (worker && client) {
-    await client.call("stopServer", undefined);
-    worker.terminate();
-    worker = undefined;
-    client = undefined;
+function decodeCredential<A>(
+  decode: (input: unknown) => A,
+  parsed: unknown,
+  label: string
+): A {
+  try {
+    return decode(parsed);
+  } catch {
+    throw new Error(
+      `Stored ${label} has an unexpected shape. Please log in again.`
+    );
   }
 }
 
-export async function startLogin() {
-  const c = getAuthClient();
-  const { url } = await c.call("startLogin", undefined);
-  globalThis.Bun.spawn(["open", url]);
-  return {
-    onSuccess: (handler: () => void) => c.on("login.success", handler),
-    onError: (handler: (e: { error: string }) => void) =>
-      c.on("login.error", handler),
-  };
+function parseJson(content: string, label: string): unknown {
+  try {
+    return JSON.parse(content);
+  } catch {
+    throw new Error(`Stored ${label} is not valid JSON. Please log in again.`);
+  }
 }
 
-export async function cancelLogin() {
-  const c = getAuthClient();
-  await c.call("cancelLogin", undefined);
+function decodeJwtClaims(token: string, label: string): unknown {
+  const payload = token.split(".")[1];
+  if (!payload) {
+    throw new Error(`Stored ${label} is not a JWT. Please log in again.`);
+  }
+  try {
+    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+  } catch {
+    throw new Error(
+      `Stored ${label} has an unreadable payload. Please log in again.`
+    );
+  }
+}
+
+async function getStoredOrganizationIds(): Promise<readonly string[]> {
+  if (!(await Storage.fileExists("logto/idToken"))) {
+    return [];
+  }
+  const content = (await Storage.readToString("logto/idToken")).trim();
+  const claims = decodeCredential(
+    decodeIdTokenClaims,
+    decodeJwtClaims(content, "ID token"),
+    "ID token"
+  );
+  return claims.organizations ?? [];
 }
 
 async function getStoredToken(): Promise<string | null> {
-  try {
-    const exists = await Storage.fileExists("logto/accessToken");
-    if (!exists) {
-      return null;
-    }
-
-    const content = await Storage.readToString("logto/accessToken");
-    const tokens: StoredTokens = JSON.parse(content);
-
-    const idTokenContent = await Storage.readToString("logto/idToken");
-    const idToken = JSON.parse(idTokenContent);
-    const organizations = (idToken?.claims?.organizations ?? []) as Array<{
-      id: string;
-      name: string;
-    }>;
-
-    // Get the selected organization or use the first one
-    const currentOrg = await getCurrentOrganization();
-    const orgId =
-      currentOrg && organizations.some((org) => org.id === currentOrg)
-        ? currentOrg
-        : organizations[0]?.id;
-
-    if (!orgId) {
-      throw new Error(
-        "You must be part of an organization to use this command. Please contact your administrator."
-      );
-    }
-
-    /** Scoped token key: `@<resource>#<orgId>` -- matches Logto's storage format. */
-    const tokenKey = `@${API_RESOURCE}#${orgId}`;
-    const entry = tokens[tokenKey];
-
-    if (!entry) {
-      return null;
-    }
-
-    const now = Math.floor(Date.now() / 1000);
-    if (entry.expiresAt > now + TOKEN_EXPIRY_BUFFER_SECONDS) {
-      return entry.token;
-    }
-
-    return null;
-  } catch {
+  if (!(await Storage.fileExists("logto/accessToken"))) {
     return null;
   }
+  const content = await Storage.readToString("logto/accessToken");
+  const tokens = decodeCredential(
+    decodeStoredTokens,
+    parseJson(content, "access token"),
+    "access token"
+  );
+  const organizationIds = await getStoredOrganizationIds();
+
+  const currentOrg = await getCurrentOrganization();
+  if (currentOrg && !organizationIds.includes(currentOrg)) {
+    throw new Error(`Selected organization '${currentOrg}' is unavailable`);
+  }
+  const orgId = currentOrg ?? organizationIds[0];
+  if (!orgId) {
+    return null;
+  }
+
+  const entry = tokens[`@${API_RESOURCE}#${orgId}`];
+  if (!entry) {
+    return null;
+  }
+  const now = Math.floor(Date.now() / 1000);
+  return entry.expiresAt > now + TOKEN_EXPIRY_BUFFER_SECONDS
+    ? entry.token
+    : null;
 }
 
 async function refreshToken(): Promise<string | null> {
-  const authClient = getAuthClient();
-
-  // Get the selected organization
   const currentOrg = await getCurrentOrganization();
-
-  const token = await authClient.call("getAccessToken", {
-    orgId: currentOrg ?? undefined,
-  });
-  await terminateAuthClient();
-  return token;
+  if (currentOrg) {
+    const organizations = await getOrganizations();
+    if (!organizations.some((org) => org.id === currentOrg)) {
+      throw new Error(`Selected organization '${currentOrg}' is unavailable`);
+    }
+  }
+  return await getAccessTokenFor(currentOrg ?? undefined);
 }
 
 export async function getAccessToken(): Promise<string | null> {
@@ -151,24 +124,13 @@ export async function getAccessToken(): Promise<string | null> {
   if (storedToken) {
     return storedToken;
   }
-  return refreshToken();
+  return await refreshToken();
 }
 
 export function refreshAccessToken(): Promise<string | null> {
-  // Force refresh - bypass stored token
   return refreshToken();
 }
 
-export interface OrganizationDetails {
-  id: string;
-  name: string;
-  description?: string;
-  roles?: Array<{ roleId: string; roleName: string }>;
-}
-
-export async function getOrganizationDetails(): Promise<OrganizationDetails[]> {
-  const authClient = getAuthClient();
-  const organizations = await authClient.call("getOrganizations", undefined);
-  await terminateAuthClient();
-  return organizations as OrganizationDetails[];
+export function getOrganizationDetails(): Promise<readonly Organization[]> {
+  return getOrganizations();
 }

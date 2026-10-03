@@ -1,3 +1,4 @@
+import { Context, Data, Effect, Layer, Schema } from "effect";
 import {
   FetchHttpClient,
   type HttpBody,
@@ -5,19 +6,15 @@ import {
   type HttpClientError,
   HttpClientRequest,
   HttpClientResponse,
-} from "@effect/platform";
+} from "effect/http";
 import {
-  Context,
-  Data,
-  Effect,
-  Layer,
-  type ParseResult,
-  type Schema,
-} from "effect";
-import { formatBackendError } from "./errors";
+  type BackendErrorBody,
+  BackendErrorBodySchema,
+  formatBackendError,
+} from "./errors";
 
 /**
- * Effect-based HTTP client built on top of @effect/platform.
+ * Effect-based HTTP client built on top of Effect's HTTP modules.
  *
  * Provides ApiClient (via Effect Context) so that any request function
  * can `yield* ApiClient` to get an authenticated, schema-validated client.
@@ -30,54 +27,53 @@ export class ApiError extends Data.TaggedError("ApiError")<{
   readonly message: string;
   /** Machine-readable error code from the backend (e.g. "PROJECT_NOT_FOUND"). */
   readonly code?: string;
-  /** Full parsed response body from the backend, if available. */
-  readonly body?: Record<string, unknown>;
+  /** Decoded error body from the backend, if it returned one we understand. */
+  readonly body?: BackendErrorBody;
 }> {}
 
-export class AuthToken extends Context.Tag("AuthToken")<
+export class AuthToken extends Context.Service<
   AuthToken,
   { readonly token: string | null }
->() {}
+>()("AuthToken") {}
 
-export class ApiBaseUrl extends Context.Tag("ApiBaseUrl")<
+export class ApiBaseUrl extends Context.Service<
   ApiBaseUrl,
   { readonly url: string }
->() {}
+>()("ApiBaseUrl") {}
 
 export type ApiRequestError =
   | ApiError
   | HttpClientError.HttpClientError
   | HttpBody.HttpBodyError
-  | ParseResult.ParseError;
+  | Schema.SchemaError;
 
 interface ApiClientService {
-  readonly get: <A, I>(
+  readonly get: <A>(
     path: string,
-    schema: Schema.Schema<A, I>
+    schema: Schema.Codec<A, unknown, never, unknown>
   ) => Effect.Effect<A, ApiRequestError>;
 
-  readonly post: <A, I, B>(
+  readonly post: <A, B>(
     path: string,
     body: B,
-    schema: Schema.Schema<A, I>
+    schema: Schema.Codec<A, unknown, never, unknown>
   ) => Effect.Effect<A, ApiRequestError>;
 
-  readonly put: <A, I, B>(
+  readonly put: <A, B>(
     path: string,
     body: B,
-    schema: Schema.Schema<A, I>
+    schema: Schema.Codec<A, unknown, never, unknown>
   ) => Effect.Effect<A, ApiRequestError>;
 
-  readonly delete: <A, I>(
+  readonly delete: <A>(
     path: string,
-    schema: Schema.Schema<A, I>
+    schema: Schema.Codec<A, unknown, never, unknown>
   ) => Effect.Effect<A, ApiRequestError>;
 }
 
-export class ApiClient extends Context.Tag("ApiClient")<
-  ApiClient,
-  ApiClientService
->() {}
+export class ApiClient extends Context.Service<ApiClient, ApiClientService>()(
+  "ApiClient"
+) {}
 
 // const BASE_URL = process.env.API_URL ?? "https://app.devver.app/api/v1";
 
@@ -91,23 +87,14 @@ const checkStatus = (
   response.status >= 200 && response.status < 300
     ? Effect.succeed(response)
     : Effect.gen(function* () {
-        // Try to parse the response body as JSON for error details.
-        // NestJS responses look like:
-        //   { statusCode: 404, message: "PROJECT_NOT_FOUND", error: "Not Found" }
-        let body: Record<string, unknown> | undefined;
-        try {
-          body = (yield* Effect.orDie(
-            response.json as Effect.Effect<unknown, never>
-          )) as Record<string, unknown>;
-        } catch {
-          // Body is not JSON — we still have the status code
-        }
+        const body: BackendErrorBody | undefined = yield* response.json.pipe(
+          Effect.flatMap(Schema.decodeUnknownEffect(BackendErrorBodySchema)),
+          Effect.orElseSucceed(() => undefined)
+        );
 
         const code =
           typeof body?.message === "string" ? body.message : undefined;
-        const detail = body
-          ? formatBackendError(body as Parameters<typeof formatBackendError>[0])
-          : undefined;
+        const detail = body ? formatBackendError(body) : undefined;
 
         return yield* Effect.fail(
           new ApiError({
@@ -135,9 +122,9 @@ export const ApiClientLive = Layer.effect(
           )
         : request;
 
-    const makeRequest = <A, I>(
+    const makeRequest = <A>(
       request: HttpClientRequest.HttpClientRequest,
-      schema: Schema.Schema<A, I>
+      schema: Schema.Codec<A, unknown, never, unknown>
     ): Effect.Effect<A, ApiRequestError> =>
       httpClient
         .execute(addAuth(request))
@@ -164,7 +151,7 @@ export const ApiClientLive = Layer.effect(
         ),
 
       delete: (path, schema) =>
-        makeRequest(HttpClientRequest.del(`${baseUrl}${path}`), schema),
+        makeRequest(HttpClientRequest.delete(`${baseUrl}${path}`), schema),
     };
   })
 );

@@ -2,25 +2,17 @@
 
 /**
  * Build script for devver
- * Compiles the CLI with bundled worker support
  */
 
 import pkg from "../package.json";
+import { buildDefines } from "./stamp";
 
-const workerPath = "./src/auth/worker.ts";
-
-const result = await Bun.build({
-  entrypoints: ["./src/index.tsx", workerPath],
-  compile: {
-    outfile: "devver",
-  },
-  define: {
-    // In the compiled binary, the worker entrypoint is at auth/worker.js
-    // relative to the main entrypoint (index.js) inside $bunfs/root/
-    DEVVER_WORKER_PATH: JSON.stringify("./auth/worker.js"),
-    DEVVER_VERSION: JSON.stringify(pkg.version),
-  },
-});
+const config: Bun.BuildConfig = {
+  entrypoints: ["./src/cli/index.ts"],
+  compile: { outfile: "devver" },
+  define: buildDefines("standalone"),
+};
+const result = await Bun.build(config);
 
 if (!result.success) {
   console.error("Build failed:");

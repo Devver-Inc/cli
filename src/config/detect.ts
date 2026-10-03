@@ -9,6 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { cwd } from "node:process";
+import { Schema } from "effect";
 
 export interface ProjectDetector {
   readonly name: string;
@@ -22,13 +23,19 @@ export interface DetectionContext {
   hasEnvVar: (pattern: RegExp) => boolean;
 }
 
-export interface PackageJson {
-  name?: string;
-  version?: string;
-  dependencies?: Record<string, string>;
-  devDependencies?: Record<string, string>;
-  scripts?: Record<string, string>;
-}
+const PackageJsonSchema = Schema.Struct({
+  name: Schema.optional(Schema.String),
+  version: Schema.optional(Schema.String),
+  dependencies: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  devDependencies: Schema.optional(
+    Schema.Record(Schema.String, Schema.Unknown)
+  ),
+  scripts: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+});
+
+export type PackageJson = typeof PackageJsonSchema.Type;
+
+const decodePackageJson = Schema.decodeUnknownResult(PackageJsonSchema);
 
 export interface DetectionResult {
   detected: ProjectDetector;
@@ -83,11 +90,14 @@ export class FileSystemContext implements DetectionContext {
     if (!fs.existsSync(pkgPath)) {
       return null;
     }
+    let parsed: unknown;
     try {
-      return JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+      parsed = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
     } catch {
       return null;
     }
+    const decoded = decodePackageJson(parsed);
+    return decoded._tag === "Success" ? decoded.success : null;
   }
 
   hasFile(filename: string): boolean {
@@ -153,7 +163,7 @@ export function createDependencyDetector(
         ...ctx.pkg.dependencies,
         ...ctx.pkg.devDependencies,
       };
-      return Promise.resolve(deps.some((dep) => allDeps?.[dep]));
+      return Promise.resolve(deps.some((dep) => allDeps[dep] !== undefined));
     },
   };
 }

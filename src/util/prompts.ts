@@ -4,6 +4,7 @@ import {
   select as clackSelect,
   spinner as clackSpinner,
   isCancel,
+  password,
   text,
 } from "@clack/prompts";
 import { Effect } from "effect";
@@ -19,13 +20,7 @@ const outro = (msg: string) => Effect.sync(() => clackOutro(msg));
 
 const select = <Value>(opts: Parameters<typeof clackSelect<Value>>[0]) =>
   Effect.tryPromise(() => clackSelect(opts)).pipe(
-    Effect.map((result) => {
-      console.log(result);
-      if (isCancel(result)) {
-        return "Canceled";
-      }
-      return result;
-    })
+    Effect.map((result) => (isCancel(result) ? "Canceled" : result))
   );
 
 const spinner = () => {
@@ -38,13 +33,12 @@ const spinner = () => {
 
 const input = (message: string) =>
   Effect.tryPromise(() => text({ message })).pipe(
-    Effect.map((result) => {
-      console.log(result);
-      if (isCancel(result)) {
-        return "Canceled";
-      }
-      return result;
-    })
+    Effect.map((result) => (isCancel(result) ? "Canceled" : result))
+  );
+
+const secretInput = (message: string) =>
+  Effect.tryPromise(() => password({ message })).pipe(
+    Effect.map((result) => (isCancel(result) ? "Canceled" : result))
   );
 
 const promptYesNo = (message: string): Promise<boolean> =>
@@ -61,6 +55,7 @@ export const Prompt = {
   select,
   spinner,
   input,
+  secretInput,
   Questions,
   promptYesNo,
 };

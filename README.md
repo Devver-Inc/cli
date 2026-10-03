@@ -176,7 +176,7 @@ Test the standalone build:
 
 ```bash
 # Build for your platform
-bun build ./src/index.tsx --compile --outfile devver-test
+bun build ./src/cli/index.ts --compile --outfile devver-test
 
 # Test the binary
 ./devver-test --version

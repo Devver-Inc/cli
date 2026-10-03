@@ -15,16 +15,6 @@
           }
         }
       }
-    },
-    {
-      "includes": ["src/cmd/auth.ts"],
-      "linter": {
-        "rules": {
-          "complexity": {
-            "noExcessiveCognitiveComplexity": "off"
-          }
-        }
-      }
     }
   ]
 }

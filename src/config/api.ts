@@ -13,11 +13,16 @@
  *   4. Hardcoded fallback               (lowest priority)
  */
 
+import { Schema } from "effect";
 import { Storage } from "../storage";
 
-export interface CliConfig {
-  "api-url"?: string;
-}
+export const CliConfigSchema = Schema.Struct({
+  "api-url": Schema.optional(Schema.String),
+});
+
+export type CliConfig = typeof CliConfigSchema.Type;
+
+const decodeCliConfig = Schema.decodeUnknownSync(CliConfigSchema);
 
 const CONFIG_KEY = "config/cli";
 
@@ -26,11 +31,21 @@ export async function readConfig(): Promise<CliConfig> {
   if (!exists) {
     return {};
   }
+  const raw = await Storage.readToString(CONFIG_KEY);
+  let parsed: unknown;
   try {
-    const raw = await Storage.readToString(CONFIG_KEY);
-    return JSON.parse(raw) as CliConfig;
-  } catch {
-    return {};
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`CLI config at '${CONFIG_KEY}' is not valid JSON`, {
+      cause: error,
+    });
+  }
+  try {
+    return decodeCliConfig(parsed);
+  } catch (error) {
+    throw new Error(`CLI config at '${CONFIG_KEY}' has an unexpected shape`, {
+      cause: error,
+    });
   }
 }
 
@@ -50,16 +65,14 @@ export async function setConfigValue<K extends keyof CliConfig>(
   value: CliConfig[K]
 ): Promise<void> {
   const config = await readConfig();
-  config[key] = value;
-  await writeConfig(config);
+  await writeConfig({ ...config, [key]: value });
 }
 
 export async function unsetConfigValue<K extends keyof CliConfig>(
   key: K
 ): Promise<void> {
-  const config = await readConfig();
-  delete config[key];
-  await writeConfig(config);
+  const { [key]: _removed, ...rest } = await readConfig();
+  await writeConfig(rest);
 }
 
 /**

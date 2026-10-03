@@ -14,18 +14,27 @@ export async function tui(input: {
     exitOnCtrlC: false,
   });
 
-  return new Promise<void>((resolve) => {
-    const onExit = async () => {
-      await input.onExit?.();
-      resolve();
-    };
-
-    createRoot(renderer).render(
-      <ExitProvider onExit={onExit}>
-        <App />
-      </ExitProvider>
-    );
-  });
+  const root = createRoot(renderer);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const onExit = async () => {
+        try {
+          await input.onExit?.();
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      };
+      root.render(
+        <ExitProvider onExit={onExit}>
+          <App />
+        </ExitProvider>
+      );
+    });
+  } finally {
+    root.unmount();
+    renderer.destroy();
+  }
 }
 
 function App() {

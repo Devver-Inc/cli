@@ -6,15 +6,15 @@ import { ApiClient } from "./client";
 // ---------------------------------------------------------------------------
 
 export const CreateRepositorySchema = Schema.Struct({
-  name: Schema.String.pipe(Schema.minLength(1)),
+  name: Schema.String.check(Schema.isMinLength(1)),
 });
 
 export const ServiceConfigSchema = Schema.Struct({
   root: Schema.optional(Schema.String),
   install: Schema.optional(Schema.String),
   skipInstall: Schema.optional(Schema.Boolean),
-  build: Schema.String.pipe(Schema.minLength(1)),
-  start: Schema.String.pipe(Schema.minLength(1)),
+  build: Schema.String.check(Schema.isMinLength(1)),
+  start: Schema.String.check(Schema.isMinLength(1)),
 });
 
 export const ServicesSchema = Schema.Struct({
@@ -23,26 +23,19 @@ export const ServicesSchema = Schema.Struct({
 });
 
 export const CreateDeploymentSchema = Schema.Struct({
-  repo: Schema.String.pipe(Schema.minLength(1)),
-  branch: Schema.String.pipe(Schema.minLength(1)),
+  repo: Schema.String.check(Schema.isMinLength(1)),
+  branch: Schema.String.check(Schema.isMinLength(1)),
   commit: Schema.optional(Schema.String),
   service: ServicesSchema,
   links: Schema.optional(
-    Schema.Record({
-      key: Schema.String,
-      value: Schema.Record({ key: Schema.String, value: Schema.String }),
-    })
+    Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.String))
   ),
-  dbLinks: Schema.optional(
-    Schema.Record({ key: Schema.String, value: Schema.String })
-  ),
-  env: Schema.optional(
-    Schema.Record({ key: Schema.String, value: Schema.String })
-  ),
+  dbLinks: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  env: Schema.optional(Schema.Record(Schema.String, Schema.String)),
 });
 
 export const ControlPm2ProcessSchema = Schema.Struct({
-  name: Schema.String.pipe(Schema.minLength(1)),
+  name: Schema.String.check(Schema.isMinLength(1)),
 });
 
 export const GetRepoSchema = Schema.Struct({
@@ -53,12 +46,12 @@ export const GetRepoSchema = Schema.Struct({
   createdAt: Schema.String,
 });
 
-export const PM2ProcessStatusSchema = Schema.Literal(
+export const PM2ProcessStatusSchema = Schema.Literals([
   "online",
   "stopped",
   "errored",
-  "stopping"
-);
+  "stopping",
+]);
 
 export const PM2ProcessSchema = Schema.Struct({
   name: Schema.String,
@@ -101,7 +94,7 @@ export const RestoreResultSchema = Schema.Struct({
   restoredDeployments: Schema.Number,
 });
 
-export const PM2ActionSchema = Schema.Literal("start", "stop", "restart");
+export const PM2ActionSchema = Schema.Literals(["start", "stop", "restart"]);
 
 export const ControlPm2ProcessResultSchema = Schema.Struct({
   success: Schema.Boolean,

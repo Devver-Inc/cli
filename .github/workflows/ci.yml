@@ -27,17 +27,14 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Run linter
-        run: bun run fix
+      - name: Check formatting and lint
+        run: bun run check
+
+      - name: Typecheck
+        run: bun run typecheck
 
       - name: Run tests
-        run: |
-          if ls **/*.test.* **/*.spec.* 1> /dev/null 2>&1; then
-            bun test
-          else
-            echo "No test files found, skipping tests"
-          fi
-        shell: bash
+        run: bun run test
 
   build:
     name: Build Check
@@ -55,5 +52,5 @@ jobs:
 
       - name: Test standalone build
         run: |
-          bun build ./src/index.tsx --compile --target=bun --outfile devver-test
-          ./devver-test --version || echo "Build successful"
+          bun build ./src/cli/index.ts --compile --target=bun --outfile devver-test
+          ./devver-test --version

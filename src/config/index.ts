@@ -1,30 +1,36 @@
 import fs from "node:fs";
 import path from "node:path";
 import { cwd } from "node:process";
+import { Schema } from "effect";
 import yaml from "js-yaml";
 
 import { detectProject, type ProjectDetection } from "./detect";
 
 const regex = /\r?\n/;
 
-export interface ServiceConfig {
-  root?: string;
-  install?: string;
-  skipInstall?: boolean;
-  build: string;
-  start: string;
-  depends?: string[];
-}
+const ServiceConfigSchema = Schema.Struct({
+  root: Schema.optional(Schema.String),
+  install: Schema.optional(Schema.String),
+  skipInstall: Schema.optional(Schema.Boolean),
+  build: Schema.String,
+  start: Schema.String,
+  depends: Schema.optional(Schema.Array(Schema.String)),
+});
 
-export interface DevverConfigFile {
-  project: string;
-  services: {
-    web?: ServiceConfig;
-    api?: ServiceConfig;
-  };
-  databases?: Record<string, unknown>;
-  env?: Record<string, string>;
-}
+const DevverConfigFileSchema = Schema.Struct({
+  project: Schema.String,
+  services: Schema.Struct({
+    web: Schema.optional(ServiceConfigSchema),
+    api: Schema.optional(ServiceConfigSchema),
+  }),
+  databases: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  env: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+});
+
+export type ServiceConfig = typeof ServiceConfigSchema.Type;
+export type DevverConfigFile = typeof DevverConfigFileSchema.Type;
+
+const decodeDevverConfigFile = Schema.decodeUnknownSync(DevverConfigFileSchema);
 
 export function readConfigFile(root?: string): DevverConfigFile | null {
   const targetDir = root ?? cwd();
@@ -35,7 +41,17 @@ export function readConfigFile(root?: string): DevverConfigFile | null {
   }
 
   const content = fs.readFileSync(configPath, "utf-8");
-  return yaml.load(content) as DevverConfigFile;
+  let parsed: unknown;
+  try {
+    parsed = yaml.load(content);
+  } catch (error) {
+    throw new Error(`Invalid YAML in ${configPath}`, { cause: error });
+  }
+  try {
+    return decodeDevverConfigFile(parsed);
+  } catch (error) {
+    throw new Error(`Invalid devver config in ${configPath}`, { cause: error });
+  }
 }
 
 export function writeConfigFile(
@@ -61,7 +77,7 @@ export function writeConfigFile(
 
   const config: Record<string, unknown> = {
     project: path.basename(targetDir),
-    services: {} as Record<string, unknown>,
+    services: {},
   };
   const detectedTypes = detection.results.map((r) => r.detected.name);
   const hasMongo =

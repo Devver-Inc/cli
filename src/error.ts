@@ -22,9 +22,8 @@ function formatApiError(err: ApiError): string {
 function formatFiberFailure(input: Error): string {
   const msg = input.message || String(input);
   if (OBJECT_OBJECT_RE.test(msg)) {
-    const any = input as { cause?: unknown };
-    if (any.cause !== undefined) {
-      const causeMsg = FormatError(any.cause);
+    if (input.cause !== undefined) {
+      const causeMsg = FormatError(input.cause);
       if (causeMsg) {
         return causeMsg;
       }

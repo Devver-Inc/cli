@@ -32,23 +32,23 @@ const GetUserLightSchema = Schema.Struct({
 });
 
 const MachineConfigurationBase = {
-  cpuCores: Schema.Number.pipe(Schema.between(0.5, 2)),
-  ram: Schema.Number.pipe(Schema.between(0.5, 2)),
+  cpuCores: Schema.Number.check(Schema.isBetween({ minimum: 0.5, maximum: 2 })),
+  ram: Schema.Number.check(Schema.isBetween({ minimum: 0.5, maximum: 2 })),
 };
 
 const OverlayAccessControlBase = {
-  commentPermission: Schema.Literal(
+  commentPermission: Schema.Literals([
     OverlayCommentPermission.TEAM_ONLY,
-    OverlayCommentPermission.EMAIL_REQUIRED
-  ),
+    OverlayCommentPermission.EMAIL_REQUIRED,
+  ]),
 };
 
 const MachineConfigurationResponse = Schema.Struct(MachineConfigurationBase);
 const OverlayAccessControlResponse = Schema.Struct(OverlayAccessControlBase);
 
 const MachineConfigurationInput = Schema.Struct({
-  cpuCores: Schema.optionalWith(MachineConfigurationBase.cpuCores, {}),
-  ram: Schema.optionalWith(MachineConfigurationBase.ram, {}),
+  cpuCores: Schema.optional(MachineConfigurationBase.cpuCores),
+  ram: Schema.optional(MachineConfigurationBase.ram),
 });
 
 const OverlayAccessControlInput = Schema.Struct({
@@ -58,17 +58,17 @@ const OverlayAccessControlInput = Schema.Struct({
 // -- Database configuration ------------------------------------------------
 
 const DatabaseConfigurationInput = Schema.Struct({
-  type: Schema.Literal(...Object.values(DatabaseType)),
-  rootUsername: Schema.String.pipe(Schema.minLength(1)),
-  rootPassword: Schema.String.pipe(Schema.minLength(1)),
-  replicaCount: Schema.Int.pipe(Schema.between(1, 3)),
-  ram: Schema.Number.pipe(Schema.greaterThanOrEqualTo(0.5)),
-  cpuCores: Schema.Number.pipe(Schema.greaterThanOrEqualTo(0.1)),
-  storage: Schema.Int.pipe(Schema.between(5, 500)),
+  type: Schema.Literal(DatabaseType.MONGO),
+  rootUsername: Schema.String.check(Schema.isMinLength(1)),
+  rootPassword: Schema.String.check(Schema.isMinLength(1)),
+  replicaCount: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 3 })),
+  ram: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0.5)),
+  cpuCores: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0.1)),
+  storage: Schema.Int.check(Schema.isBetween({ minimum: 5, maximum: 500 })),
 });
 
 export const DatabaseConfigurationResponseSchema = Schema.Struct({
-  type: Schema.Literal(...Object.values(DatabaseType)),
+  type: Schema.Literal(DatabaseType.MONGO),
   enabled: Schema.Boolean,
   rootUsername: Schema.optional(Schema.String),
   hasRootPassword: Schema.optional(Schema.Boolean),
@@ -80,14 +80,14 @@ export const DatabaseConfigurationResponseSchema = Schema.Struct({
 
 // -- Project ---------------------------------------------------------------
 
-const ProjectNameField = Schema.String.pipe(
-  Schema.minLength(1),
-  Schema.maxLength(128),
-  Schema.nonEmptyString()
+const ProjectNameField = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(128),
+  Schema.isNonEmpty()
 );
 
 const ProjectDescriptionField = Schema.NullishOr(
-  Schema.NonEmptyString.pipe(Schema.maxLength(256))
+  Schema.NonEmptyString.check(Schema.isMaxLength(256))
 );
 
 const ProjectBase = {

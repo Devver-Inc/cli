@@ -1,24 +1,42 @@
+import { Schema } from "effect";
 import { Storage } from "../../storage";
 
 const REPOSITORY_LINKS_KEY = "repository/links";
 
-interface RepoLink {
-  repoName: string;
-  repoUrl: string;
-}
+const RepoLinkSchema = Schema.Struct({
+  repoName: Schema.String,
+  repoUrl: Schema.String,
+});
 
-type RepoLinksMap = Record<string, RepoLink>;
+const RepoLinksMapSchema = Schema.Record(Schema.String, RepoLinkSchema);
+
+export type RepoLink = typeof RepoLinkSchema.Type;
+type RepoLinksMap = typeof RepoLinksMapSchema.Type;
+
+const decodeLinksMap = Schema.decodeUnknownSync(RepoLinksMapSchema);
 
 async function readLinksMap(): Promise<RepoLinksMap> {
-  try {
-    const exists = await Storage.fileExists(REPOSITORY_LINKS_KEY);
-    if (!exists) {
-      return {};
-    }
-    const raw = await Storage.readToString(REPOSITORY_LINKS_KEY);
-    return JSON.parse(raw) as RepoLinksMap;
-  } catch {
+  const exists = await Storage.fileExists(REPOSITORY_LINKS_KEY);
+  if (!exists) {
     return {};
+  }
+  const raw = await Storage.readToString(REPOSITORY_LINKS_KEY);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(
+      `Repository links at '${REPOSITORY_LINKS_KEY}' are not valid JSON`,
+      { cause: error }
+    );
+  }
+  try {
+    return decodeLinksMap(parsed);
+  } catch (error) {
+    throw new Error(
+      `Repository links at '${REPOSITORY_LINKS_KEY}' have an unexpected shape`,
+      { cause: error }
+    );
   }
 }
 
@@ -39,14 +57,12 @@ export async function linkRepo(
   repoUrl: string
 ): Promise<void> {
   const map = await readLinksMap();
-  map[folderPath] = { repoName, repoUrl };
-  await writeLinksMap(map);
+  await writeLinksMap({ ...map, [folderPath]: { repoName, repoUrl } });
 }
 
 export async function unlinkRepo(folderPath: string): Promise<void> {
-  const map = await readLinksMap();
-  delete map[folderPath];
-  await writeLinksMap(map);
+  const { [folderPath]: _removed, ...rest } = await readLinksMap();
+  await writeLinksMap(rest);
 }
 
 export function getLinkedRepoForCwd(): Promise<RepoLink | null> {
