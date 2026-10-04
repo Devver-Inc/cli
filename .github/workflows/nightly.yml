@@ -1,0 +1,162 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.changes.outputs.changed }}
+      sha: ${{ steps.changes.outputs.sha }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+      - name: Skip when develop matches the last published nightly
+        id: changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse HEAD)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          LAST=$(gh release list --exclude-drafts --limit 100 --json tagName,isPrerelease --jq '[.[] | select(.isPrerelease and (.tagName | startswith("nightly-")))][0].tagName // ""')
+          if [[ -n "$LAST" ]]; then
+            git fetch --no-tags origin "refs/tags/$LAST"
+            if [[ "$SHA" == "$(git rev-parse 'FETCH_HEAD^{commit}')" ]]; then
+              echo 'develop has not changed since the last nightly'
+              echo 'changed=false' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+      - uses: oven-sh/setup-bun@v2
+        if: steps.changes.outputs.changed == 'true'
+      - run: bun install --frozen-lockfile
+        if: steps.changes.outputs.changed == 'true'
+      - run: bun run check && bun run typecheck && bun test
+        if: steps.changes.outputs.changed == 'true'
+      - name: Choose an unused prerelease version
+        if: steps.changes.outputs.changed == 'true'
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          STABLE=$(npm view @devver/cli dist-tags.latest)
+          if [[ ! "$STABLE" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo 'Cannot determine the published stable version' >&2
+            exit 1
+          fi
+          VERSION="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$(( ${BASH_REMATCH[3]} + 1 ))-nightly.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  binary:
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: Stamp nightly version
+        run: npm version '${{ needs.prepare.outputs.version }}' --no-git-tag-version
+      - name: Build standalone binary
+        run: bun run build
+        env:
+          DEVVER_RELEASE_CHANNEL: nightly
+      - name: Archive (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          tar czf devver-cli-${{ matrix.target }}.tar.gz devver
+          shasum -a 256 devver-cli-${{ matrix.target }}.tar.gz > devver-cli-${{ matrix.target }}.tar.gz.sha256
+      - name: Archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          7z a devver-cli-${{ matrix.target }}.zip devver.exe
+          (Get-FileHash devver-cli-${{ matrix.target }}.zip -Algorithm SHA256).Hash.ToLower() + "  devver-cli-${{ matrix.target }}.zip" | Out-File -Encoding utf8 devver-cli-${{ matrix.target }}.zip.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: devver-cli-${{ matrix.target }}
+          path: |
+            devver-cli-${{ matrix.target }}.tar.gz
+            devver-cli-${{ matrix.target }}.tar.gz.sha256
+            devver-cli-${{ matrix.target }}.zip
+            devver-cli-${{ matrix.target }}.zip.sha256
+          if-no-files-found: error
+
+  npm:
+    needs: [prepare, binary]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.4.0'
+          registry-url: https://registry.npmjs.org
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: npm version '${{ needs.prepare.outputs.version }}' --no-git-tag-version
+      - run: bun run build:npm && node dist/cli.mjs --version
+        env:
+          DEVVER_RELEASE_CHANNEL: nightly
+      - run: npm publish --access public --tag nightly
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DEVVER_RELEASE_CHANNEL: nightly
+
+  release:
+    needs: [prepare, binary, npm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: devver-cli-*
+          path: artifacts
+          merge-multiple: true
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: nightly-${{ needs.prepare.outputs.version }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SHA: ${{ needs.prepare.outputs.sha }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(artifacts/*.tar.gz artifacts/*.zip artifacts/*.sha256)
+          if (( ${#files[@]} != 6 )); then
+            echo 'Missing nightly archives or checksums' >&2
+            exit 1
+          fi
+          gh release create "$TAG" "${files[@]}" --target "$SHA" --title "$VERSION" --notes "Nightly from develop. Unstable; opt in explicitly." --prerelease
