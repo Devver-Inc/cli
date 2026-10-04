@@ -34,12 +34,12 @@ For CI without Node, find a `nightly-*` tag on the [GitHub Releases page](https:
 ```toml
 # mise.toml
 [tools."github:Devver-Inc/cli"]
-version = "nightly-1.2.1-nightly.RUN_ID.ATTEMPT"
+version = "nightly-1.2.1-nightly.build.42.1"
 version_prefix = ""
 prerelease = true
 ```
 
-Replace the example version with an actual nightly release tag, then run `mise install` and `mise exec -- devver --version`. The empty `version_prefix` tells mise not to prepend `v` to the `nightly-*` tag. `devver --version` and the TUI display the running version and commit. Do not use mise `@latest` for CI: it normally excludes prereleases. To ship an urgent stable fix, apply it to `main`, use the existing Release Please release flow, then forward-merge it to `develop`.
+Replace the example version with an actual nightly release tag (`42` is the workflow's incremental run number; the last digit is the rerun attempt), then run `mise install` and `mise exec -- devver --version`. The empty `version_prefix` tells mise not to prepend `v` to the `nightly-*` tag. `devver --version` and the TUI display the running version and commit. Do not use mise `@latest` for CI: it normally excludes prereleases. To ship an urgent stable fix, apply it to `main`, use the existing Release Please release flow, then forward-merge it to `develop`.
 
 # Release Process
 

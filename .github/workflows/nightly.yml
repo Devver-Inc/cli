@@ -2,7 +2,7 @@ name: Nightly
 
 on:
   schedule:
-    - cron: '17 2 * * *'
+    - cron: "17 2 * * *"
   workflow_dispatch:
 
 permissions:
@@ -60,7 +60,7 @@ jobs:
             echo 'Cannot determine the published stable version' >&2
             exit 1
           fi
-          VERSION="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$(( ${BASH_REMATCH[3]} + 1 ))-nightly.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
+          VERSION="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$(( ${BASH_REMATCH[3]} + 1 ))-nightly.build.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   binary:
@@ -120,7 +120,7 @@ jobs:
           ref: ${{ needs.prepare.outputs.sha }}
       - uses: actions/setup-node@v4
         with:
-          node-version: '26.4.0'
+          node-version: "26.4.0"
           registry-url: https://registry.npmjs.org
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
