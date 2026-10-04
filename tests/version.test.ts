@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import pkg from "../package.json";
-import { buildDefines } from "../scripts/stamp";
+import { buildDefines, commitStamp } from "../scripts/stamp";
 
 const repo = join(import.meta.dir, "..");
 const entry = join(repo, "src", "cli", "index.ts");
@@ -22,6 +23,40 @@ test("nightly stamp keeps the package version and marks the release channel", ()
       Reflect.deleteProperty(process.env, "DEVVER_RELEASE_CHANNEL");
     } else {
       process.env.DEVVER_RELEASE_CHANNEL = previous;
+    }
+  }
+});
+
+test("nightly CI stamps the tested commit despite versioning changes", () => {
+  const directory = mkdtempSync(join(repo, "nightly-stamp-test-"));
+  const previousChannel = process.env.DEVVER_RELEASE_CHANNEL;
+  const previousCommit = process.env.DEVVER_RELEASE_COMMIT;
+  try {
+    writeFileSync(join(directory, "changed"), "dirty");
+    const result = Bun.spawnSync(["git", "rev-parse", "HEAD"], {
+      cwd: repo,
+      stdout: "pipe",
+    });
+    expect(result.exitCode).toBe(0);
+    const sha = result.stdout.toString().trim();
+    Reflect.deleteProperty(process.env, "DEVVER_RELEASE_CHANNEL");
+    expect(commitStamp()).toBe(`${sha.slice(0, 7)}-dirty`);
+    process.env.DEVVER_RELEASE_CHANNEL = "nightly";
+    process.env.DEVVER_RELEASE_COMMIT = sha;
+    expect(commitStamp()).toBe(sha.slice(0, 7));
+    process.env.DEVVER_RELEASE_COMMIT = "wrong";
+    expect(() => commitStamp()).toThrow("Nightly checkout does not match");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+    if (previousChannel === undefined) {
+      Reflect.deleteProperty(process.env, "DEVVER_RELEASE_CHANNEL");
+    } else {
+      process.env.DEVVER_RELEASE_CHANNEL = previousChannel;
+    }
+    if (previousCommit === undefined) {
+      Reflect.deleteProperty(process.env, "DEVVER_RELEASE_COMMIT");
+    } else {
+      process.env.DEVVER_RELEASE_COMMIT = previousCommit;
     }
   }
 });

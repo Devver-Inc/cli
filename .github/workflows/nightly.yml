@@ -67,6 +67,8 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.changed == 'true'
     runs-on: ${{ matrix.os }}
+    env:
+      DEVVER_RELEASE_COMMIT: ${{ needs.prepare.outputs.sha }}
     strategy:
       fail-fast: false
       matrix:
@@ -114,6 +116,8 @@ jobs:
   npm:
     needs: [prepare, binary]
     runs-on: ubuntu-latest
+    env:
+      DEVVER_RELEASE_COMMIT: ${{ needs.prepare.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:

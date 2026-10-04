@@ -11,6 +11,13 @@ export function commitStamp(): string {
   if (!commit) {
     return "unknown";
   }
+  const expected = process.env.DEVVER_RELEASE_COMMIT;
+  if (process.env.DEVVER_RELEASE_CHANNEL === "nightly" && expected) {
+    if (git("rev-parse", "HEAD") !== expected) {
+      throw new Error("Nightly checkout does not match the tested commit");
+    }
+    return commit;
+  }
   const pending = git("status", "--porcelain");
   if (pending === undefined) {
     return commit;
