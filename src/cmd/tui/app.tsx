@@ -8,6 +8,7 @@ export async function tui(input: {
   url: string;
   args: Args;
   directory?: string;
+  version: string;
   onExit?: () => Promise<void>;
 }) {
   const renderer = await createCliRenderer({
@@ -27,7 +28,7 @@ export async function tui(input: {
       };
       root.render(
         <ExitProvider onExit={onExit}>
-          <App />
+          <App version={input.version} />
         </ExitProvider>
       );
     });
@@ -37,7 +38,7 @@ export async function tui(input: {
   }
 }
 
-function App() {
+function App({ version }: { version: string }) {
   const exit = useExit();
 
   useKeyboard((key) => {
@@ -50,6 +51,7 @@ function App() {
     <box alignItems="center" flexGrow={1} justifyContent="center">
       <box alignItems="center" flexDirection="column" justifyContent="center">
         <ascii-font font="slick" text="Devver" />
+        <text attributes={TextAttributes.DIM}>{version}</text>
         <text attributes={TextAttributes.DIM}>What will you build?</text>
         <text attributes={TextAttributes.DIM}>Press Ctrl+C to exit</text>
       </box>

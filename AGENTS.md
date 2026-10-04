@@ -20,6 +20,9 @@
 - Errors must produce a nonzero exit status, cancellations must not masquerade as successful mutations, and resources (auth server, renderer, Effect scopes) must be cleaned up. Avoid `process.exit()` inside handlers/finalizers. Git/deploy checks fail closed if a subprocess result is unknown or unsuccessful.
 - Unimplemented commands must say they are unsupported and fail; do not print a simulated success or wait forever.
 
+## Release channels
+- `main` is the stable/hotfix line; `develop` is the long-lived integration/nightly line. The scheduled/manual nightly workflow lives on default `main` and explicitly checks out `develop`. It publishes public opt-in `@devver/cli@nightly` and a GitHub `nightly-*` prerelease with standalone binaries for pinned mise CI installs; it must never tag `v*`, change npm `latest`, or update Homebrew. Forward-merge stable fixes to `develop`.
+
 ## Checks and updates
 - Run non-mutating `bun run check`, `bun run typecheck`, and `bun test`; add the smallest runnable regression check for each nontrivial change. `tests/node-runtime.test.ts` bundles with `--target=node`, asserts the bundle contains no Bun API calls, and runs it under `node` with Bun absent from `PATH`; keep it passing as the guard against reintroducing Bun-only APIs in shared code. Test Node npm artifacts in a clean install without Bun and executable artifacts without either runtime before release.
 - Update this document when an architectural or quality decision changes. Do not discard unrelated working-tree changes (including the Effect v4 migration). Never push commits or branches to the repository.

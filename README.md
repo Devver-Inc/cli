@@ -6,13 +6,40 @@ To install dependencies:
 bun install
 ```
 
-To run:
+To run the source with automatic restarts: `bun run dev`.
+
+To keep a local standalone `devver` executable rebuilt as you edit (without replacing your globally installed CLI):
 
 ```bash
-bun dev
+bun run dev:build                 # keep this running in one terminal
+export PATH="$PWD:$PATH"          # in another terminal, from the repo root
+devver --version                  # runs the freshly built ./devver
 ```
 
+The watcher rebuilds the executable; an already-running `devver` process does not restart. For automatic process restarts, use `bun run dev` instead. The watch-built executable reports the `dev` channel; release builds use `scripts/build.ts` for stamped version and commit.
+
 This project was created using `bun create tui`. [create-tui](https://git.new/create-tui) is the easiest way to get started with OpenTUI.
+
+# Stable and nightly builds
+
+`main` stays stable and can receive hotfixes. Merge work into `develop` for nightly testing; merge stable fixes forward into `develop`. The nightly workflow checks `develop` daily (or manually) and publishes only if its commit differs from the last published nightly; skipped days are fine. Nightlies are **public and unstable**; they do not update npm `latest`, the stable GitHub release, or Homebrew.
+
+```bash
+npm install -g @devver/cli@nightly  # requires Node >=26.4
+npm install -g @devver/cli          # stable
+```
+
+For CI without Node, find a `nightly-*` tag on the [GitHub Releases page](https://github.com/Devver-Inc/cli/releases), then pin that tag for reproducible installs with mise's GitHub backend:
+
+```toml
+# mise.toml
+[tools."github:Devver-Inc/cli"]
+version = "nightly-1.2.1-nightly.RUN_ID.ATTEMPT"
+version_prefix = ""
+prerelease = true
+```
+
+Replace the example version with an actual nightly release tag, then run `mise install` and `mise exec -- devver --version`. The empty `version_prefix` tells mise not to prepend `v` to the `nightly-*` tag. `devver --version` and the TUI display the running version and commit. Do not use mise `@latest` for CI: it normally excludes prereleases. To ship an urgent stable fix, apply it to `main`, use the existing Release Please release flow, then forward-merge it to `develop`.
 
 # Release Process
 

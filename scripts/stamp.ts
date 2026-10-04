@@ -21,7 +21,9 @@ export function commitStamp(): string {
 export function buildDefines(channel: "npm" | "standalone") {
   return {
     DEVVER_VERSION: JSON.stringify(pkg.version),
-    DEVVER_CHANNEL: JSON.stringify(channel),
+    DEVVER_CHANNEL: JSON.stringify(
+      process.env.DEVVER_RELEASE_CHANNEL === "nightly" ? "nightly" : channel
+    ),
     DEVVER_COMMIT: JSON.stringify(commitStamp()),
   };
 }

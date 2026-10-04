@@ -1,5 +1,5 @@
 {
-  "name": "@devver-inc/cli",
+  "name": "@devver/cli",
   "version": "1.2.0",
   "private": false,
   "description": "Deploy and try your app in seconds",
@@ -30,6 +30,7 @@
   ],
   "scripts": {
     "dev": "bun run --watch src/cli/index.ts",
+    "dev:build": "bun build --compile --watch --outfile devver src/cli/index.ts",
     "cmd": "bun run src/cli/index.ts",
     "build": "bun run scripts/build.ts",
     "build:npm": "bun run scripts/build-npm.ts",
