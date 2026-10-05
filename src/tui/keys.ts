@@ -8,6 +8,10 @@ export const shortcuts = {
   diff: ["d"],
   base: ["b"],
   pane: ["tab"],
+  organization: ["g"],
+  project: ["p"],
+  confirm: ["return"],
+  cancel: ["escape"],
   quit: ["q"],
 } as const;
 
@@ -25,6 +29,10 @@ export function actionFor(key: KeyEvent): keyof typeof shortcuts | undefined {
     "diff",
     "base",
     "pane",
+    "organization",
+    "project",
+    "confirm",
+    "cancel",
     "quit",
   ] as const) {
     if (shortcuts[action].some((name) => name === key.name)) {

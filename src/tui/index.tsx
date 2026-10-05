@@ -1,12 +1,24 @@
 import { CliRenderEvents, createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import { Effect } from "effect";
+import type { Organization } from "../auth/session";
 import { App } from "./app";
 
 export interface TuiOptions {
   readonly directory?: string;
   readonly project?: string;
+  readonly currentProjectId?: string | null;
+  readonly loadProjects?: () => Promise<
+    readonly { id: string; name: string }[]
+  >;
+  readonly onSwitchProject?: (id: string) => Promise<void>;
   readonly version?: string;
+  readonly organizations?: readonly Organization[];
+  readonly currentOrganization?: string | null;
+  readonly onSwitchOrganization?: (
+    current: string | null,
+    id: string
+  ) => Promise<void>;
 }
 
 const renderer = Effect.acquireRelease(
