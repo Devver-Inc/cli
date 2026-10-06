@@ -47,13 +47,19 @@ const list = Command.make("list", {}, () =>
   Effect.tryPromise(readConfig).pipe(
     Effect.flatMap((config) => {
       const entries = Object.entries(config);
+      const target = config["local-target"];
       return entries.length === 0
         ? Console.log(
             "  No config values set. Using defaults:\n    api-url: https://app.devver.app/api/v1"
           )
         : Effect.forEach(
             entries,
-            ([key, value]) => Console.log(`  ${key} = ${value}`),
+            ([key, value]) =>
+              Console.log(
+                key === "local-target" && target
+                  ? `  ${key} = ${target.name} at ${target.url}`
+                  : `  ${key} = ${value}`
+              ),
             {
               discard: true,
             }

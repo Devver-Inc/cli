@@ -83,6 +83,32 @@ const stop = async (child: ReturnType<typeof Bun.spawn>) => {
   await child.exited;
 };
 
+test("config list renders the attached target without object coercion and keeps api-url readable", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  const ws = workspace();
+  let running: Awaited<ReturnType<typeof foreground>> | undefined;
+  try {
+    running = await foreground(ws.env, "listed");
+    expect(
+      (await ws.run("config", "set", "api-url", "https://example.org/api/v1"))
+        .status
+    ).toBe(0);
+    expect((await ws.run("attach", running.url)).status).toBe(0);
+    const listed = await ws.run("config", "list");
+    expect(listed.status).toBe(0);
+    expect(listed.output).toContain("api-url = https://example.org/api/v1");
+    expect(listed.output).toContain(`local-target = listed at ${running.url}`);
+    expect(listed.output).not.toContain("[object Object]");
+  } finally {
+    if (running) {
+      await stop(running.child);
+    }
+    rmSync(ws.root, { recursive: true, force: true });
+  }
+});
+
 test("attach switches verified foreground servers across CLI processes and detach leaves them running", async () => {
   if (process.platform === "win32") {
     return;
