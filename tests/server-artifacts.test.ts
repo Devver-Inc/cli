@@ -9,6 +9,22 @@ const node = Bun.which("node");
 const versioned = join("servers", pkg.version);
 const CONTROL_URL = /^http:\/\/127\.0\.0\.1:\d+\/api\/v1$/;
 const BUN_API = /\bBun\s*\.\s*(serve|spawn|file|build)\b/;
+const FORMULA = /cat > Formula\/devver-cli\.rb << EOF\n([\s\S]*?)\n {10}EOF/;
+
+test("Homebrew installs the versioned server beside its CLI", () => {
+  const workflow = readFileSync(
+    join(repo, ".github", "workflows", "release.yml"),
+    "utf8"
+  );
+  const formula = workflow.match(FORMULA)?.[1];
+  expect(formula).toBeDefined();
+  expect(formula).toContain(
+    'bin.install "devver"\n              bin.install "servers"'
+  );
+  expect(formula).toContain(
+    'assert_predicate bin/"servers"/version.to_s/"devver-server", :executable?'
+  );
+});
 
 async function smoke(executable: string, args: string[], path: string) {
   const root = mkdtempSync(join(tmpdir(), "devver-artifact-"));

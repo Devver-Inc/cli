@@ -237,10 +237,12 @@ jobs:
 
             def install
               bin.install "devver"
+              bin.install "servers"
             end
 
             test do
               assert_match version.to_s, shell_output("#{bin}/devver --version")
+              assert_predicate bin/"servers"/version.to_s/"devver-server", :executable?
             end
           end
           EOF
