@@ -85,23 +85,38 @@ jobs:
           ref: ${{ needs.prepare.outputs.sha }}
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
+      - uses: actions/setup-node@v4
+        if: runner.os != 'Windows'
+        with:
+          node-version: '26.5.0'
       - name: Stamp nightly version
         run: npm version '${{ needs.prepare.outputs.version }}' --no-git-tag-version
+      - name: Smoke packaged CLI and server without Bun (Unix)
+        if: runner.os != 'Windows'
+        run: bun test tests/server-artifacts.test.ts
+        env:
+          DEVVER_RELEASE_CHANNEL: nightly
       - name: Build standalone binary
         run: bun run build
         env:
           DEVVER_RELEASE_CHANNEL: nightly
+      - name: Verify Windows server is packaged (runtime smoke gated by #84)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          if (!(Test-Path "servers/$version/devver-server.exe")) { throw 'Missing versioned Windows server executable' }
       - name: Archive (Unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          tar czf devver-cli-${{ matrix.target }}.tar.gz devver
+          tar czf devver-cli-${{ matrix.target }}.tar.gz devver servers
           shasum -a 256 devver-cli-${{ matrix.target }}.tar.gz > devver-cli-${{ matrix.target }}.tar.gz.sha256
       - name: Archive (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          7z a devver-cli-${{ matrix.target }}.zip devver.exe
+          7z a devver-cli-${{ matrix.target }}.zip devver.exe servers
           (Get-FileHash devver-cli-${{ matrix.target }}.zip -Algorithm SHA256).Hash.ToLower() + "  devver-cli-${{ matrix.target }}.zip" | Out-File -Encoding utf8 devver-cli-${{ matrix.target }}.zip.sha256
       - uses: actions/upload-artifact@v4
         with:
@@ -129,6 +144,9 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: npm version '${{ needs.prepare.outputs.version }}' --no-git-tag-version
+      - run: bun test tests/server-artifacts.test.ts
+        env:
+          DEVVER_RELEASE_CHANNEL: nightly
       - run: bun run build:npm && node dist/cli.mjs --version
         env:
           DEVVER_RELEASE_CHANNEL: nightly

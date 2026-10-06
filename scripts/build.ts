@@ -4,6 +4,7 @@
  * Build script for devver
  */
 
+import { rmSync } from "node:fs";
 import pkg from "../package.json";
 import { buildDefines } from "./stamp";
 
@@ -22,4 +23,22 @@ if (!result.success) {
   process.exit(1);
 }
 
-console.log(`Build successful! Version: ${pkg.version}`);
+// Archives contain only the server matching this CLI, not previous builds.
+rmSync("servers", { recursive: true, force: true });
+const server = await Bun.build({
+  entrypoints: ["./src/server/index.ts"],
+  compile: {
+    outfile: `servers/${pkg.version}/devver-server${process.platform === "win32" ? ".exe" : ""}`,
+  },
+});
+if (!server.success) {
+  console.error("Standalone server build failed:");
+  for (const log of server.logs) {
+    console.error(log);
+  }
+  process.exit(1);
+}
+
+console.log(
+  `Built devver and servers/${pkg.version}/devver-server (version ${pkg.version})`
+);

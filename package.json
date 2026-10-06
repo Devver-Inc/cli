@@ -19,7 +19,8 @@
   "author": "Your Name",
   "type": "module",
   "bin": {
-    "devver": "dist/cli.mjs"
+    "devver": "dist/cli.mjs",
+    "devver-server": "dist/servers/1.2.0/server.mjs"
   },
   "directories": {
     "test": "tests"
