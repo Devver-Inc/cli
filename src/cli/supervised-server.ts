@@ -181,7 +181,7 @@ export async function create(name: string) {
       await rm(directory, { recursive: true });
     } catch {
       throw new Error(
-        `Server creation failed; instance '${name}' may need recovery: systemctl --user stop ${unit}. State retained at ${directory}`,
+        `Server creation failed; instance '${name}' may need recovery: run systemctl --user stop ${unit}, then remove new state at ${directory} before retrying. No readiness was reported`,
         { cause: error }
       );
     }
