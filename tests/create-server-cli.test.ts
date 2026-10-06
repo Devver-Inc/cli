@@ -97,7 +97,7 @@ test("failed user manager registration does not report readiness or leave a name
 });
 
 test("a native user manager keeps distinct named servers reachable after creation exits", async () => {
-  if (process.platform !== "linux" || !node) {
+  if (process.platform !== "linux" || !node || !Bun.which("systemctl")) {
     return;
   }
   const manager = Bun.spawnSync(["systemctl", "--user", "show-environment"], {

@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, open, readFile, rm } from "node:fs/promises";
+import { link, lstat, mkdir, open, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -54,21 +54,23 @@ async function pinServer(parent: string) {
     throw new Error("Packaged server must be a regular file");
   }
   const destination = join(version, npm ? "server.mjs" : "devver-server");
+  const staging = join(version, `.server-${randomUUID()}`);
+  const handle = await open(staging, "wx", FILE_MODE);
   try {
-    const handle = await open(destination, "wx", FILE_MODE);
-    try {
-      await handle.writeFile(await readFile(source));
-      await handle.sync();
-    } catch (error) {
-      await handle.close();
-      await rm(destination);
-      throw error;
-    }
+    await handle.writeFile(await readFile(source));
+    await handle.sync();
     await handle.close();
-  } catch (error) {
-    if (!existing(error)) {
-      throw error;
+    try {
+      // A complete, fsynced copy becomes visible atomically; never replace a pin.
+      await link(staging, destination);
+    } catch (error) {
+      if (!existing(error)) {
+        throw error;
+      }
     }
+  } finally {
+    await handle.close();
+    await rm(staging, { force: true });
   }
   const pinned = await lstat(destination);
   if (
