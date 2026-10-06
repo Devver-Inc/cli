@@ -1,10 +1,13 @@
 import { expect, test } from "bun:test";
 import {
   chmodSync,
+  lstatSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { createConnection } from "node:net";
@@ -172,6 +175,7 @@ test("named server identities survive restarts without sharing or replacing corr
     const second = await launch(root, "second");
     child = second.child;
     expect(await id(second.url)).not.toBe(firstId);
+    expect(statSync(join(root, "devver")).mode % 0o1000).toBe(0o700);
     expect(statSync(join(root, "devver", "servers")).mode % 0o1000).toBe(0o700);
     expect(
       statSync(join(root, "devver", "servers", "first")).mode % 0o1000
@@ -196,6 +200,67 @@ test("named server identities survive restarts without sharing or replacing corr
     expect(exposed.output).toContain("owner-only");
     expect(statSync(file("first")).mode % 0o1000).toBe(0o644);
     expect(run(root, "../escape").status).not.toBe(0);
+  } finally {
+    child?.kill();
+    if (child) {
+      await child.exited;
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("legacy read-only data roots work; writable or symlinked roots cannot replace state", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  const root = mkdtempSync(join(tmpdir(), "devver-server-root-"));
+  const data = join(root, "data");
+  const real = join(root, "real");
+  const state = JSON.stringify({
+    instanceId: "031fdbdf-3c42-4d19-8909-9a2cf4690cb0",
+    name: "demo",
+  });
+  const putState = (directory: string) => {
+    const instance = join(directory, "servers", "demo");
+    mkdirSync(instance, { recursive: true, mode: 0o700 });
+    writeFileSync(join(instance, "identity.json"), state, { mode: 0o600 });
+    return join(instance, "identity.json");
+  };
+  let child: ReturnType<typeof Bun.spawn> | undefined;
+  try {
+    mkdirSync(data);
+    const dataRoot = join(data, "devver");
+    mkdirSync(dataRoot, { mode: 0o700 });
+    const file = putState(dataRoot);
+    chmodSync(dataRoot, 0o755);
+    const legacy = await launch(data, "demo");
+    child = legacy.child;
+    expect(await (await fetch(`${legacy.url}/identity`)).json()).toMatchObject({
+      instanceId: "031fdbdf-3c42-4d19-8909-9a2cf4690cb0",
+      name: "demo",
+    });
+    child.kill();
+    await child.exited;
+    child = undefined;
+    expect(statSync(dataRoot).mode % 0o1000).toBe(0o755);
+    expect(readFileSync(file, "utf8")).toBe(state);
+
+    chmodSync(dataRoot, 0o777);
+    const writable = run(data, "demo");
+    expect(writable.status).not.toBe(0);
+    expect(writable.output).toContain("not group/other writable");
+    expect(statSync(dataRoot).mode % 0o1000).toBe(0o777);
+    expect(readFileSync(file, "utf8")).toBe(state);
+
+    rmSync(dataRoot, { recursive: true });
+    mkdirSync(real, { mode: 0o700 });
+    const linkedFile = putState(real);
+    symlinkSync(real, dataRoot);
+    const linked = run(data, "demo");
+    expect(linked.status).not.toBe(0);
+    expect(linked.output).toContain("not a symlink");
+    expect(lstatSync(dataRoot).isSymbolicLink()).toBe(true);
+    expect(readFileSync(linkedFile, "utf8")).toBe(state);
   } finally {
     child?.kill();
     if (child) {

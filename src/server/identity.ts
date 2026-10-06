@@ -19,6 +19,33 @@ function isExisting(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "EEXIST";
 }
 
+function checkDataRoot(
+  stat: Awaited<ReturnType<typeof lstat>>,
+  created: boolean
+) {
+  if (
+    stat.uid !== process.getuid?.() ||
+    !stat.isDirectory() ||
+    typeof stat.mode !== "number"
+  ) {
+    throw new Error(
+      "Server data root must be owned by this user and not a symlink"
+    );
+  }
+  const permissions = stat.mode % 0o1000;
+  const group = Math.floor(permissions / 0o10) % 0o10;
+  const other = permissions % 0o10;
+  if (
+    group % 4 >= 2 ||
+    other % 4 >= 2 ||
+    (created && permissions !== PRIVATE_DIRECTORY)
+  ) {
+    throw new Error(
+      "Server data root must be 0700 when new and not group/other writable when existing"
+    );
+  }
+}
+
 function checkOwner(
   stat: Awaited<ReturnType<typeof lstat>>,
   mode: number,
@@ -48,8 +75,19 @@ export async function loadInstance(name: string) {
     );
   }
 
-  const root = join(xdgData ?? join(homedir(), ".local", "share"), "devver");
-  await mkdir(root, { recursive: true });
+  const data = xdgData ?? join(homedir(), ".local", "share");
+  await mkdir(data, { recursive: true });
+  const root = join(data, "devver");
+  let created = false;
+  try {
+    await mkdir(root, { mode: PRIVATE_DIRECTORY });
+    created = true;
+  } catch (error) {
+    if (!isExisting(error)) {
+      throw error;
+    }
+  }
+  checkDataRoot(await lstat(root), created);
   const servers = join(root, "servers");
   try {
     await mkdir(servers, { mode: PRIVATE_DIRECTORY });
