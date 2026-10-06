@@ -50,7 +50,7 @@ const list = Command.make("list", {}, () =>
       const target = config["local-target"];
       return entries.length === 0
         ? Console.log(
-            "  No config values set. Using defaults:\n    api-url: https://app.devver.app/api/v1"
+            "  No config values set. Attach a local server or use an explicit --api-url for cloud commands."
           )
         : Effect.forEach(
             entries,
