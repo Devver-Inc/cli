@@ -270,7 +270,7 @@ test("legacy read-only data roots work; writable or symlinked roots cannot repla
   }
 });
 
-test("Windows refuses to create instance state without owner-only ACLs", () => {
+test("Windows rejects untrusted XDG data overrides instead of storing server state there", () => {
   if (process.platform !== "win32") {
     return;
   }
@@ -278,7 +278,7 @@ test("Windows refuses to create instance state without owner-only ACLs", () => {
   try {
     const result = run(root, "demo");
     expect(result.status).not.toBe(0);
-    expect(result.output).toContain("POSIX owner-only filesystem permissions");
+    expect(result.output).toContain("does not accept XDG_DATA_HOME overrides");
     expect(() => statSync(join(root, "devver", "servers", "demo"))).toThrow();
   } finally {
     rmSync(root, { recursive: true, force: true });
