@@ -62,15 +62,15 @@ test("npm server bundle does not enter the source TypeScript program", () => {
   expect(result.exitCode, result.stderr.toString()).toBe(0);
 });
 
-test("new server fails clearly on platforms without Linux user supervision", () => {
-  if (process.platform === "linux") {
+test("new server fails clearly where native supervision is unsupported", () => {
+  if (process.platform !== "win32") {
     return;
   }
   const ws = workspace();
   try {
     const result = ws.run("new", "server");
     expect(result.status).not.toBe(0);
-    expect(result.output).toContain("Linux");
+    expect(result.output).toContain(process.platform);
     expect(ws.run("server", "status").output).toContain("No server attached");
   } finally {
     rmSync(ws.root, { recursive: true, force: true });

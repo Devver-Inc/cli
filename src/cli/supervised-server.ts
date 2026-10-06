@@ -38,7 +38,7 @@ async function privateDirectory(path: string) {
   }
 }
 
-async function pinServer(parent: string) {
+export async function pinServer(parent: string) {
   const installations = join(dirname(parent), "installations");
   await privateDirectory(installations);
   const version = join(installations, pkg.version);
@@ -91,7 +91,7 @@ async function pinServer(parent: string) {
   };
 }
 
-async function availablePort() {
+export async function availablePort() {
   const server = createServer();
   try {
     await new Promise<void>((resolve, reject) => {

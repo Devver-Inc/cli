@@ -6,13 +6,17 @@ const createServer = Command.make(
   { name: Argument.String("name").pipe(Argument.withDefault("default")) },
   ({ name }) =>
     Effect.tryPromise(async () => {
-      if (process.platform !== "linux") {
-        throw new Error(
-          "Creating a supervised server is currently supported only on Linux"
-        );
+      if (process.platform === "darwin") {
+        const { create } = await import("./supervised-server-macos");
+        return create(name);
       }
-      const { create } = await import("./supervised-server");
-      return create(name);
+      if (process.platform === "linux") {
+        const { create } = await import("./supervised-server");
+        return create(name);
+      }
+      throw new Error(
+        `Creating a supervised server is currently unsupported on ${process.platform}`
+      );
     }).pipe(
       Effect.flatMap((url) =>
         Console.log(`Server ready at ${url}\ndevver attach ${url}`)
