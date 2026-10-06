@@ -4,6 +4,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { Schema } from "effect";
 import { xdgData } from "xdg-basedir";
+import {
+  verifyWindowsPrivate,
+  windowsPrivateDirectories,
+  windowsServersDirectory,
+} from "./windows-acl";
 
 const InstanceSchema = Schema.Struct({
   instanceId: Schema.String.check(Schema.isUUID(4)),
@@ -64,17 +69,20 @@ function checkOwner(
 }
 
 export async function instanceParent(name: string) {
-  if (process.platform === "win32" || process.getuid === undefined) {
-    throw new Error(
-      "Server instance state requires POSIX owner-only filesystem permissions"
-    );
-  }
   if (!NAME.test(name)) {
     throw new Error(
       "Invalid server instance name (use letters, numbers, _ or -; start with a letter or number)"
     );
   }
 
+  if (process.platform === "win32") {
+    return await windowsServersDirectory();
+  }
+  if (process.getuid === undefined) {
+    throw new Error(
+      "Server instance state requires owner-only filesystem permissions"
+    );
+  }
   const data = xdgData ?? join(homedir(), ".local", "share");
   await mkdir(data, { recursive: true });
   const root = join(data, "devver");
@@ -102,20 +110,27 @@ export async function instanceParent(name: string) {
 
 export async function loadInstance(name: string) {
   const directory = join(await instanceParent(name), name);
-  try {
-    await mkdir(directory, { mode: PRIVATE_DIRECTORY });
-  } catch (error) {
-    if (!isExisting(error)) {
-      throw error;
+  if (process.platform === "win32") {
+    await windowsPrivateDirectories(directory);
+  } else {
+    try {
+      await mkdir(directory, { mode: PRIVATE_DIRECTORY });
+    } catch (error) {
+      if (!isExisting(error)) {
+        throw error;
+      }
     }
+    checkOwner(await lstat(directory), PRIVATE_DIRECTORY, "directory");
   }
-  checkOwner(await lstat(directory), PRIVATE_DIRECTORY, "directory");
 
   const file = join(directory, "identity.json");
   try {
     const handle = await open(file, "wx", PRIVATE_FILE);
     try {
       const instance = { instanceId: randomUUID(), name };
+      if (process.platform === "win32") {
+        await verifyWindowsPrivate({ path: file, kind: "file" });
+      }
       await handle.writeFile(JSON.stringify(instance));
       await handle.sync();
       return instance;
@@ -127,7 +142,11 @@ export async function loadInstance(name: string) {
       throw error;
     }
   }
-  checkOwner(await lstat(file), PRIVATE_FILE, "file");
+  if (process.platform === "win32") {
+    await verifyWindowsPrivate({ path: file, kind: "file" });
+  } else {
+    checkOwner(await lstat(file), PRIVATE_FILE, "file");
+  }
   try {
     const instance = decodeInstance(JSON.parse(await readFile(file, "utf8")));
     if (instance.name !== name) {
