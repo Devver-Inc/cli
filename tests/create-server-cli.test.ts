@@ -52,6 +52,15 @@ if (built.exitCode !== 0) {
   throw new Error(built.stderr.toString());
 }
 
+test("npm server bundle does not enter the source TypeScript program", () => {
+  const result = Bun.spawnSync(["bun", "run", "typecheck"], {
+    cwd: repo,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  expect(result.exitCode, result.stderr.toString()).toBe(0);
+});
+
 test("new server fails clearly on platforms without Linux user supervision", () => {
   if (process.platform === "linux") {
     return;
@@ -89,6 +98,36 @@ test("failed user manager registration does not report readiness or leave a name
     expect(() =>
       readFileSync(
         join(ws.root, "data", "devver", "servers", "failed", "identity.json")
+      )
+    ).toThrow();
+  } finally {
+    rmSync(ws.root, { recursive: true, force: true });
+  }
+});
+
+test("failed registration with no unit cleans only the new instance", () => {
+  if (process.platform !== "linux") {
+    return;
+  }
+  const ws = workspace();
+  try {
+    const fake = join(ws.root, "fake-bin");
+    mkdirSync(fake);
+    writeFileSync(join(fake, "systemd-run"), "#!/bin/sh\nexit 1\n", {
+      mode: 0o700,
+    });
+    writeFileSync(
+      join(fake, "systemctl"),
+      '#!/bin/sh\ncase "$*" in *show*) echo not-found; exit 0;; esac\nexit 1\n',
+      { mode: 0o700 }
+    );
+    ws.env.PATH = `${fake}:${process.env.PATH}`;
+    const result = ws.run("new", "server", "absent");
+    expect(result.status).not.toBe(0);
+    expect(result.output).toContain("state removed");
+    expect(() =>
+      readFileSync(
+        join(ws.root, "data", "devver", "servers", "absent", "identity.json")
       )
     ).toThrow();
   } finally {

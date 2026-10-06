@@ -59,7 +59,6 @@ async function pinServer(parent: string) {
   try {
     await handle.writeFile(await readFile(source));
     await handle.sync();
-    await handle.close();
     try {
       // A complete, fsynced copy becomes visible atomically; never replace a pin.
       await link(staging, destination);
@@ -104,10 +103,31 @@ async function availablePort() {
 }
 
 async function manager(...args: string[]) {
-  await execute(args[0] ?? "systemctl", args.slice(1), {
+  const result = await execute(args[0] ?? "systemctl", args.slice(1), {
     timeout: 5000,
     maxBuffer: 8192,
   });
+  return result.stdout.trim();
+}
+
+async function removeFailedInstance(unit: string, directory: string) {
+  try {
+    await manager("systemctl", "--user", "stop", unit);
+  } catch (stopError) {
+    // A failed registration may never have installed its unique transient unit.
+    const state = await manager(
+      "systemctl",
+      "--user",
+      "show",
+      "--property=LoadState",
+      "--value",
+      unit
+    );
+    if (state !== "not-found") {
+      throw stopError;
+    }
+  }
+  await rm(directory, { recursive: true });
 }
 
 export async function create(name: string) {
@@ -177,8 +197,7 @@ export async function create(name: string) {
     // Even if systemd-run failed, stop the unique unit before discarding its state.
     // If stopping fails, retain service.json so the user can inspect and stop it manually.
     try {
-      await manager("systemctl", "--user", "stop", unit);
-      await rm(directory, { recursive: true });
+      await removeFailedInstance(unit, directory);
     } catch {
       throw new Error(
         `Server creation failed; instance '${name}' may need recovery: run systemctl --user stop ${unit}, then remove new state at ${directory} before retrying. No readiness was reported`,
