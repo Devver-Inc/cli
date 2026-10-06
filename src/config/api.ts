@@ -1,16 +1,9 @@
 /**
  * Persistent CLI configuration stored in the XDG data directory.
  *
- * Config keys are simple strings (e.g. "api-url") mapped to string values.
- * The primary use-case right now is storing the API base URL so that
- * `devver config set api-url http://localhost:3000/api/v1` persists across
- * invocations without requiring env vars or flags every time.
- *
- * Resolution order for the API URL:
- *   1. `--api-url` flag               (highest priority)
- *   2. Stored config (`devver config set api-url`)
- *   3. `DEVVER_API_URL` env var (or .env file)
- *   4. Hardcoded fallback               (lowest priority)
+ * Config stores the attached local target and legacy api-url setting.
+ * API commands require an attached target or an explicit --api-url flag;
+ * neither the stored api-url nor DEVVER_API_URL selects a target.
  */
 
 import { Schema } from "effect";
@@ -98,30 +91,4 @@ export async function unsetConfigValue<K extends keyof CliConfig>(
 ): Promise<void> {
   const { [key]: _removed, ...rest } = await readConfig();
   await writeConfig(rest);
-}
-
-/**
- * Fallback API URL — only used when no config and no env var is set.
- * DEVVER_API_URL in .env is intended to be the actual default.
- */
-const FALLBACK_API_URL = "https://app.devver.app/api/v1";
-
-export async function resolveApiUrl(
-  explicitOverride?: string
-): Promise<string> {
-  if (explicitOverride) {
-    return explicitOverride;
-  }
-
-  const storedUrl = await getConfigValue("api-url");
-  if (storedUrl) {
-    return storedUrl;
-  }
-
-  const envUrl = process.env.DEVVER_API_URL;
-  if (envUrl) {
-    return envUrl;
-  }
-
-  return FALLBACK_API_URL;
 }
