@@ -11,7 +11,11 @@ const createServer = Command.make(
         return create(name);
       }
       if (process.platform === "linux") {
-        const { create } = await import("./supervised-server");
+        const { create } = await import("./supervised-server-linux");
+        return create(name);
+      }
+      if (process.platform === "win32") {
+        const { create } = await import("./windows-supervised-server");
         return create(name);
       }
       throw new Error(

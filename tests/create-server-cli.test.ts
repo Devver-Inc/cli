@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import pkg from "../package.json";
 
 const repo = join(import.meta.dir, "..");
@@ -26,11 +27,11 @@ function workspace() {
     XDG_STATE_HOME: join(root, "state"),
     XDG_CACHE_HOME: join(root, "cache"),
   };
-  const run = (...args: string[]) => {
+  const invoke = (preload: string[], args: string[]) => {
     if (!node) {
       throw new Error("Node required for CLI process test");
     }
-    const result = Bun.spawnSync([node, cli, ...args], {
+    const result = Bun.spawnSync([node, ...preload, cli, ...args], {
       env,
       cwd: root,
       stdout: "pipe",
@@ -41,7 +42,19 @@ function workspace() {
       output: result.stdout.toString() + result.stderr.toString(),
     };
   };
-  return { root, env, run };
+  const run = (...args: string[]) => invoke([], args);
+  // Reports the platform the CLI dispatches on before its entry point runs.
+  // This proves which creator a platform reaches; it proves nothing about
+  // whether that platform's service manager works on this host.
+  const runAs = (platform: string, ...args: string[]) => {
+    const preload = join(root, `platform-${platform}.mjs`);
+    writeFileSync(
+      preload,
+      `Object.defineProperty(process, "platform", { value: ${JSON.stringify(platform)} });\n`
+    );
+    return invoke(["--import", pathToFileURL(preload).href], args);
+  };
+  return { root, env, run, runAs };
 }
 
 const built = Bun.spawnSync(["bun", "run", "build:npm"], {
@@ -62,20 +75,56 @@ test("npm server bundle does not enter the source TypeScript program", () => {
   expect(result.exitCode, result.stderr.toString()).toBe(0);
 });
 
-test("new server fails clearly where native supervision is unsupported", () => {
-  if (process.platform !== "win32") {
-    return;
-  }
+test("new server routes every supported platform to its own creator and fails clearly elsewhere", () => {
   const ws = workspace();
   try {
-    const result = ws.run("new", "server");
-    expect(result.status).not.toBe(0);
-    expect(result.output).toContain(process.platform);
+    const fake = join(ws.root, "fake-bin");
+    mkdirSync(fake);
+    // Every service manager fails, so each platform's creator is identified by
+    // its own failure without registering supervision on this host.
+    writeFileSync(
+      join(fake, "launchctl"),
+      '#!/bin/sh\ncase "$1" in print) case "$2" in */*/*) exit 1;; *) exit 0;; esac;; esac\nexit 1\n',
+      { mode: 0o700 }
+    );
+    writeFileSync(join(fake, "systemd-run"), "#!/bin/sh\nexit 1\n", {
+      mode: 0o700,
+    });
+    writeFileSync(
+      join(fake, "systemctl"),
+      '#!/bin/sh\ncase "$*" in *show*) echo not-found; exit 0;; esac\nexit 1\n',
+      { mode: 0o700 }
+    );
+    ws.env.PATH = `${fake}:${process.env.PATH}`;
+    const creators = {
+      darwin: "macOS launchd user supervision",
+      linux: "Linux systemd user supervision",
+      // The Windows creator keeps instance state under %LOCALAPPDATA%, so it
+      // refuses this workspace's overridden root before reaching Task
+      // Scheduler; no other creator rejects that override.
+      win32: "does not accept XDG_DATA_HOME overrides",
+    };
+    // The POSIX managers are replaced by shell scripts, so their own failures
+    // are only observable off Windows; a reached creator is proven everywhere
+    // by the absence of the unsupported-platform error.
+    const shellManagers = process.platform !== "win32";
+    for (const [platform, reported] of Object.entries(creators)) {
+      const created = ws.runAs(platform, "new", "server", `on-${platform}`);
+      expect(created.status, created.output).not.toBe(0);
+      expect(created.output).not.toContain("devver attach ");
+      expect(created.output).not.toContain("unsupported on");
+      if (shellManagers || platform === "win32") {
+        expect(created.output).toContain(reported);
+      }
+    }
+    const unsupported = ws.runAs("freebsd", "new", "server", "elsewhere");
+    expect(unsupported.status).not.toBe(0);
+    expect(unsupported.output).toContain("unsupported on freebsd");
     expect(ws.run("server", "status").output).toContain("No server attached");
   } finally {
     rmSync(ws.root, { recursive: true, force: true });
   }
-});
+}, 30_000);
 
 test("failed user manager registration does not report readiness or leave a named instance", () => {
   if (process.platform !== "linux") {
