@@ -66,7 +66,7 @@ async function probe(url: string) {
   }
 }
 
-async function verify(url: string) {
+export async function verifyIdentity(url: string) {
   validateControlUrl(url);
   const identity = await probe(url);
   if (identity.serverVersion !== pkg.version) {
@@ -82,7 +82,7 @@ export const attach = Command.make(
     Effect.tryPromise(async () => {
       // Read first: malformed stored state must never be overwritten by a new attachment.
       const config = await readConfig();
-      const target = await verify(url);
+      const target = await verifyIdentity(url);
       await writeConfig({ ...config, "local-target": target });
       return target;
     }).pipe(
@@ -110,7 +110,7 @@ const status = Command.make("status", {}, () =>
     }
     let reachability = "unreachable";
     try {
-      const current = await verify(target.url);
+      const current = await verifyIdentity(target.url);
       if (
         current.instanceId === target.instanceId &&
         current.name === target.name

@@ -63,7 +63,7 @@ function checkOwner(
   }
 }
 
-export async function loadInstance(name: string) {
+export async function instanceParent(name: string) {
   if (process.platform === "win32" || process.getuid === undefined) {
     throw new Error(
       "Server instance state requires POSIX owner-only filesystem permissions"
@@ -97,8 +97,11 @@ export async function loadInstance(name: string) {
     }
   }
   checkOwner(await lstat(servers), PRIVATE_DIRECTORY, "directory");
+  return servers;
+}
 
-  const directory = join(servers, name);
+export async function loadInstance(name: string) {
+  const directory = join(await instanceParent(name), name);
   try {
     await mkdir(directory, { mode: PRIVATE_DIRECTORY });
   } catch (error) {

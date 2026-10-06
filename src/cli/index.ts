@@ -7,6 +7,7 @@ import { auth } from "./auth";
 import { config, init } from "./config";
 import { deploy } from "./deploy";
 import { attach, detach, server } from "./local-server";
+import { newCommand } from "./new";
 import { organization } from "./organization";
 import { project } from "./project";
 import { repos } from "./repos";
@@ -23,6 +24,7 @@ export const cli = root.pipe(
     deploy,
     detach,
     init,
+    newCommand,
     organization,
     project,
     repos,

@@ -44,7 +44,8 @@ const server = await Bun.build({
   naming: { entry: "server.mjs" },
   target: "node",
   format: "esm",
-  packages: "external",
+  // The pinned copy runs outside node_modules and must retain its dependencies offline.
+  packages: "bundle",
 });
 if (!server.success) {
   console.error("npm server build failed:");
