@@ -170,6 +170,22 @@ test("invalid and incompatible attachments fail without replacing a selected ser
     const redirect = await responder(302, "", { Location: first.url });
     services.push(redirect.service);
     expect((await ws.run("attach", redirect.url)).status).not.toBe(0);
+    // A redirect is never followed, so the responder on the attached URL cannot
+    // hand control of the CLI target to any other host.
+    const offsite = await responder(302, "", {
+      Location: "http://example.com/api/v1/identity",
+    });
+    services.push(offsite.service);
+    const redirected = await ws.run("attach", offsite.url);
+    expect(redirected.status).not.toBe(0);
+    expect(redirected.output).toContain("HTTP 302");
+    const other = await responder(200, "<html><body>hello</body></html>", {
+      "Content-Type": "text/html",
+    });
+    services.push(other.service);
+    const foreign = await ws.run("attach", other.url);
+    expect(foreign.status).not.toBe(0);
+    expect(foreign.output).toContain("identity response is invalid");
     const fake = await responder(
       200,
       JSON.stringify({

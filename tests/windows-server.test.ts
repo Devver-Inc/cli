@@ -44,23 +44,7 @@ function build() {
   if (built.exitCode !== 0) {
     throw new Error(built.stderr.toString());
   }
-  // Bundled into dist so the packaged-server lookup resolves as it does for
-  // the installed npm CLI chunk.
-  const driver = join(repo, "dist", "windows-create-driver.mjs");
-  const bundled = Bun.spawnSync(
-    [
-      "bun",
-      "build",
-      join(import.meta.dir, "fixtures", "windows-create-driver.ts"),
-      "--target=node",
-      "--format=esm",
-      `--outfile=${driver}`,
-    ],
-    { cwd: repo, stdout: "pipe", stderr: "pipe" }
-  );
-  if (bundled.exitCode !== 0) {
-    throw new Error(bundled.stderr.toString());
-  }
+  const cli = join(repo, "dist", "cli.mjs");
   const run = (
     args: string[],
     env: Record<string, string | undefined> = {}
@@ -86,10 +70,12 @@ function build() {
       "devver",
       "servers"
     ),
+    // Creation never reads or writes the CLI config, so it runs without an
+    // XDG override; attachment never touches instance state, so it keeps one.
     create: (name: string, env?: Record<string, string | undefined>) =>
-      run([driver, name], env),
-    cli: (args: string[], data: string) =>
-      run([join(repo, "dist", "cli.mjs"), ...args], { XDG_DATA_HOME: data }),
+      run([cli, "new", "server", name], env),
+    attachment: (args: string[], data: string) =>
+      run([cli, ...args], { XDG_DATA_HOME: data }),
     runServer: (name: string) => run([server, name, "0"]),
     launchServer: (name: string) =>
       Bun.spawn([node, server, name, "0"], {
@@ -254,6 +240,7 @@ test("Windows Task Scheduler keeps distinct instances alive after their creator 
       }
       const url = created.output.match(CONTROL_URL)?.[0] ?? "";
       expect(url).toMatch(CONTROL_URL);
+      expect(created.output).toContain(`devver attach ${url}`);
       urls.push(url);
 
       // A separate process reads the identity the exited creator announced.
@@ -283,16 +270,16 @@ test("Windows Task Scheduler keeps distinct instances alive after their creator 
     expect(urls[0]).not.toBe(urls[1]);
 
     const [first] = urls;
-    expect(state.cli(["server", "status"], config).output).toContain(
+    expect(state.attachment(["server", "status"], config).output).toContain(
       "No server attached"
     );
-    const attached = state.cli(["attach", first ?? ""], config);
+    const attached = state.attachment(["attach", first ?? ""], config);
     expect(attached.status, attached.output).toBe(0);
-    expect(state.cli(["server", "status"], config).output).toContain(
-      "reachable"
+    expect(state.attachment(["server", "status"], config).output).toContain(
+      ": reachable"
     );
-    expect(state.cli(["detach"], config).status).toBe(0);
-    expect(state.cli(["server", "status"], config).output).toContain(
+    expect(state.attachment(["detach"], config).status).toBe(0);
+    expect(state.attachment(["server", "status"], config).output).toContain(
       "No server attached"
     );
     // Detaching selects nothing: the supervised instance keeps answering.

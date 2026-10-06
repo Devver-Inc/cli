@@ -9,12 +9,15 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import pkg from "../package.json";
 
 const repo = join(import.meta.dir, "..");
 const cli = join(repo, "dist", "cli.mjs");
 const node = Bun.which("node");
+// The npm distribution must create and supervise its packaged server on Node
+// alone, so the CLI under test runs with Bun absent from PATH.
+const NODE_ONLY = node ? `${dirname(node)}:/usr/bin:/bin` : "";
 const CONTROL_URL = /http:\/\/127\.0\.0\.1:\d+\/api\/v1/;
 const JOB_PID = /\tpid = (\d+)/;
 
@@ -22,6 +25,7 @@ function workspace() {
   const root = mkdtempSync(join(tmpdir(), "devver-macos-"));
   const env: Record<string, string | undefined> = {
     ...process.env,
+    PATH: NODE_ONLY,
     XDG_DATA_HOME: join(root, "data"),
     XDG_CONFIG_HOME: join(root, "config"),
     XDG_STATE_HOME: join(root, "state"),
@@ -226,6 +230,7 @@ test("macOS launchd keeps named servers ready after CLI exits and attachment is 
   if (!(domain && node)) {
     return;
   }
+  expect(Bun.which("bun", { PATH: NODE_ONLY })).toBeNull();
   const ws = workspace();
   const labels: string[] = [];
   try {
