@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import {
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -8,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import pkg from "../package.json";
 
 const repo = join(import.meta.dir, "..");
@@ -134,6 +135,117 @@ test("failed registration with no unit cleans only the new instance", () => {
     rmSync(ws.root, { recursive: true, force: true });
   }
 });
+
+test("installed npm bin pins and starts its server after the CLI exits", async () => {
+  if (process.platform !== "linux" || !node) {
+    return;
+  }
+  const ws = workspace();
+  try {
+    const installed = join(ws.root, "installed");
+    const packed = Bun.spawnSync(
+      ["npm", "pack", "--ignore-scripts", "--pack-destination", ws.root],
+      {
+        cwd: repo,
+        stdout: "pipe",
+        stderr: "pipe",
+      }
+    );
+    expect(packed.exitCode, packed.stderr.toString()).toBe(0);
+    const archive = join(ws.root, packed.stdout.toString().trim());
+    const install = Bun.spawnSync(
+      [
+        "npm",
+        "install",
+        "--ignore-scripts",
+        "--no-audit",
+        "--no-fund",
+        "--prefix",
+        installed,
+        archive,
+      ],
+      {
+        cwd: ws.root,
+        stdout: "pipe",
+        stderr: "pipe",
+      }
+    );
+    expect(install.exitCode, install.stderr.toString()).toBe(0);
+    const bin = join(installed, "node_modules", ".bin", "devver");
+    expect(lstatSync(bin).isSymbolicLink()).toBe(true);
+    const fake = join(ws.root, "fake-bin");
+    mkdirSync(fake);
+    writeFileSync(
+      join(fake, "systemd-run"),
+      '#!/bin/sh\nwhile [ "$1" != "--" ]; do shift; done\nshift\n"$@" >/dev/null 2>&1 &\necho "$!" > "$XDG_DATA_HOME/server.pid"\n',
+      { mode: 0o700 }
+    );
+    writeFileSync(
+      join(fake, "systemctl"),
+      '#!/bin/sh\ncase "$2" in is-active) kill -0 "$(cat "$XDG_DATA_HOME/server.pid")";; stop) kill "$(cat "$XDG_DATA_HOME/server.pid")";; esac\n',
+      { mode: 0o700 }
+    );
+    ws.env.PATH = `${fake}:${dirname(node)}:${process.env.PATH}`;
+    const runInstalled = (...args: string[]) => {
+      const result = Bun.spawnSync([node, bin, ...args], {
+        env: ws.env,
+        cwd: ws.root,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      return {
+        status: result.exitCode,
+        output: result.stdout.toString() + result.stderr.toString(),
+      };
+    };
+    const created = runInstalled("new", "server", "installed");
+    expect(created.status, created.output).toBe(0);
+    const url = created.output.match(CONTROL_URL)?.[0];
+    expect(url).toBeDefined();
+    expect(created.output).toContain(`devver attach ${url}`);
+    const identity = await (await fetch(`${url}/identity`)).json();
+    expect(identity.name).toBe("installed");
+    const pinned = join(
+      ws.root,
+      "data",
+      "devver",
+      "installations",
+      pkg.version,
+      "server.mjs"
+    );
+    expect(statSync(pinned).mode % 0o1000).toBe(0o700);
+    expect(
+      readFileSync(pinned).equals(
+        readFileSync(
+          join(
+            installed,
+            "node_modules",
+            "@devver",
+            "cli",
+            "dist",
+            "servers",
+            pkg.version,
+            "server.mjs"
+          )
+        )
+      )
+    ).toBe(true);
+    expect(runInstalled("server", "status").output).toContain(
+      "No server attached"
+    );
+  } finally {
+    const pidFile = join(ws.root, "data", "server.pid");
+    try {
+      const pid = Number(readFileSync(pidFile, "utf8"));
+      if (Number.isSafeInteger(pid) && pid > 0) {
+        process.kill(pid);
+      }
+    } catch {
+      // Registration can fail before the simulated manager starts a process.
+    }
+    rmSync(ws.root, { recursive: true, force: true });
+  }
+}, 30_000);
 
 test("a native user manager keeps distinct named servers reachable after creation exits", async () => {
   if (process.platform !== "linux" || !node || !Bun.which("systemctl")) {

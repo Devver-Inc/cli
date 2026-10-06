@@ -4,6 +4,7 @@ import { link, lstat, mkdir, open, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import pkg from "../../package.json" with { type: "json" };
 import { instanceParent, loadInstance } from "../server/identity";
@@ -42,9 +43,14 @@ async function pinServer(parent: string) {
   await privateDirectory(installations);
   const version = join(installations, pkg.version);
   await privateDirectory(version);
-  const npm = process.argv[1]?.endsWith(".mjs");
+  const npm = process.versions.bun === undefined;
+  // The npm CLI is split into ESM chunks beside dist/servers; argv[1] may
+  // be the extensionless npm bin symlink rather than dist/cli.mjs.
+  const sourceRoot = npm
+    ? dirname(fileURLToPath(import.meta.url))
+    : dirname(process.execPath);
   const source = join(
-    dirname(npm && process.argv[1] ? process.argv[1] : process.execPath),
+    sourceRoot,
     "servers",
     pkg.version,
     npm ? "server.mjs" : "devver-server"
