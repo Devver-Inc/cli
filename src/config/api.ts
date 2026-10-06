@@ -16,8 +16,33 @@
 import { Schema } from "effect";
 import { Storage } from "../storage";
 
+const CONTROL_URL = /^http:\/\/127\.0\.0\.1:([1-9]\d{0,4})\/api\/v1$/;
+
+export function validateControlUrl(input: string): string {
+  const match = CONTROL_URL.exec(input);
+  if (!match || Number(match[1]) > 65_535) {
+    throw new Error(
+      "Control URL must be http://127.0.0.1:<port>/api/v1 (no credentials, query or fragment)"
+    );
+  }
+  return input;
+}
+
+export const InstanceNameSchema = Schema.String.check(
+  Schema.isPattern(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/)
+);
+
+export const LocalTargetSchema = Schema.Struct({
+  url: Schema.String,
+  instanceId: Schema.String.check(Schema.isUUID(4)),
+  name: InstanceNameSchema,
+  serverVersion: Schema.String,
+  controlProtocolVersion: Schema.Literal(1),
+});
+
 export const CliConfigSchema = Schema.Struct({
   "api-url": Schema.optional(Schema.String),
+  "local-target": Schema.optional(LocalTargetSchema),
 });
 
 export type CliConfig = typeof CliConfigSchema.Type;
@@ -35,17 +60,17 @@ export async function readConfig(): Promise<CliConfig> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
-  } catch (error) {
-    throw new Error(`CLI config at '${CONFIG_KEY}' is not valid JSON`, {
-      cause: error,
-    });
+  } catch {
+    throw new Error(`CLI config at '${CONFIG_KEY}' is not valid JSON`);
   }
   try {
-    return decodeCliConfig(parsed);
-  } catch (error) {
-    throw new Error(`CLI config at '${CONFIG_KEY}' has an unexpected shape`, {
-      cause: error,
-    });
+    const config = decodeCliConfig(parsed);
+    if (config["local-target"]) {
+      validateControlUrl(config["local-target"].url);
+    }
+    return config;
+  } catch {
+    throw new Error(`CLI config at '${CONFIG_KEY}' has an unexpected shape`);
   }
 }
 
