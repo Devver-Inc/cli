@@ -263,7 +263,9 @@ test("Windows Task Scheduler keeps distinct instances alive after their creator 
       expect(service.serverVersion).toBe(pkg.version);
       expect(
         powershell(
-          `$t = Get-ScheduledTask -TaskName '${service.task}'; "$(@($t.Triggers).Count)|$($t.Settings.RestartCount)|$($t.State)"`
+          // A trigger-free task reports $null, and @($null).Count is 1, so the
+          // count has to filter $null to observe the registered shape.
+          `$t = Get-ScheduledTask -TaskName '${service.task}'; $g = @($t.Triggers) | Where-Object { $null -ne $_ }; "$(@($g).Count)|$($t.Settings.RestartCount)|$($t.State)"`
         )
       ).toMatch(SUPERVISED);
 
