@@ -13,7 +13,7 @@ import pkg from "../package.json";
 import {
   verifyWindowsPrivate,
   windowsServersDirectory,
-} from "../packages/server/src/windows-acl";
+} from "../packages/server/windows-acl";
 
 const repo = join(import.meta.dir, "..");
 const windows = process.platform === "win32";
@@ -147,9 +147,7 @@ test("Windows instance state helpers refuse to run on other platforms", async ()
     verifyWindowsPrivate({ path: repo, kind: "directory" })
   ).rejects.toThrow("require Windows");
   // Creation must never fall back to POSIX mode bits for Windows instance state.
-  const { create } = await import(
-    "../packages/cli/src/cli/windows-supervised-server"
-  );
+  const { create } = await import("../packages/cli/windows-supervision");
   await expect(create("other-platform")).rejects.toThrow("requires Windows");
 });
 

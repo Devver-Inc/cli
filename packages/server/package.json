@@ -3,13 +3,13 @@
   "version": "1.2.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./identity": "./src/identity.ts",
-    "./windows-acl": "./src/windows-acl.ts"
+    ".": "./index.ts",
+    "./identity": "./identity.ts",
+    "./windows-acl": "./windows-acl.ts"
   },
   "scripts": {
     "build": "bun build src/index.ts --target=node --packages=bundle --outfile=dist/server.mjs",
-    "test": "bun test src/package-exports.test.ts"
+    "test": "bun test tests/package-exports.test.ts"
   },
   "dependencies": {
     "@effect/platform-node": "^4",

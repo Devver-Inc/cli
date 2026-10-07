@@ -50,7 +50,7 @@ function probe(root: string, body: string) {
     mock.module(${JSON.stringify(join(repo, "packages/cli/src/auth/logto.ts"))}, () => ({
       createLogtoClient: () => fake,
     }));
-    const { getAccessToken } = await import(${JSON.stringify(join(repo, "packages/cli/src/auth/client.ts"))});
+    const { getAccessToken } = await import(${JSON.stringify(join(repo, "packages/cli/auth.ts"))});
     const failure = async (work) => {
       try { await work(); return null; } catch (error) { return error.message; }
     };

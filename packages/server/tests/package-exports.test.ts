@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { serve } from "@devver/server";
-import { instanceParent } from "@devver/server/identity";
-import { verifyWindowsPrivate } from "@devver/server/windows-acl";
+import { instanceParent } from "../identity";
+import { serve } from "../index";
+import { verifyWindowsPrivate } from "../windows-acl";
 
 test("server package exposes its entrypoint and owner-only state APIs", async () => {
   expect(typeof serve).toBe("function");

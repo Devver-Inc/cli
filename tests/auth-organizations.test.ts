@@ -26,7 +26,7 @@ function probe(accessTokenClaims: string) {
         }),
       }),
     }));
-    const { getOrganizations } = await import(${JSON.stringify(join(repo, "packages/cli/src/auth/session.ts"))});
+    const { getOrganizations } = await import(${JSON.stringify(join(repo, "packages/cli/auth.ts"))});
     console.log(JSON.stringify(await getOrganizations()));
   `;
   try {

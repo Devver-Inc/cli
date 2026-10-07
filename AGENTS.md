@@ -1,6 +1,7 @@
 # Devver CLI decisions
 
 ## Architecture
+- Deep module entry points and import seams: read [packages/README.md](./packages/README.md) before adding or importing a package.
 - Target: `packages/cli/src/cli/` owns the Effect v4 command tree and process entrypoint. Command handlers compose Effects and provide the API/auth layers at the edge; `packages/cli/src/api/` owns request schemas and HTTP transport, `packages/cli/src/auth/` owns Logto sessions, `packages/cli/src/config/` and `packages/cli/src/storage.ts` own persisted state.
 - Target: `packages/cli/src/tui/` owns a separately testable, lazy-loaded OpenTUI React view. Its `run` is a scoped Effect; the CLI decides when to start it. Follow the CLI/TUI boundary in `../oss/opencode/packages/{cli,tui}`, not its broad monorepo framework.
 - `packages/cli/src/cli/index.ts` is the sole CLI entrypoint; all command groups use `effect/cli`. `packages/cli/src/cmd/tui/` temporarily holds the lazy-imported React view until its scoped move to `packages/cli/src/tui/`. `packages/cli/src/cli/api.ts` supplies one scoped authenticated API layer per command (not per request).

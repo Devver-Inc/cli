@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
-import { serveCallback } from "../../packages/cli/src/auth/session";
-import { getCurrentBranch } from "../../packages/cli/src/util/git";
+import { serveCallback } from "../../packages/cli/auth";
+import { getCurrentBranch } from "../../packages/cli/git";
 
 const reachable = (host: string) =>
   fetch(`http://${host}:9999/nope`).then(

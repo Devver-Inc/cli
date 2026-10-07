@@ -2,11 +2,11 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readConfigFile } from "../packages/cli/src/config";
 import {
+  readConfigFile,
   readSecretsFile,
   setDeploymentEnv,
-} from "../packages/cli/src/config/secrets";
+} from "../packages/cli/config";
 import { idToken } from "./jwt";
 
 const cliEntry = join(

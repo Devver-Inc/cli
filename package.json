@@ -24,7 +24,8 @@
     "cmd": "bun run packages/cli/src/cli/index.ts",
     "build": "bun run scripts/build.ts",
     "build:npm": "bun run scripts/build-npm.ts",
-    "check": "ultracite check",
+    "check": "ultracite check && bun run lint:boundaries && bun run typecheck",
+    "lint:boundaries": "depcruise packages tests scripts",
     "typecheck": "tsc --noEmit",
     "test": "bun test --timeout 30000",
     "fix": "ultracite fix",
@@ -36,6 +37,7 @@
     "@types/bun": "^1.3.6",
     "@types/js-yaml": "^4.0.9",
     "@types/react": "^19.2.9",
+    "dependency-cruiser": "^18.5.0",
     "ultracite": "^7.1.5"
   },
   "workspaces": [

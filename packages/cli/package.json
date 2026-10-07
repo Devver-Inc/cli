@@ -32,6 +32,7 @@
     "@flystorage/file-storage": "^1.2.2",
     "@flystorage/local-fs": "^1.2.0",
     "@logto/node": "^3.1.8",
+    "@opentui/core": "^0.1.74",
     "@opentui/react": "^0.1.74",
     "effect": "^4",
     "js-yaml": "^4.1.1",

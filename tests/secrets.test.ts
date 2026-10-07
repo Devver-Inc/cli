@@ -8,10 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  readSecretsFile,
-  setDeploymentEnv,
-} from "../packages/cli/src/config/secrets";
+import { readSecretsFile, setDeploymentEnv } from "../packages/cli/config";
 
 test("secrets are private and corrupt files are not overwritten", () => {
   const root = mkdtempSync(join(tmpdir(), "devver-secrets-"));
