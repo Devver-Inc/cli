@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - main
+      - develop
   pull_request:
     branches:
       - main
+      - develop
 
 jobs:
   test:
@@ -35,6 +37,34 @@ jobs:
 
       - name: Run tests
         run: bun run test
+
+  windows-server:
+    name: Windows server
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.5.0'
+
+      - name: Install dependencies
+        run: bun install
+
+      # Windows instance state lives under the real per-user LOCALAPPDATA and an
+      # XDG override fails closed, so the checks that create it cannot isolate
+      # themselves. This job is that isolation: a runner whose LOCALAPPDATA no
+      # other test has touched. The full matrix skips them without this flag.
+      - name: Windows instance state and Task Scheduler supervision
+        shell: bash
+        env:
+          DEVVER_WINDOWS_STATE_TESTS: "1"
+        run: bun test tests/windows-server.test.ts tests/server-identity.test.ts
 
   build:
     name: Build Check

@@ -6,6 +6,8 @@ import pkg from "../../package.json" with { type: "json" };
 import { auth } from "./auth";
 import { config, init } from "./config";
 import { deploy } from "./deploy";
+import { attach, detach, server } from "./local-server";
+import { newCommand } from "./new";
 import { organization } from "./organization";
 import { project } from "./project";
 import { repos } from "./repos";
@@ -16,14 +18,18 @@ import { versionLine } from "./version";
 
 export const cli = root.pipe(
   Command.withSubcommands([
+    attach,
     auth,
     config,
     deploy,
+    detach,
     init,
+    newCommand,
     organization,
     project,
     repos,
     secret,
+    server,
     tui,
   ])
 );

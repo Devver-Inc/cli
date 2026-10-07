@@ -47,10 +47,10 @@ function probe(root: string, body: string) {
       },
       signOut: async () => {},
     };
-    mock.module("${join(repo, "src/auth/logto.ts")}", () => ({
+    mock.module(${JSON.stringify(join(repo, "src/auth/logto.ts"))}, () => ({
       createLogtoClient: () => fake,
     }));
-    const { getAccessToken } = await import("${join(repo, "src/auth/client.ts")}");
+    const { getAccessToken } = await import(${JSON.stringify(join(repo, "src/auth/client.ts"))});
     const failure = async (work) => {
       try { await work(); return null; } catch (error) { return error.message; }
     };

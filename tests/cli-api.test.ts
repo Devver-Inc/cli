@@ -6,6 +6,40 @@ import { idToken } from "./jwt";
 
 const entry = join(import.meta.dir, "..", "src", "cli", "index.ts");
 
+test("project create requires an explicit target even with legacy API defaults", () => {
+  const root = mkdtempSync(join(tmpdir(), "devver-api-routing-"));
+  const data = join(root, "data", "devver");
+  mkdirSync(join(data, "config"), { recursive: true });
+  writeFileSync(
+    join(data, "config", "cli"),
+    JSON.stringify({ "api-url": "http://127.0.0.1:1/api/v1" })
+  );
+  try {
+    const child = Bun.spawnSync(
+      ["bun", "run", entry, "project", "create", "demo"],
+      {
+        cwd: root,
+        env: {
+          ...process.env,
+          XDG_DATA_HOME: join(root, "data"),
+          XDG_CONFIG_HOME: join(root, "config"),
+          XDG_CACHE_HOME: join(root, "cache"),
+          XDG_STATE_HOME: join(root, "state"),
+          DEVVER_API_URL: "http://127.0.0.1:1/api/v1",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      }
+    );
+    const output = `${child.stdout.toString()}${child.stderr.toString()}`;
+    expect(child.exitCode, output).not.toBe(0);
+    expect(output).toContain("No CLI target");
+    expect(output).toContain("--api-url");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("one scoped API layer uses selected credentials and reports HTTP failures", async () => {
   const root = mkdtempSync(join(tmpdir(), "devver-api-"));
   const data = join(root, "data", "devver");
@@ -51,7 +85,7 @@ test("one scoped API layer uses selected credentials and reports HTTP failures",
       });
     },
   });
-  const run = async () => {
+  const run = async (explicit = true) => {
     const child = Bun.spawn(
       [
         "bun",
@@ -60,8 +94,7 @@ test("one scoped API layer uses selected credentials and reports HTTP failures",
         "project",
         "create",
         "demo",
-        "--api-url",
-        `${server.url.origin}/api/v1`,
+        ...(explicit ? ["--api-url", `${server.url.origin}/api/v1`] : []),
       ],
       {
         cwd: root,
@@ -71,6 +104,7 @@ test("one scoped API layer uses selected credentials and reports HTTP failures",
           XDG_CONFIG_HOME: join(root, "config"),
           XDG_CACHE_HOME: join(root, "cache"),
           XDG_STATE_HOME: join(root, "state"),
+          DEVVER_API_URL: `${server.url.origin}/api/v1`,
         },
         stdout: "pipe",
         stderr: "pipe",
@@ -98,6 +132,52 @@ test("one scoped API layer uses selected credentials and reports HTTP failures",
     expect(invalidOrg.status).not.toBe(0);
     expect(invalidOrg.output).toContain(
       "Selected organization 'invalid' is unavailable"
+    );
+    expect(requests).toBe(2);
+    mkdirSync(join(data, "config"), { recursive: true });
+    const configFile = join(data, "config", "cli");
+    writeFileSync(
+      configFile,
+      JSON.stringify({ "api-url": `${server.url.origin}/api/v1` })
+    );
+    const legacy = await run(false);
+    expect(legacy.status).not.toBe(0);
+    expect(legacy.output).toContain("No CLI target");
+    expect(requests).toBe(2);
+    writeFileSync(configFile, "{}");
+    const envDefault = await run(false);
+    expect(envDefault.status).not.toBe(0);
+    expect(envDefault.output).toContain("No CLI target");
+    expect(requests).toBe(2);
+    writeFileSync(
+      configFile,
+      JSON.stringify({
+        "local-target": {
+          url: "http://127.0.0.1:1/api/v1",
+          instanceId: "031fdbdf-3c42-4d19-8909-9a2cf4690cb0",
+          name: "local",
+          serverVersion: "1.2.0",
+          controlProtocolVersion: 1,
+        },
+      })
+    );
+    const attached = await run();
+    expect(attached.status).not.toBe(0);
+    expect(attached.output).toContain(
+      "not supported on the attached local server"
+    );
+    expect(requests).toBe(2);
+    const attachedWithoutOverride = await run(false);
+    expect(attachedWithoutOverride.status).not.toBe(0);
+    expect(attachedWithoutOverride.output).toContain(
+      "not supported on the attached local server"
+    );
+    expect(requests).toBe(2);
+    writeFileSync(configFile, '{"local-target":{"url":"broken"}}');
+    const corrupt = await run();
+    expect(corrupt.status).not.toBe(0);
+    expect(corrupt.output).toContain(
+      "CLI config at 'config/cli' has an unexpected shape"
     );
     expect(requests).toBe(2);
   } finally {

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 
 const repo = join(import.meta.dir, "..");
 const driver = join(import.meta.dir, "fixtures", "node-runtime-driver.ts");
@@ -14,7 +14,11 @@ function nodeEnvironment() {
   if (!node) {
     throw new Error("node is required: the npm CLI must run without Bun");
   }
-  return { node, path: `${dirname(node)}:/usr/bin:/bin` };
+  const git = Bun.which("git");
+  if (!git) {
+    throw new Error("git is required: the Node runtime check invokes git");
+  }
+  return { node, path: [dirname(node), dirname(git)].join(delimiter) };
 }
 
 test("the npm bundle runs under Node without eagerly loading the TUI", () => {
