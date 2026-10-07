@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
+import { Schema } from "effect";
 
 const root = JSON.parse(readFileSync("package.json", "utf8"));
 const check = process.argv.includes("--check");
@@ -13,7 +14,21 @@ const bin = `dist/servers/${version}/server.mjs`;
 
 if (check) {
   const lock = JSON.parse(readFileSync("package-lock.json", "utf8"));
-  const bunLock = readFileSync("bun.lock", "utf8");
+  const bunLock = Schema.decodeUnknownSync(
+    Schema.Struct({
+      workspaces: Schema.Struct({
+        "packages/cli": Schema.Struct({
+          version: Schema.String,
+          bin: Schema.Struct({ "devver-server": Schema.String }),
+        }),
+        "packages/server": Schema.Struct({ version: Schema.String }),
+      }),
+      packages: Schema.Struct({
+        "@devver/cli": Schema.Tuple([Schema.String]),
+        "@devver/server": Schema.Tuple([Schema.String]),
+      }),
+    })
+  )(Bun.JSONC.parse(readFileSync("bun.lock", "utf8")));
   if (
     cli.version !== version ||
     server.version !== version ||
@@ -24,7 +39,13 @@ if (check) {
     lock.packages?.["packages/cli"]?.version !== version ||
     lock.packages?.["packages/cli"]?.bin?.["devver-server"] !== bin ||
     lock.packages?.["packages/server"]?.version !== version ||
-    !bunLock.includes(`"@devver/cli": ["@devver/cli@workspace:packages/cli"]`)
+    bunLock.workspaces?.["packages/cli"]?.version !== version ||
+    bunLock.workspaces?.["packages/cli"]?.bin?.["devver-server"] !== bin ||
+    bunLock.workspaces?.["packages/server"]?.version !== version ||
+    bunLock.packages?.["@devver/cli"]?.[0] !==
+      "@devver/cli@workspace:packages/cli" ||
+    bunLock.packages?.["@devver/server"]?.[0] !==
+      "@devver/server@workspace:packages/server"
   ) {
     throw new Error(
       "Workspace versions, bins or locks differ; run bun run sync:version"

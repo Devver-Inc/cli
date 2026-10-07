@@ -32,6 +32,53 @@ test("one release version synchronizes the publishable CLI and offline server", 
   expect(lock.packages["packages/server"].version).toBe(workspace.version);
 });
 
+test("release version check rejects Bun workspace version and server bin drift", () => {
+  const original = readFileSync(join(root, "bun.lock"), "utf8");
+  const version = read("package.json").version;
+  const temp = mkdtempSync(join(tmpdir(), "devver-bun-lock-check-"));
+  try {
+    for (const file of [
+      "package.json",
+      "packages/cli/package.json",
+      "packages/server/package.json",
+      "package-lock.json",
+    ]) {
+      cpSync(join(root, file), join(temp, file), { recursive: true });
+    }
+    for (const [field, originalValue, driftedValue] of [
+      ["CLI version", `"version": "${version}"`, '"version": "0.0.0"'],
+      ["server version", `"version": "${version}"`, '"version": "0.0.0"'],
+      [
+        "CLI server bin",
+        `"devver-server": "dist/servers/${version}/server.mjs"`,
+        '"devver-server": "dist/servers/0.0.0/server.mjs"',
+      ],
+    ] as const) {
+      const start = original.indexOf(
+        field === "server version"
+          ? '"packages/server": {'
+          : '"packages/cli": {'
+      );
+      const target = original.indexOf(originalValue, start);
+      expect(target).toBeGreaterThan(start);
+      writeFileSync(
+        join(temp, "bun.lock"),
+        `${original.slice(0, target)}${driftedValue}${original.slice(target + originalValue.length)}`
+      );
+      const result = Bun.spawnSync(
+        ["bun", "run", join(root, "scripts/sync-version.ts"), "--check"],
+        { cwd: temp, stdout: "pipe", stderr: "pipe" }
+      );
+      expect(result.exitCode, field).not.toBe(0);
+      expect(result.stderr.toString()).toContain(
+        "Workspace versions, bins or locks differ"
+      );
+    }
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
 test("stable and nightly publish the CLI workspace, not the private root", () => {
   for (const channel of ["release", "nightly"]) {
     const workflow = readFileSync(

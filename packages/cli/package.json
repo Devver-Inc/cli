@@ -52,6 +52,8 @@
   },
   "module": "src/cli/index.ts",
   "scripts": {
+    "build": "cd ../.. && bun run build:npm",
+    "test": "bun test tests/cli-entry.test.ts",
     "prepack": "cd ../.. && bun run build:npm"
   }
 }
