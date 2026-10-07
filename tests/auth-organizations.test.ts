@@ -16,7 +16,7 @@ function probe(accessTokenClaims: string) {
   );
   const script = `
     import { mock } from "bun:test";
-    mock.module("${join(repo, "src/auth/logto.ts")}", () => ({
+    mock.module(${JSON.stringify(join(repo, "src/auth/logto.ts"))}, () => ({
       createLogtoClient: () => ({
         isAuthenticated: async () => true,
         getAccessTokenClaims: ${accessTokenClaims},
@@ -26,7 +26,7 @@ function probe(accessTokenClaims: string) {
         }),
       }),
     }));
-    const { getOrganizations } = await import("${join(repo, "src/auth/session.ts")}");
+    const { getOrganizations } = await import(${JSON.stringify(join(repo, "src/auth/session.ts"))});
     console.log(JSON.stringify(await getOrganizations()));
   `;
   try {
