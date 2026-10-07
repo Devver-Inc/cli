@@ -9,7 +9,16 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const entry = join(import.meta.dir, "..", "src", "util", "git", "index.ts");
+const entry = join(
+  import.meta.dir,
+  "..",
+  "packages",
+  "cli",
+  "src",
+  "util",
+  "git",
+  "index.ts"
+);
 const commitHash = /^[a-f0-9]{40,64}$/;
 
 const git = (cwd: string, ...args: string[]) => {

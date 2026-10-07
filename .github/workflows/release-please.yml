@@ -32,5 +32,4 @@ jobs:
               {"type":"ci","section":"⚙️ Miscellaneous Tasks","hidden":false}
             ]
           extra-files: |
-            package.json
             package-lock.json

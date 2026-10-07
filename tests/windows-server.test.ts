@@ -13,7 +13,7 @@ import pkg from "../package.json";
 import {
   verifyWindowsPrivate,
   windowsServersDirectory,
-} from "../src/server/windows-acl";
+} from "../packages/server/src/windows-acl";
 
 const repo = join(import.meta.dir, "..");
 const windows = process.platform === "win32";
@@ -49,7 +49,7 @@ function build() {
   if (built.exitCode !== 0) {
     throw new Error(built.stderr.toString());
   }
-  const cli = join(repo, "dist", "cli.mjs");
+  const cli = join(repo, "packages/cli/dist", "cli.mjs");
   const run = (
     args: string[],
     env: Record<string, string | undefined> = {}
@@ -66,7 +66,13 @@ function build() {
       output: result.stdout.toString() + result.stderr.toString(),
     };
   };
-  const server = join(repo, "dist", "servers", pkg.version, "server.mjs");
+  const server = join(
+    repo,
+    "packages/cli/dist",
+    "servers",
+    pkg.version,
+    "server.mjs"
+  );
   return {
     node,
     /** Instance state deliberately shares the real per-user LOCALAPPDATA. */
@@ -141,13 +147,15 @@ test("Windows instance state helpers refuse to run on other platforms", async ()
     verifyWindowsPrivate({ path: repo, kind: "directory" })
   ).rejects.toThrow("require Windows");
   // Creation must never fall back to POSIX mode bits for Windows instance state.
-  const { create } = await import("../src/cli/windows-supervised-server");
+  const { create } = await import(
+    "../packages/cli/src/cli/windows-supervised-server"
+  );
   await expect(create("other-platform")).rejects.toThrow("requires Windows");
 });
 
 test("Windows supervision stays manual-start with bounded restart and no login or boot trigger", () => {
   const source = readFileSync(
-    join(repo, "src", "cli", "windows-supervised-server.ts"),
+    join(repo, "packages", "cli", "src", "cli", "windows-supervised-server.ts"),
     "utf8"
   );
   // A task with no trigger can only be started on demand: nothing registers at

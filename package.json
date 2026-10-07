@@ -1,7 +1,7 @@
 {
-  "name": "@devver/cli",
+  "name": "devver-workspace",
   "version": "1.2.0",
-  "private": false,
+  "private": true,
   "description": "Deploy and try your app in seconds",
   "keywords": [
     "utility",
@@ -18,39 +18,18 @@
   "license": "MIT",
   "author": "Your Name",
   "type": "module",
-  "bin": {
-    "devver": "dist/cli.mjs",
-    "devver-server": "dist/servers/1.2.0/server.mjs"
-  },
-  "directories": {
-    "test": "tests"
-  },
-  "files": [
-    "dist",
-    "README.md"
-  ],
   "scripts": {
-    "dev": "bun run --watch src/cli/index.ts",
-    "dev:build": "bun build --compile --watch --outfile devver src/cli/index.ts",
-    "cmd": "bun run src/cli/index.ts",
+    "dev": "bun run packages/cli/src/cli/index.ts",
+    "dev:build": "bun build --compile --watch --outfile devver packages/cli/src/cli/index.ts",
+    "cmd": "bun run packages/cli/src/cli/index.ts",
     "build": "bun run scripts/build.ts",
     "build:npm": "bun run scripts/build-npm.ts",
     "check": "ultracite check",
     "typecheck": "tsc --noEmit",
     "test": "bun test --timeout 30000",
     "fix": "ultracite fix",
-    "prepack": "bun run build:npm"
-  },
-  "dependencies": {
-    "@clack/prompts": "^1.1.0",
-    "@effect/platform-node": "^4",
-    "@flystorage/file-storage": "^1.2.2",
-    "@flystorage/local-fs": "^1.2.0",
-    "@logto/node": "^3.1.8",
-    "@opentui/react": "^0.1.74",
-    "effect": "^4",
-    "js-yaml": "^4.1.1",
-    "xdg-basedir": "^5.1.0"
+    "sync:version": "bun run scripts/sync-version.ts",
+    "check:version": "bun run scripts/sync-version.ts --check"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.13",
@@ -59,11 +38,8 @@
     "@types/react": "^19.2.9",
     "ultracite": "^7.1.5"
   },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "module": "src/cli/index.ts"
+  "workspaces": [
+    "packages/cli",
+    "packages/server"
+  ]
 }

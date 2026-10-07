@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 import pkg from "../package.json";
 
 const repo = join(import.meta.dir, "..");
-const cli = join(repo, "dist", "cli.mjs");
+const cli = join(repo, "packages/cli/dist", "cli.mjs");
 const node = Bun.which("node");
 // The npm distribution must create and supervise its packaged server on Node
 // alone, so the CLI under test runs with Bun absent from PATH.

@@ -10,8 +10,23 @@ import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const cli = join(import.meta.dir, "..", "src", "cli", "index.ts");
-const server = join(import.meta.dir, "..", "src", "server", "index.ts");
+const cli = join(
+  import.meta.dir,
+  "..",
+  "packages",
+  "cli",
+  "src",
+  "cli",
+  "index.ts"
+);
+const server = join(
+  import.meta.dir,
+  "..",
+  "packages",
+  "server",
+  "src",
+  "index.ts"
+);
 const CONTROL_URL = /^http:\/\/127\.0\.0\.1:\d+\/api\/v1$/;
 
 function workspace() {

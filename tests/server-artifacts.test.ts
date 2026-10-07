@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import { lstatSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  lstatSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import pkg from "../package.json";
@@ -9,6 +15,7 @@ const node = Bun.which("node");
 const versioned = join("servers", pkg.version);
 const CONTROL_URL = /^http:\/\/127\.0\.0\.1:\d+\/api\/v1$/;
 const BUN_API = /\bBun\s*\.\s*(serve|spawn|file|build)\b/;
+const EXTERNAL_SERVER = /(?:from\s*["']|import\s*\(["'])@devver\/server/;
 const FORMULA = /cat > Formula\/devver-cli\.rb << EOF\n([\s\S]*?)\n {10}EOF/;
 
 test("Homebrew installs the versioned server beside its CLI", () => {
@@ -72,7 +79,7 @@ test("npm artifact includes a versioned Node server beside the lazy CLI", async 
   }
   const built = Bun.spawnSync(["bun", "run", "build:npm"], { cwd: repo });
   expect(built.exitCode).toBe(0);
-  const file = join(repo, "dist", versioned, "server.mjs");
+  const file = join(repo, "packages/cli/dist", versioned, "server.mjs");
   const code = readFileSync(file, "utf8");
   expect(code).toStartWith("#!/usr/bin/env node\n");
   expect(code).not.toMatch(BUN_API);
@@ -85,10 +92,38 @@ test("npm artifact includes a versioned Node server beside the lazy CLI", async 
     controlProtocolVersion: 1,
   });
   const packRoot = mkdtempSync(join(tmpdir(), "devver-pack-"));
+  const nodePath = `${dirname(node)}:/usr/bin:/bin`;
   try {
+    const bunProbe = Bun.spawnSync(["sh", "-c", "command -v bun"], {
+      env: { PATH: nodePath },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(bunProbe.exitCode).not.toBe(0);
+    const bundleFiles = readdirSync(join(repo, "packages/cli/dist")).filter(
+      (name) => name.endsWith(".js") || name.endsWith(".mjs")
+    );
+    for (const name of bundleFiles) {
+      expect(
+        readFileSync(join(repo, "packages/cli/dist", name), "utf8")
+      ).not.toMatch(EXTERNAL_SERVER);
+    }
     const pack = Bun.spawnSync(
-      ["npm", "pack", "--ignore-scripts", "--pack-destination", packRoot],
-      { cwd: repo, stdout: "pipe", stderr: "pipe" }
+      [
+        "npm",
+        "pack",
+        "--workspace",
+        "@devver/cli",
+        "--ignore-scripts",
+        "--pack-destination",
+        packRoot,
+      ],
+      {
+        cwd: repo,
+        env: { ...process.env, PATH: nodePath },
+        stdout: "pipe",
+        stderr: "pipe",
+      }
     );
     expect(pack.exitCode, pack.stderr.toString()).toBe(0);
     const archive = join(packRoot, pack.stdout.toString().trim());
@@ -100,8 +135,16 @@ test("npm artifact includes a versioned Node server beside the lazy CLI", async 
     expect(files.stdout.toString()).toContain(
       `package/dist/servers/${pkg.version}/server.mjs`
     );
+    const packedManifest = Bun.spawnSync(
+      ["tar", "-xOf", archive, "package/package.json"],
+      { stdout: "pipe", stderr: "pipe" }
+    );
+    expect(packedManifest.exitCode, packedManifest.stderr.toString()).toBe(0);
+    expect(
+      JSON.parse(packedManifest.stdout.toString()).dependencies
+    ).not.toHaveProperty("@devver/server");
     const manifest = JSON.parse(
-      readFileSync(join(repo, "package.json"), "utf8")
+      readFileSync(join(repo, "packages/cli/package.json"), "utf8")
     );
     expect(manifest.bin["devver-server"]).toBe(
       `dist/servers/${pkg.version}/server.mjs`
@@ -109,20 +152,24 @@ test("npm artifact includes a versioned Node server beside the lazy CLI", async 
     const lock = JSON.parse(
       readFileSync(join(repo, "package-lock.json"), "utf8")
     );
-    expect(lock.packages[""].bin).toEqual(manifest.bin);
+    expect(lock.packages["packages/cli"].bin).toEqual(manifest.bin);
     const installed = join(packRoot, "installed");
     const install = Bun.spawnSync(
       [
         "npm",
         "install",
-        "--ignore-scripts",
         "--no-audit",
         "--no-fund",
         "--prefix",
         installed,
         archive,
       ],
-      { cwd: packRoot, stdout: "pipe", stderr: "pipe" }
+      {
+        cwd: packRoot,
+        env: { ...process.env, PATH: nodePath },
+        stdout: "pipe",
+        stderr: "pipe",
+      }
     );
     expect(install.exitCode, install.stderr.toString()).toBe(0);
     expect(

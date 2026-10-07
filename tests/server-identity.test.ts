@@ -15,7 +15,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pkg from "../package.json";
 
-const entry = join(import.meta.dir, "..", "src", "server", "index.ts");
+const entry = join(
+  import.meta.dir,
+  "..",
+  "packages",
+  "server",
+  "src",
+  "index.ts"
+);
 const CONTROL_URL = /^http:\/\/127\.0\.0\.1:\d+\/api\/v1$/;
 
 function dataEnvironment(root: string) {

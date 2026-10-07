@@ -45,7 +45,11 @@ jobs:
           echo 'changed=true' >> "$GITHUB_OUTPUT"
       - uses: oven-sh/setup-bun@v2
         if: steps.changes.outputs.changed == 'true'
-      - run: bun install --frozen-lockfile
+      - uses: actions/setup-node@v4
+        if: steps.changes.outputs.changed == 'true'
+        with:
+          node-version: '26.5.0'
+      - run: bun run sync:version && bun install --frozen-lockfile && bun run check:version
         if: steps.changes.outputs.changed == 'true'
       - run: bun run check && bun run typecheck && bun test
         if: steps.changes.outputs.changed == 'true'
@@ -84,13 +88,12 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
       - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
       - uses: actions/setup-node@v4
-        if: runner.os != 'Windows'
         with:
           node-version: '26.5.0'
+      - run: bun run sync:version && bun install --frozen-lockfile
       - name: Stamp nightly version
-        run: npm version '${{ needs.prepare.outputs.version }}' --no-git-tag-version
+        run: npm version '${{ needs.prepare.outputs.version }}' --no-git-tag-version && bun run sync:version
       - name: Smoke packaged CLI and server without Bun (Unix)
         if: runner.os != 'Windows'
         run: bun test tests/server-artifacts.test.ts
@@ -142,15 +145,15 @@ jobs:
           node-version: "26.4.0"
           registry-url: https://registry.npmjs.org
       - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: npm version '${{ needs.prepare.outputs.version }}' --no-git-tag-version
+      - run: bun run sync:version && bun install --frozen-lockfile
+      - run: npm version '${{ needs.prepare.outputs.version }}' --no-git-tag-version && bun run sync:version
       - run: bun test tests/server-artifacts.test.ts
         env:
           DEVVER_RELEASE_CHANNEL: nightly
-      - run: bun run build:npm && node dist/cli.mjs --version
+      - run: bun run build:npm && node packages/cli/dist/cli.mjs --version
         env:
           DEVVER_RELEASE_CHANNEL: nightly
-      - run: npm publish --access public --tag nightly
+      - run: npm publish --workspace @devver/cli --access public --tag nightly
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           DEVVER_RELEASE_CHANNEL: nightly

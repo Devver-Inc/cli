@@ -11,21 +11,22 @@
 
 import { chmodSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import pkg from "../package.json";
+import cli from "../packages/cli/package.json";
 import { buildDefines } from "./stamp";
 
-const outfile = "dist/cli.mjs";
-const serverOutfile = `dist/servers/${pkg.version}/server.mjs`;
+const outfile = "packages/cli/dist/cli.mjs";
+const serverOutfile = `packages/cli/dist/servers/${pkg.version}/server.mjs`;
 
 // Do not pack a server from a previous build/version alongside this one.
-rmSync("dist", { recursive: true, force: true });
+rmSync("packages/cli/dist", { recursive: true, force: true });
 
 const result = await Bun.build({
-  entrypoints: ["./src/cli/index.ts"],
-  outdir: "dist",
+  entrypoints: ["./packages/cli/src/cli/index.ts"],
+  outdir: "packages/cli/dist",
   naming: { entry: "cli.mjs" },
   target: "node",
   format: "esm",
-  packages: "external",
+  external: Object.keys(cli.dependencies),
   splitting: true,
   define: buildDefines("npm"),
 });
@@ -39,8 +40,8 @@ if (!result.success) {
 }
 
 const server = await Bun.build({
-  entrypoints: ["./src/server/index.ts"],
-  outdir: `dist/servers/${pkg.version}`,
+  entrypoints: ["./packages/server/src/index.ts"],
+  outdir: `packages/cli/dist/servers/${pkg.version}`,
   naming: { entry: "server.mjs" },
   target: "node",
   format: "esm",
@@ -62,19 +63,6 @@ for (const file of [outfile, serverOutfile]) {
     writeFileSync(file, `${shebang}${code}`);
   }
   chmodSync(file, 0o755);
-}
-
-// Nightly stamps package.json after checkout; keep the npm bin pointing at
-// the matching version's server before npm packs the manifest.
-const manifest = JSON.parse(readFileSync("package.json", "utf8"));
-if (manifest.bin?.["devver-server"] !== serverOutfile) {
-  manifest.bin["devver-server"] = serverOutfile;
-  writeFileSync("package.json", `${JSON.stringify(manifest, null, 2)}\n`);
-}
-const lock = JSON.parse(readFileSync("package-lock.json", "utf8"));
-if (lock.packages?.[""]?.bin?.["devver-server"] !== serverOutfile) {
-  lock.packages[""].bin["devver-server"] = serverOutfile;
-  writeFileSync("package-lock.json", `${JSON.stringify(lock, null, 2)}\n`);
 }
 
 console.log(
