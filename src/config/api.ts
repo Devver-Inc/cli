@@ -78,14 +78,6 @@ export async function getConfigValue<K extends keyof CliConfig>(
   return config[key];
 }
 
-export async function setConfigValue<K extends keyof CliConfig>(
-  key: K,
-  value: CliConfig[K]
-): Promise<void> {
-  const config = await readConfig();
-  await writeConfig({ ...config, [key]: value });
-}
-
 export async function unsetConfigValue<K extends keyof CliConfig>(
   key: K
 ): Promise<void> {

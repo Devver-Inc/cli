@@ -1,9 +1,5 @@
 #!/usr/bin/env bun
 
-/**
- * Build script for devver
- */
-
 import { rmSync } from "node:fs";
 import pkg from "../package.json";
 import { buildDefines } from "./stamp";

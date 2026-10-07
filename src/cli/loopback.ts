@@ -1,11 +1,3 @@
-/**
- * Loopback port allocation shared by every platform's supervisor.
- *
- * Binding port 0 on 127.0.0.1 lets the OS pick a free port and proves the
- * address is bindable before a supervised server is registered for it. Nothing
- * here is platform specific, so all three supervisors use this one copy.
- */
-
 import { createServer } from "node:net";
 
 export async function availablePort() {
