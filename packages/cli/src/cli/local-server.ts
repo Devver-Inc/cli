@@ -1,6 +1,7 @@
 import { Console, Effect, Schema } from "effect";
 import { Argument, Command } from "effect/cli";
 import pkg from "../../../../package.json" with { type: "json" };
+import { listInstances, readInstanceService } from "../../../server/identity";
 import {
   type CliConfig,
   InstanceNameSchema,
@@ -124,7 +125,61 @@ const status = Command.make("status", {}, () =>
   }).pipe(Effect.flatMap((message) => Console.log(message)))
 );
 
+async function instanceReachability(
+  url: string,
+  name: string,
+  instanceId: string,
+  serverVersion: string
+) {
+  try {
+    const current = await verifyIdentity(url);
+    if (current.name !== name || current.instanceId !== instanceId) {
+      return "mismatched identity";
+    }
+    return current.serverVersion === serverVersion
+      ? "reachable"
+      : "mismatched version";
+  } catch (error) {
+    return error instanceof Error &&
+      error.message.startsWith("Incompatible server version")
+      ? "incompatible"
+      : "unreachable";
+  }
+}
+
+const list = Command.make("list", {}, () =>
+  Effect.tryPromise(async () => {
+    const config = await readConfig();
+    const instances = await listInstances();
+    if (instances.length === 0) {
+      return "No server instances found";
+    }
+    const lines: string[] = [];
+    for (const instance of instances) {
+      const service = await readInstanceService(instance.name);
+      const url = `http://127.0.0.1:${service.port}/api/v1`;
+      const reachability = await instanceReachability(
+        url,
+        instance.name,
+        instance.instanceId,
+        service.serverVersion
+      );
+      const target = config["local-target"];
+      const selected =
+        target?.name === instance.name &&
+        target.instanceId === instance.instanceId &&
+        target.url === url
+          ? " [selected]"
+          : "";
+      lines.push(
+        `${instance.name} (${instance.instanceId}) at ${url} — version ${service.serverVersion}: ${reachability}${selected}`
+      );
+    }
+    return lines.join("\n");
+  }).pipe(Effect.flatMap((message) => Console.log(message)))
+).pipe(Command.withDescription("List saved local server instances"));
+
 export const server = Command.make("server").pipe(
-  Command.withDescription("Inspect the attached local server"),
-  Command.withSubcommands([status])
+  Command.withDescription("Inspect local server instances"),
+  Command.withSubcommands([status, list])
 );

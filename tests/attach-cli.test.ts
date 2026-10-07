@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import {
+  chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -9,6 +11,7 @@ import {
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import pkg from "../package.json" with { type: "json" };
 
 const cli = join(
   import.meta.dir,
@@ -167,6 +170,135 @@ test("config list renders the attached target without object coercion and marks 
     rmSync(ws.root, { recursive: true, force: true });
   }
 });
+
+test("server list reads sorted instances, verifies responders and preserves selection and state", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  const ws = workspace();
+  const children: ReturnType<typeof Bun.spawn>[] = [];
+  const services: Server[] = [];
+  try {
+    expect(await ws.run("server", "list")).toMatchObject({
+      status: 0,
+      output: expect.stringContaining("No server instances found"),
+    });
+    expect(existsSync(join(ws.root, "devver", "servers"))).toBe(false);
+    const second = await foreground(ws.env, "zeta");
+    children.push(second.child);
+    const first = await foreground(ws.env, "alpha");
+    children.push(first.child);
+    const uuid = "031fdbdf-3c42-4d19-8909-9a2cf4690cb0";
+    const serviceFile = (name: string) =>
+      join(ws.root, "devver", "servers", name, "service.json");
+    const save = (
+      name: string,
+      url: string,
+      serverVersion = pkg.version,
+      port = Number(new URL(url).port)
+    ) => {
+      const service =
+        process.platform === "darwin"
+          ? { label: `com.devver.server.${uuid}`, port, serverVersion }
+          : { unit: `devver-${uuid}.service`, port, serverVersion };
+      writeFileSync(serviceFile(name), JSON.stringify(service), {
+        mode: 0o600,
+      });
+    };
+    save("zeta", second.url);
+    save("alpha", first.url);
+    expect((await ws.run("attach", first.url)).status).toBe(0);
+    const configFile = join(ws.root, "devver", "config", "cli");
+    const selectedConfig = readFileSync(configFile, "utf8");
+    const listed = await ws.run("server", "list");
+    expect(listed.status).toBe(0);
+    expect(listed.output.indexOf("alpha (")).toBeLessThan(
+      listed.output.indexOf("zeta (")
+    );
+    expect(listed.output).toContain(
+      `${first.url} — version ${pkg.version}: reachable [selected]`
+    );
+    expect(listed.output).toContain(
+      `${second.url} — version ${pkg.version}: reachable`
+    );
+    save("alpha", first.url, "0.1.0");
+    expect((await ws.run("server", "list")).output).toContain(
+      `${first.url} — version 0.1.0: mismatched version [selected]`
+    );
+    save("alpha", first.url);
+    expect(readFileSync(configFile, "utf8")).toBe(selectedConfig);
+
+    await stop(second.child);
+    children.pop();
+    expect((await ws.run("server", "list")).output).toContain(
+      `${second.url} — version ${pkg.version}: unreachable`
+    );
+    const foreign = await responder(
+      200,
+      JSON.stringify({
+        instanceId: uuid,
+        name: "foreign",
+        serverVersion: pkg.version,
+        controlProtocolVersion: 1,
+      })
+    );
+    services.push(foreign.service);
+    save("zeta", foreign.url);
+    expect((await ws.run("server", "list")).output).toContain(
+      "mismatched identity"
+    );
+    const older = await responder(
+      200,
+      JSON.stringify({
+        instanceId: uuid,
+        name: "zeta",
+        serverVersion: "0.1.0",
+        controlProtocolVersion: 1,
+      })
+    );
+    services.push(older.service);
+    save("zeta", older.url, "0.1.0");
+    expect((await ws.run("server", "list")).output).toContain("incompatible");
+    const redirect = await responder(302, "", { Location: first.url });
+    services.push(redirect.service);
+    save("zeta", redirect.url);
+    expect((await ws.run("server", "list")).output).toContain(
+      `${redirect.url} — version ${pkg.version}: unreachable`
+    );
+
+    writeFileSync(serviceFile("zeta"), "private invalid JSON");
+    const unsafe = await ws.run("server", "list");
+    expect(unsafe.status).not.toBe(0);
+    expect(unsafe.output).toContain("zeta");
+    expect(unsafe.output).not.toContain("private invalid JSON");
+    expect(readFileSync(serviceFile("zeta"), "utf8")).toBe(
+      "private invalid JSON"
+    );
+    save("zeta", redirect.url, pkg.version, 99_999);
+    expect((await ws.run("server", "list")).status).not.toBe(0);
+    save("zeta", redirect.url);
+    chmodSync(serviceFile("zeta"), 0o644);
+    const exposed = await ws.run("server", "list");
+    expect(exposed.status).not.toBe(0);
+    expect(exposed.output).toContain("zeta");
+    chmodSync(serviceFile("zeta"), 0o600);
+    expect(readFileSync(configFile, "utf8")).toBe(selectedConfig);
+    writeFileSync(configFile, '{"local-target":{"url":"broken"}}');
+    expect((await ws.run("server", "list")).status).not.toBe(0);
+    expect(readFileSync(configFile, "utf8")).toBe(
+      '{"local-target":{"url":"broken"}}'
+    );
+  } finally {
+    await Promise.all(children.map(stop));
+    await Promise.all(
+      services.map(
+        (service) =>
+          new Promise<void>((resolve) => service.close(() => resolve()))
+      )
+    );
+    rmSync(ws.root, { recursive: true, force: true });
+  }
+}, 30_000);
 
 test("attach switches verified foreground servers across CLI processes and detach leaves them running", async () => {
   if (process.platform === "win32") {

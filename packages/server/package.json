@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "bun build src/index.ts --target=node --packages=bundle --outfile=dist/server.mjs",
-    "test": "bun test tests/package-exports.test.ts"
+    "test": "bun test tests/*.test.ts"
   },
   "dependencies": {
     "@effect/platform-node": "^4",

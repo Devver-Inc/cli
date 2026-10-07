@@ -114,6 +114,23 @@ Confirm-Private $path 'directory' $true
 Write-Output $path
 `;
 
+// Listing state must never create the protected root used by creation.
+const FIND_ROOT = `
+$ErrorActionPreference = 'Stop'
+${CHECK_ENTRY}
+$base = [System.Environment]::GetFolderPath('LocalApplicationData')
+if ([string]::IsNullOrEmpty($base)) { throw 'Local application data is unavailable' }
+$baseItem = Get-Item -LiteralPath $base -Force
+if (-not $baseItem.PSIsContainer -or ($baseItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+  throw 'Local application data is not a plain directory'
+}
+$path = [System.IO.Path]::Combine($base, $env:DEVVER_ACL_ROOT)
+try { $item = Get-Item -LiteralPath $path -Force -ErrorAction Stop }
+catch [System.Management.Automation.ItemNotFoundException] { return }
+Confirm-Private $path 'directory' $true
+Write-Output $path
+`;
+
 // Windows PowerShell 5.1 writes a JSON array to the pipeline as one item with
 // enumeration suppressed, so neither `@(...)` nor `ForEach-Object` unrolls it:
 // the loop variable binds the whole array and `$entry.path` member-enumerates
@@ -206,6 +223,34 @@ export async function windowsServersDirectory() {
   requireWindows();
   servers ??= resolveServers();
   return await servers;
+}
+
+/** Resolve existing state without creating the user root or servers directory. */
+export async function existingWindowsServersDirectory() {
+  requireWindows();
+  if (process.env.XDG_DATA_HOME) {
+    throw new Error(
+      "Windows server state does not accept XDG_DATA_HOME overrides"
+    );
+  }
+  const root = await powershell(FIND_ROOT, { DEVVER_ACL_ROOT: ROOT });
+  if (!root) {
+    return undefined;
+  }
+  if (basename(root) !== ROOT) {
+    throw new Error("Windows local application data directory is unavailable");
+  }
+  const directory = join(root, "servers");
+  try {
+    await lstat(directory);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  }
+  await verifyWindowsPrivate({ path: directory, kind: "directory" });
+  return directory;
 }
 
 /**

@@ -10,6 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import pkg from "../package.json";
+import { listInstances } from "../packages/server/identity";
 import {
   verifyWindowsPrivate,
   windowsServersDirectory,
@@ -85,6 +86,7 @@ function build() {
     // XDG override; attachment never touches instance state, so it keeps one.
     create: (name: string, env?: Record<string, string | undefined>) =>
       run([cli, "new", "server", name], env),
+    list: () => run([cli, "server", "list"]),
     attachment: (args: string[], data: string) =>
       run([cli, ...args], { XDG_DATA_HOME: data }),
     runServer: (name: string) => run([server, name, "0"]),
@@ -149,6 +151,27 @@ test("Windows instance state helpers refuse to run on other platforms", async ()
   // Creation must never fall back to POSIX mode bits for Windows instance state.
   const { create } = await import("../packages/cli/windows-supervision");
   await expect(create("other-platform")).rejects.toThrow("requires Windows");
+});
+
+test("Windows listing rejects untrusted XDG overrides without touching instance state", () => {
+  if (!windows) {
+    return;
+  }
+  const result = Bun.spawnSync(
+    ["bun", "run", join(repo, "packages/server/tests/list-driver.ts"), "list"],
+    {
+      env: {
+        ...process.env,
+        XDG_DATA_HOME: join(tmpdir(), "untrusted-devver"),
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    }
+  );
+  expect(result.exitCode).not.toBe(0);
+  expect(result.stderr.toString()).toContain(
+    "does not accept XDG_DATA_HOME overrides"
+  );
 });
 
 test("Windows supervision stays manual-start with bounded restart and no login or boot trigger", () => {
@@ -217,6 +240,7 @@ test("Windows refuses corrupt or widened instance state without replacing it", a
     expect(corrupt.status).not.toBe(0);
     expect(corrupt.output).toContain("invalid state");
     expect(readFileSync(file, "utf8")).toBe("invalid JSON");
+    await expect(listInstances()).rejects.toThrow(name);
 
     // Everyone (S-1-1-0) is a well-known SID on every Windows language build.
     // GetAccessControl/SetAccessControl avoid Get-Acl and Set-Acl, whose module
@@ -231,6 +255,7 @@ test("Windows refuses corrupt or widened instance state without replacing it", a
     const widened = state.runServer(name);
     expect(widened.status).not.toBe(0);
     expect(widened.output).toContain("owner-only");
+    await expect(listInstances()).rejects.toThrow(name);
     expect(readFileSync(file, "utf8")).toBe("invalid JSON");
   } finally {
     removeInstance(state.servers, name);
@@ -284,6 +309,17 @@ test("Windows Task Scheduler keeps distinct instances alive after their creator 
     }
     expect(identities[0]).not.toBe(identities[1]);
     expect(urls[0]).not.toBe(urls[1]);
+    const discovered = await listInstances();
+    const listed = state.list();
+    expect(listed.status, listed.output).toBe(0);
+    for (const [index, name] of names.entries()) {
+      expect(
+        discovered.find((instance) => instance.name === name)?.instanceId
+      ).toBe(identities[index]);
+      expect(listed.output).toContain(
+        `${name} (${identities[index]}) at ${urls[index]}`
+      );
+    }
 
     const [first] = urls;
     expect(state.attachment(["server", "status"], config).output).toContain(
@@ -302,6 +338,17 @@ test("Windows Task Scheduler keeps distinct instances alive after their creator 
     expect((await (await fetch(`${first}/identity`)).json()).instanceId).toBe(
       identities[0]
     );
+    const serviceFile = join(state.servers, names[0] ?? "", "service.json");
+    const originalService = readFileSync(serviceFile, "utf8");
+    try {
+      writeFileSync(serviceFile, "invalid service JSON");
+      const invalid = state.list();
+      expect(invalid.status).not.toBe(0);
+      expect(invalid.output).toContain(names[0] ?? "");
+      expect(invalid.output).not.toContain("invalid service JSON");
+    } finally {
+      writeFileSync(serviceFile, originalService);
+    }
   } finally {
     for (const name of names) {
       removeInstance(state.servers, name);
