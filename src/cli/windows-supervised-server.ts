@@ -41,10 +41,21 @@ if ($env:DEVVER_TASK_ACTION -eq 'register') {
   $action = New-ScheduledTaskAction -Execute $env:DEVVER_EXECUTABLE -Argument $env:DEVVER_ARGUMENTS
   $settings = New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
   $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-  $principal = New-ScheduledTaskPrincipal -UserId $sid -LogonType Interactive -RunLevel Limited
+  # S4U runs as this user without storing a password and without requiring an
+  # interactive desktop session: Interactive would refuse to launch whenever
+  # the account is not logged on at a console. RunLevel stays unelevated.
+  $principal = New-ScheduledTaskPrincipal -UserId $sid -LogonType S4U -RunLevel Limited
   Register-ScheduledTask -TaskName $task -Action $action -Settings $settings -Principal $principal | Out-Null
 } elseif ($env:DEVVER_TASK_ACTION -eq 'start') {
   Start-ScheduledTask -TaskName $task
+} elseif ($env:DEVVER_TASK_ACTION -eq 'diagnose') {
+  # Readiness failures must say whether the task ever ran, otherwise a task that
+  # cannot launch is indistinguishable from a server that will not listen.
+  $entry = Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue
+  if ($null -eq $entry) { Write-Output 'task not registered' } else {
+    $info = Get-ScheduledTaskInfo -TaskName $task -ErrorAction SilentlyContinue
+    Write-Output "state=$($entry.State) lastResult=$($info.LastTaskResult) lastRun=$($info.LastRunTime) missed=$($info.NumberOfMissedRuns)"
+  }
 } elseif ($env:DEVVER_TASK_ACTION -eq 'supervised') {
   $entry = Get-ScheduledTask -TaskName $task
   if ("$($entry.State)" -notin @('Running', '4')) { throw 'Scheduled task is not running' }
@@ -65,12 +76,14 @@ if ($env:DEVVER_TASK_ACTION -eq 'register') {
 `;
 
 async function task(action: string, name: string, command = "", args = "") {
-  await execute(
+  const result = await execute(
     "powershell.exe",
     ["-NoProfile", "-NonInteractive", "-Command", TASK_SCRIPT],
     {
       timeout: 30_000,
-      maxBuffer: 8192,
+      // A failing task report names the task and its settings; truncating that
+      // to ENOBUFS would replace the real reason with a spurious one.
+      maxBuffer: 4 * 1024 * 1024,
       windowsHide: true,
       env: {
         ...process.env,
@@ -81,6 +94,16 @@ async function task(action: string, name: string, command = "", args = "") {
       },
     }
   );
+  return result.stdout.trim();
+}
+
+/** Never throws: it only explains a readiness failure that already happened. */
+async function diagnose(name: string) {
+  try {
+    return await task("diagnose", name);
+  } catch (error) {
+    return `task state unavailable: ${error instanceof Error ? error.message : "unknown"}`;
+  }
 }
 
 function existing(error: unknown) {
@@ -197,7 +220,7 @@ export async function create(name: string) {
       await new Promise((resolve) => setTimeout(resolve, 150));
     }
     throw new Error(
-      "Server did not return its expected identity while supervised"
+      `Server did not return its expected identity while supervised (${await diagnose(taskName)})`
     );
   } catch (error) {
     // Even if registration failed, stop the unique task before discarding its

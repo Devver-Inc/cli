@@ -152,7 +152,12 @@ test("Windows supervision stays manual-start with bounded restart and no login o
   expect(source).toContain("-RestartCount 3");
   expect(source).toContain("-RestartInterval (New-TimeSpan -Minutes 1)");
   expect(source).toContain("-MultipleInstances IgnoreNew");
-  expect(source).toContain("-LogonType Interactive -RunLevel Limited");
+  // S4U runs as the creating user with no stored password and no interactive
+  // desktop session; Interactive refuses to launch when the account is not
+  // logged on at a console, and Password would require storing a credential.
+  expect(source).toContain("-LogonType S4U -RunLevel Limited");
+  expect(source).not.toContain("-LogonType Password");
+  expect(source).not.toContain("-RunLevel Highest");
   // Creation only reports readiness once the registered task matches that contract.
   expect(source).toContain("@($entry.Triggers).Count -ne 0");
 });
