@@ -1,6 +1,6 @@
+import { expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { expect, test } from "bun:test";
 import pkg from "../../../package.json" with { type: "json" };
 
 const entry = fileURLToPath(new URL("../src/cli/index.ts", import.meta.url));
