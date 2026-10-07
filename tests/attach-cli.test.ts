@@ -315,4 +315,6 @@ test("invalid and incompatible attachments fail without replacing a selected ser
     );
     rmSync(ws.root, { recursive: true, force: true });
   }
-}, 15_000);
+  // Each rejected responder costs a CLI spawn plus up to the probe timeout, so
+  // this budget is well above the ~13s a loaded CI runner needs.
+}, 60_000);

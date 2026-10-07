@@ -206,6 +206,10 @@ export async function create(name: string) {
     started = true;
     const url = `http://127.0.0.1:${port}/api/v1`;
     const deadline = Date.now() + READINESS_MS;
+    // A readiness failure must say whether nothing ever listened or something
+    // listened under another identity: the second means the supervised process
+    // resolved its instance state somewhere the creating CLI did not.
+    let lastProbe = "no response";
     while (Date.now() < deadline) {
       try {
         const target = await verifyIdentity(url);
@@ -213,14 +217,14 @@ export async function create(name: string) {
           await task("supervised", taskName);
           return url;
         }
-      } catch {
-        // A starting server refuses connections; never report a different
-        // identity as ready.
+        lastProbe = `identity mismatch: answered ${target.name}/${target.instanceId}, expected ${name}/${instance.instanceId}`;
+      } catch (error) {
+        lastProbe = `no identity: ${error instanceof Error ? error.message : "unknown"}`;
       }
       await new Promise((resolve) => setTimeout(resolve, 150));
     }
     throw new Error(
-      `Server did not return its expected identity while supervised (${await diagnose(taskName)})`
+      `Server did not return its expected identity while supervised (${await diagnose(taskName)}; last probe: ${lastProbe})`
     );
   } catch (error) {
     // Even if registration failed, stop the unique task before discarding its
