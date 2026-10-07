@@ -66,7 +66,10 @@ function Confirm-Private([string] $path, [string] $kind, [bool] $protectedAcl) {
   }
   if ($kind -eq 'directory' -and -not $item.PSIsContainer) { throw "$path is not a directory" }
   if ($kind -eq 'file' -and $item.PSIsContainer) { throw "$path is not a file" }
-  $acl = Get-Acl -LiteralPath $path
+  # GetAccessControl() comes from the already-resolved item rather than Get-Acl:
+  # that cmdlet lives in Microsoft.PowerShell.Security, whose autoload failed in
+  # CI and turned an ordinary permission check into a missing-command error.
+  $acl = $item.GetAccessControl()
   if ($acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -ne $sid) {
     throw "$path is not owned by this user"
   }
