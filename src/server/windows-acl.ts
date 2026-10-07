@@ -58,7 +58,7 @@ function Confirm-Private([string] $path, [string] $kind, [bool] $protectedAcl) {
     # Get-Item would raise an opaque PathNotFound here. Report what this process
     # actually received, so a path handed over wrong is not read as a missing one.
     $parent = [System.IO.Path]::GetDirectoryName($path)
-    throw "$path is absent (length $($path.Length), parent '$parent' exists: $([System.IO.Directory]::Exists($parent)), cwd '$($PWD.Path)')"
+    throw "$path is absent (length $($path.Length), parent '$parent' exists: $([System.IO.Directory]::Exists($parent)))"
   }
   $item = Get-Item -LiteralPath $path -Force
   if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
@@ -111,16 +111,18 @@ Confirm-Private $path 'directory' $true
 Write-Output $path
 `;
 
-// Windows PowerShell 5.1 emits a JSON array as one object rather than
-// enumerating it, so `@(ConvertFrom-Json)` wraps the array instead of
-// unrolling it: `foreach` would bind the whole array and `$entry.path` would
-// member-enumerate every path into one space-joined string. Piping enumerates
-// for both a single entry and many.
+// Windows PowerShell 5.1 writes a JSON array to the pipeline as one item with
+// enumeration suppressed, so neither `@(...)` nor `ForEach-Object` unrolls it:
+// the loop variable binds the whole array and `$entry.path` member-enumerates
+// every path into one space-joined string. Assigning first, then indexing by
+// position, does not depend on pipeline enumeration at all.
 const VERIFY_ENTRIES = `
 $ErrorActionPreference = 'Stop'
 ${CHECK_ENTRY}
-$env:DEVVER_ACL_ENTRIES | ConvertFrom-Json | ForEach-Object {
-  Confirm-Private $_.path $_.kind $false
+$entries = $env:DEVVER_ACL_ENTRIES | ConvertFrom-Json
+for ($i = 0; $i -lt @($entries).Count; $i++) {
+  $entry = @($entries)[$i]
+  Confirm-Private $entry.path $entry.kind $false
 }
 `;
 
