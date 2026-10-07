@@ -1,0 +1,15 @@
+{
+  "name": "@devver/server",
+  "version": "1.2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./identity": "./src/identity.ts",
+    "./windows-acl": "./src/windows-acl.ts"
+  },
+  "dependencies": {
+    "@effect/platform-node": "^4",
+    "effect": "^4",
+    "xdg-basedir": "^5.1.0"
+  }
+}

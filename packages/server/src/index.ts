@@ -2,7 +2,7 @@
 import { createServer, type IncomingMessage } from "node:http";
 import { NodeRuntime } from "@effect/platform-node";
 import { Effect } from "effect";
-import pkg from "../../package.json" with { type: "json" };
+import pkg from "../../../package.json" with { type: "json" };
 import { loadInstance } from "./identity";
 
 const HOST = "127.0.0.1";
