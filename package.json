@@ -19,7 +19,7 @@
   "author": "Your Name",
   "type": "module",
   "scripts": {
-    "dev": "bun run packages/cli/src/cli/index.ts",
+    "dev": "bun --watch run packages/cli/src/cli/index.ts",
     "dev:build": "bun build --compile --watch --outfile devver packages/cli/src/cli/index.ts",
     "cmd": "bun run packages/cli/src/cli/index.ts",
     "build": "bun run scripts/build.ts",

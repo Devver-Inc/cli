@@ -7,6 +7,10 @@
     "./identity": "./src/identity.ts",
     "./windows-acl": "./src/windows-acl.ts"
   },
+  "scripts": {
+    "build": "bun build src/index.ts --target=node --packages=bundle --outfile=dist/server.mjs",
+    "test": "bun test src/package-exports.test.ts"
+  },
   "dependencies": {
     "@effect/platform-node": "^4",
     "effect": "^4",
