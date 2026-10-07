@@ -17,6 +17,11 @@ import {
 
 const repo = join(import.meta.dir, "..");
 const windows = process.platform === "win32";
+// Windows instance state lives in the real per-user %LOCALAPPDATA% and the
+// design deliberately refuses an XDG redirect, so these checks cannot isolate
+// themselves: their result depends on what else touched that root, and under
+// which identity. The dedicated CI job is that isolation, and sets this flag.
+const realState = process.env.DEVVER_WINDOWS_STATE_TESTS === "1";
 const CONTROL_URL = /http:\/\/127\.0\.0\.1:\d+\/api\/v1/;
 // Triggers|RestartCount|State, with State as either enum or CIM value.
 const SUPERVISED = /^0\|3\|(Running|4)$/;
@@ -185,7 +190,7 @@ test("Windows creation fails closed when no service manager is reachable", () =>
 }, 180_000);
 
 test("Windows refuses corrupt or widened instance state without replacing it", async () => {
-  if (!windows) {
+  if (!(windows && realState)) {
     return;
   }
   const state = windowsState();
@@ -227,28 +232,20 @@ test("Windows refuses corrupt or widened instance state without replacing it", a
 }, 180_000);
 
 test("Windows Task Scheduler keeps distinct instances alive after their creator exits", async () => {
-  if (!windows) {
+  if (!(windows && realState)) {
     return;
   }
   const state = windowsState();
   const names = [unique, `${unique}b`];
   const config = mkdtempSync(join(tmpdir(), "devver-win-config-"));
-  // Task Scheduler can only start an Interactive-logon task while a session for
-  // this user exists; creation must otherwise fail closed.
-  const interactive =
-    powershell("[System.Environment]::UserInteractive") === "True";
   try {
     const identities: string[] = [];
     const urls: string[] = [];
     for (const name of names) {
+      // S4U needs no console session, so creation has no excuse to fail here:
+      // an earlier bail-out on a non-interactive host let real failures pass.
       const created = state.create(name);
-      if (created.status !== 0) {
-        expect(interactive, created.output).toBe(false);
-        expect(created.output).not.toMatch(CONTROL_URL);
-        expect(created.output).toContain("state removed");
-        expect(() => statSync(join(state.servers, name))).toThrow();
-        return;
-      }
+      expect(created.status, created.output).toBe(0);
       const url = created.output.match(CONTROL_URL)?.[0] ?? "";
       expect(url).toMatch(CONTROL_URL);
       expect(created.output).toContain(`devver attach ${url}`);
