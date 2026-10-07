@@ -14,7 +14,7 @@ import { pathToFileURL } from "node:url";
 import pkg from "../package.json";
 
 const repo = join(import.meta.dir, "..");
-const cli = join(repo, "dist", "cli.mjs");
+const cli = join(repo, "packages/cli/dist", "cli.mjs");
 const node = Bun.which("node");
 const CONTROL_URL = /http:\/\/127\.0\.0\.1:\d+\/api\/v1/;
 

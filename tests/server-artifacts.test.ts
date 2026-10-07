@@ -72,7 +72,7 @@ test("npm artifact includes a versioned Node server beside the lazy CLI", async 
   }
   const built = Bun.spawnSync(["bun", "run", "build:npm"], { cwd: repo });
   expect(built.exitCode).toBe(0);
-  const file = join(repo, "dist", versioned, "server.mjs");
+  const file = join(repo, "packages/cli/dist", versioned, "server.mjs");
   const code = readFileSync(file, "utf8");
   expect(code).toStartWith("#!/usr/bin/env node\n");
   expect(code).not.toMatch(BUN_API);
@@ -87,7 +87,15 @@ test("npm artifact includes a versioned Node server beside the lazy CLI", async 
   const packRoot = mkdtempSync(join(tmpdir(), "devver-pack-"));
   try {
     const pack = Bun.spawnSync(
-      ["npm", "pack", "--ignore-scripts", "--pack-destination", packRoot],
+      [
+        "npm",
+        "pack",
+        "--workspace",
+        "@devver/cli",
+        "--ignore-scripts",
+        "--pack-destination",
+        packRoot,
+      ],
       { cwd: repo, stdout: "pipe", stderr: "pipe" }
     );
     expect(pack.exitCode, pack.stderr.toString()).toBe(0);
@@ -101,7 +109,7 @@ test("npm artifact includes a versioned Node server beside the lazy CLI", async 
       `package/dist/servers/${pkg.version}/server.mjs`
     );
     const manifest = JSON.parse(
-      readFileSync(join(repo, "package.json"), "utf8")
+      readFileSync(join(repo, "packages/cli/package.json"), "utf8")
     );
     expect(manifest.bin["devver-server"]).toBe(
       `dist/servers/${pkg.version}/server.mjs`
@@ -109,7 +117,7 @@ test("npm artifact includes a versioned Node server beside the lazy CLI", async 
     const lock = JSON.parse(
       readFileSync(join(repo, "package-lock.json"), "utf8")
     );
-    expect(lock.packages[""].bin).toEqual(manifest.bin);
+    expect(lock.packages["packages/cli"].bin).toEqual(manifest.bin);
     const installed = join(packRoot, "installed");
     const install = Bun.spawnSync(
       [

@@ -30,7 +30,7 @@ test("the npm bundle runs under Node without eagerly loading the TUI", () => {
   });
   expect(build.exitCode, build.stderr.toString()).toBe(0);
 
-  const bundle = join(repo, "dist", "cli.mjs");
+  const bundle = join(repo, "packages/cli/dist", "cli.mjs");
   const run = (...args: string[]) => {
     const result = Bun.spawnSync([node, bundle, ...args], {
       cwd: repo,

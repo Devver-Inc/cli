@@ -3,7 +3,15 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const entry = join(import.meta.dir, "..", "src", "cli", "index.ts");
+const entry = join(
+  import.meta.dir,
+  "..",
+  "packages",
+  "cli",
+  "src",
+  "cli",
+  "index.ts"
+);
 
 test("config, project, and repos work in an isolated workspace", () => {
   const root = mkdtempSync(join(tmpdir(), "devver-cli-"));

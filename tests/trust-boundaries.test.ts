@@ -2,11 +2,22 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readConfigFile } from "../src/config";
-import { readSecretsFile, setDeploymentEnv } from "../src/config/secrets";
+import { readConfigFile } from "../packages/cli/src/config";
+import {
+  readSecretsFile,
+  setDeploymentEnv,
+} from "../packages/cli/src/config/secrets";
 import { idToken } from "./jwt";
 
-const cliEntry = join(import.meta.dir, "..", "src", "cli", "index.ts");
+const cliEntry = join(
+  import.meta.dir,
+  "..",
+  "packages",
+  "cli",
+  "src",
+  "cli",
+  "index.ts"
+);
 const INVALID_YAML = /Invalid YAML/;
 const INVALID_CONFIG = /Invalid devver config/;
 const INVALID_SECRETS = /Invalid secrets file/;

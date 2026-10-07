@@ -4,7 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { idToken } from "./jwt";
 
-const entry = join(import.meta.dir, "..", "src", "cli", "index.ts");
+const entry = join(
+  import.meta.dir,
+  "..",
+  "packages",
+  "cli",
+  "src",
+  "cli",
+  "index.ts"
+);
 
 test("project create requires an explicit target even with legacy API defaults", () => {
   const root = mkdtempSync(join(tmpdir(), "devver-api-routing-"));

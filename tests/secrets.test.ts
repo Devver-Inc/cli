@@ -8,7 +8,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readSecretsFile, setDeploymentEnv } from "../src/config/secrets";
+import {
+  readSecretsFile,
+  setDeploymentEnv,
+} from "../packages/cli/src/config/secrets";
 
 test("secrets are private and corrupt files are not overwritten", () => {
   const root = mkdtempSync(join(tmpdir(), "devver-secrets-"));
@@ -30,7 +33,15 @@ test("secrets are private and corrupt files are not overwritten", () => {
 
 test("unsupported secret command never echoes the value", () => {
   const child = Bun.spawnSync(
-    ["bun", "run", "src/cli/index.ts", "secret", "set", "KEY", "private-value"],
+    [
+      "bun",
+      "run",
+      "packages/cli/src/cli/index.ts",
+      "secret",
+      "set",
+      "KEY",
+      "private-value",
+    ],
     {
       cwd: join(import.meta.dir, ".."),
       stdout: "pipe",
