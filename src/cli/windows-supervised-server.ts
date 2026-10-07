@@ -59,7 +59,10 @@ if ($env:DEVVER_TASK_ACTION -eq 'register') {
 } elseif ($env:DEVVER_TASK_ACTION -eq 'supervised') {
   $entry = Get-ScheduledTask -TaskName $task
   if ("$($entry.State)" -notin @('Running', '4')) { throw 'Scheduled task is not running' }
-  if (@($entry.Triggers).Count -ne 0) { throw 'Scheduled task has a startup trigger' }
+  # A trigger-free task reports $null here, and @($null).Count is 1, so an
+  # unfiltered count rejects exactly the shape this contract requires.
+  $triggers = @($entry.Triggers) | Where-Object { $null -ne $_ }
+  if (@($triggers).Count -ne 0) { throw 'Scheduled task has a startup trigger' }
   if ($entry.Settings.RestartCount -ne 3) { throw 'Scheduled task restart is unbounded' }
   if ("$($entry.Settings.MultipleInstances)" -notin @('IgnoreNew', '2')) {
     throw 'Scheduled task allows parallel instances'
@@ -211,15 +214,20 @@ export async function create(name: string) {
     // resolved its instance state somewhere the creating CLI did not.
     let lastProbe = "no response";
     while (Date.now() < deadline) {
+      let target: Awaited<ReturnType<typeof verifyIdentity>> | undefined;
       try {
-        const target = await verifyIdentity(url);
+        target = await verifyIdentity(url);
+      } catch (error) {
+        lastProbe = `no identity: ${error instanceof Error ? error.message : "unknown"}`;
+      }
+      if (target) {
         if (target.instanceId === instance.instanceId && target.name === name) {
+          // Outside the probe's catch: a broken supervision contract must
+          // surface its own reason, not be retried until the budget expires.
           await task("supervised", taskName);
           return url;
         }
         lastProbe = `identity mismatch: answered ${target.name}/${target.instanceId}, expected ${name}/${instance.instanceId}`;
-      } catch (error) {
-        lastProbe = `no identity: ${error instanceof Error ? error.message : "unknown"}`;
       }
       await new Promise((resolve) => setTimeout(resolve, 150));
     }

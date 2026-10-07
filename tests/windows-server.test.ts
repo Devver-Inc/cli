@@ -158,8 +158,11 @@ test("Windows supervision stays manual-start with bounded restart and no login o
   expect(source).toContain("-LogonType S4U -RunLevel Limited");
   expect(source).not.toContain("-LogonType Password");
   expect(source).not.toContain("-RunLevel Highest");
-  // Creation only reports readiness once the registered task matches that contract.
-  expect(source).toContain("@($entry.Triggers).Count -ne 0");
+  // Creation only reports readiness once the registered task matches that
+  // contract, and the trigger count filters $null: @($null).Count is 1, so an
+  // unfiltered count would reject the trigger-free task this registers.
+  expect(source).toContain("Where-Object { $null -ne $_ }");
+  expect(source).toContain("@($triggers).Count -ne 0");
 });
 
 test("Windows creation fails closed when no service manager is reachable", () => {
