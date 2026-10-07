@@ -111,11 +111,16 @@ Confirm-Private $path 'directory' $true
 Write-Output $path
 `;
 
+// Windows PowerShell 5.1 emits a JSON array as one object rather than
+// enumerating it, so `@(ConvertFrom-Json)` wraps the array instead of
+// unrolling it: `foreach` would bind the whole array and `$entry.path` would
+// member-enumerate every path into one space-joined string. Piping enumerates
+// for both a single entry and many.
 const VERIFY_ENTRIES = `
 $ErrorActionPreference = 'Stop'
 ${CHECK_ENTRY}
-foreach ($entry in @($env:DEVVER_ACL_ENTRIES | ConvertFrom-Json)) {
-  Confirm-Private $entry.path $entry.kind $false
+$env:DEVVER_ACL_ENTRIES | ConvertFrom-Json | ForEach-Object {
+  Confirm-Private $_.path $_.kind $false
 }
 `;
 
