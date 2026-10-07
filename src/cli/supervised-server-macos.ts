@@ -7,7 +7,8 @@ import { promisify } from "node:util";
 import pkg from "../../package.json" with { type: "json" };
 import { instanceParent, loadInstance } from "../server/identity";
 import { verifyIdentity } from "./local-server";
-import { availablePort, pinServer } from "./supervised-server-posix";
+import { availablePort } from "./loopback";
+import { pinServer } from "./supervised-server-posix";
 
 const execute = promisify(execFile);
 const PRIVATE_DIRECTORY = 0o700;

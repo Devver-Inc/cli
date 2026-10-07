@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -83,7 +89,33 @@ const stop = async (child: ReturnType<typeof Bun.spawn>) => {
   await child.exited;
 };
 
-test("config list renders the attached target without object coercion and keeps api-url readable", async () => {
+test("storing api-url fails instead of reporting a routing change it cannot make", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  const ws = workspace();
+  try {
+    const stored = await ws.run(
+      "config",
+      "set",
+      "api-url",
+      "https://example.org/api/v1"
+    );
+    expect(stored.status).not.toBe(0);
+    expect(stored.output).toContain("no longer selects a target");
+    expect(stored.output).toContain("devver attach");
+    expect(stored.output).not.toContain("✓");
+    // Nothing was persisted, so no later command can read it back as a target.
+    expect(await ws.run("config", "get", "api-url")).toMatchObject({
+      status: 0,
+      output: expect.stringContaining("is not set"),
+    });
+  } finally {
+    rmSync(ws.root, { recursive: true, force: true });
+  }
+});
+
+test("config list renders the attached target without object coercion and marks a legacy api-url inactive", async () => {
   if (process.platform === "win32") {
     return;
   }
@@ -91,16 +123,28 @@ test("config list renders the attached target without object coercion and keeps 
   let running: Awaited<ReturnType<typeof foreground>> | undefined;
   try {
     running = await foreground(ws.env, "listed");
-    expect(
-      (await ws.run("config", "set", "api-url", "https://example.org/api/v1"))
-        .status
-    ).toBe(0);
+    // A value stored by an older CLI must still decode and stay readable.
+    mkdirSync(join(ws.root, "devver", "config"), { recursive: true });
+    writeFileSync(
+      join(ws.root, "devver", "config", "cli"),
+      JSON.stringify({ "api-url": "https://example.org/api/v1" })
+    );
     expect((await ws.run("attach", running.url)).status).toBe(0);
     const listed = await ws.run("config", "list");
     expect(listed.status).toBe(0);
-    expect(listed.output).toContain("api-url = https://example.org/api/v1");
+    expect(listed.output).toContain(
+      "api-url = https://example.org/api/v1 (inactive)"
+    );
     expect(listed.output).toContain(`local-target = listed at ${running.url}`);
     expect(listed.output).not.toContain("[object Object]");
+    const read = await ws.run("config", "get", "api-url");
+    expect(read.status).toBe(0);
+    expect(read.output).toContain("https://example.org/api/v1 (inactive)");
+    // Clearing a stale value still works, and leaves the verified target alone.
+    expect((await ws.run("config", "unset", "api-url")).status).toBe(0);
+    const cleared = await ws.run("config", "list");
+    expect(cleared.output).not.toContain("api-url");
+    expect(cleared.output).toContain(`local-target = listed at ${running.url}`);
   } finally {
     if (running) {
       await stop(running.child);

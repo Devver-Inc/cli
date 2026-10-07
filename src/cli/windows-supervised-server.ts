@@ -10,7 +10,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { link, lstat, mkdir, open, readFile, rm } from "node:fs/promises";
-import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -21,6 +20,7 @@ import {
   windowsPrivateDirectories,
 } from "../server/windows-acl";
 import { verifyIdentity } from "./local-server";
+import { availablePort } from "./loopback";
 
 const execute = promisify(execFile);
 // Each owner/ACL verification spawns a PowerShell command, so a supervised
@@ -126,23 +126,6 @@ async function pinServer(parent: string) {
     command: npm ? process.execPath : destination,
     args: npm ? [destination] : [],
   };
-}
-
-async function availablePort() {
-  const server = createServer();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, "127.0.0.1", resolve);
-    });
-    const address = server.address();
-    if (!address || typeof address === "string") {
-      throw new Error("Could not allocate a loopback port");
-    }
-    return address.port;
-  } finally {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  }
 }
 
 function quote(value: string) {

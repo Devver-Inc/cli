@@ -29,12 +29,12 @@ test("config, project, and repos work in an isolated workspace", () => {
   try {
     expect(run("init").status).toBe(0);
     expect(existsSync(join(root, ".devver.yaml"))).toBe(true);
-    expect(run("config", "set", "api-url", "https://example.org").status).toBe(
-      0
-    );
-    expect(run("config", "get", "api-url").output).toContain(
-      "https://example.org"
-    );
+    // Storing api-url no longer selects a target, so it must fail rather than
+    // report a change it cannot make.
+    const stored = run("config", "set", "api-url", "https://example.org");
+    expect(stored.status).not.toBe(0);
+    expect(stored.output).toContain("no longer selects a target");
+    expect(run("config", "get", "api-url").output).toContain("is not set");
     expect(
       run("project", "status", "--api-url", "http://localhost:9998").output
     ).toContain("No project selected");
