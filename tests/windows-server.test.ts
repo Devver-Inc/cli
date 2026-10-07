@@ -208,11 +208,14 @@ test("Windows refuses corrupt or widened instance state without replacing it", a
     expect(readFileSync(file, "utf8")).toBe("invalid JSON");
 
     // Everyone (S-1-1-0) is a well-known SID on every Windows language build.
+    // GetAccessControl/SetAccessControl avoid Get-Acl and Set-Acl, whose module
+    // autoload failed in CI and reported a missing command instead of a result.
     powershell(
-      `$acl = Get-Acl -LiteralPath '${directory}'; ` +
+      `$item = Get-Item -LiteralPath '${directory}' -Force; ` +
+        "$acl = $item.GetAccessControl(); " +
         "$everyone = New-Object System.Security.Principal.SecurityIdentifier('S-1-1-0'); " +
         "$rule = New-Object System.Security.AccessControl.FileSystemAccessRule($everyone, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow'); " +
-        `$acl.AddAccessRule($rule); Set-Acl -LiteralPath '${directory}' -AclObject $acl`
+        "$acl.AddAccessRule($rule); $item.SetAccessControl($acl)"
     );
     const widened = state.runServer(name);
     expect(widened.status).not.toBe(0);
