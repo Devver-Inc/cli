@@ -113,6 +113,35 @@ function existing(error: unknown) {
   return error instanceof Error && "code" in error && error.code === "EEXIST";
 }
 
+/**
+ * Waits for the named instance to answer on its own control URL. Returns true
+ * once it does, otherwise the last probe outcome: a readiness failure must say
+ * whether nothing ever listened or something listened under another identity,
+ * because the second means the supervised process resolved its instance state
+ * somewhere the creating CLI did not.
+ */
+async function waitForIdentity(
+  url: string,
+  name: string,
+  instanceId: string
+): Promise<true | string> {
+  const deadline = Date.now() + READINESS_MS;
+  let lastProbe = "no response";
+  while (Date.now() < deadline) {
+    try {
+      const target = await verifyIdentity(url);
+      if (target.instanceId === instanceId && target.name === name) {
+        return true;
+      }
+      lastProbe = `identity mismatch: answered ${target.name}/${target.instanceId}, expected ${name}/${instanceId}`;
+    } catch (error) {
+      lastProbe = `no identity: ${error instanceof Error ? error.message : "unknown"}`;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  return lastProbe;
+}
+
 async function pinServer(parent: string) {
   const installations = join(dirname(parent), "installations");
   const version = join(installations, pkg.version);
@@ -208,31 +237,15 @@ export async function create(name: string) {
     await task("start", taskName);
     started = true;
     const url = `http://127.0.0.1:${port}/api/v1`;
-    const deadline = Date.now() + READINESS_MS;
-    // A readiness failure must say whether nothing ever listened or something
-    // listened under another identity: the second means the supervised process
-    // resolved its instance state somewhere the creating CLI did not.
-    let lastProbe = "no response";
-    while (Date.now() < deadline) {
-      let target: Awaited<ReturnType<typeof verifyIdentity>> | undefined;
-      try {
-        target = await verifyIdentity(url);
-      } catch (error) {
-        lastProbe = `no identity: ${error instanceof Error ? error.message : "unknown"}`;
-      }
-      if (target) {
-        if (target.instanceId === instance.instanceId && target.name === name) {
-          // Outside the probe's catch: a broken supervision contract must
-          // surface its own reason, not be retried until the budget expires.
-          await task("supervised", taskName);
-          return url;
-        }
-        lastProbe = `identity mismatch: answered ${target.name}/${target.instanceId}, expected ${name}/${instance.instanceId}`;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 150));
+    const reached = await waitForIdentity(url, name, instance.instanceId);
+    if (reached === true) {
+      // Outside the probe's own error handling: a broken supervision contract
+      // must surface its reason, not be retried until the budget expires.
+      await task("supervised", taskName);
+      return url;
     }
     throw new Error(
-      `Server did not return its expected identity while supervised (${await diagnose(taskName)}; last probe: ${lastProbe})`
+      `Server did not return its expected identity while supervised (${await diagnose(taskName)}; last probe: ${reached})`
     );
   } catch (error) {
     // Even if registration failed, stop the unique task before discarding its
