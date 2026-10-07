@@ -28,7 +28,10 @@ async function powershell(script: string, variables: Record<string, string>) {
       ["-NoProfile", "-NonInteractive", "-Command", script],
       {
         timeout: 15_000,
-        maxBuffer: 8192,
+        // A failing ACL report prints the offending path and its rules, which
+        // does not fit a small buffer; truncating it to ENOBUFS would replace
+        // the real reason with a spurious one.
+        maxBuffer: 4 * 1024 * 1024,
         windowsHide: true,
         // Paths travel in the environment: they are never interpolated into the script.
         env: { ...process.env, ...variables },
@@ -51,6 +54,12 @@ async function powershell(script: string, variables: Record<string, string>) {
 const CHECK_ENTRY = `
 function Confirm-Private([string] $path, [string] $kind, [bool] $protectedAcl) {
   $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+  if (-not (Test-Path -LiteralPath $path)) {
+    # Get-Item would raise an opaque PathNotFound here. Report what this process
+    # actually received, so a path handed over wrong is not read as a missing one.
+    $parent = [System.IO.Path]::GetDirectoryName($path)
+    throw "$path is absent (length $($path.Length), parent '$parent' exists: $([System.IO.Directory]::Exists($parent)), cwd '$($PWD.Path)')"
+  }
   $item = Get-Item -LiteralPath $path -Force
   if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
     throw "$path is a reparse point"
