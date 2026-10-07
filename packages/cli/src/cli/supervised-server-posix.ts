@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 import { link, lstat, mkdir, open, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import pkg from "../../package.json" with { type: "json" };
+import pkg from "../../../../package.json" with { type: "json" };
 
 const DIRECTORY_MODE = 0o700;
 const FILE_MODE = 0o700;

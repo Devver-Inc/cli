@@ -2,7 +2,7 @@
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Effect } from "effect";
 import { Command } from "effect/cli";
-import pkg from "../../package.json" with { type: "json" };
+import pkg from "../../../../package.json" with { type: "json" };
 import { auth } from "./auth";
 import { config, init } from "./config";
 import { deploy } from "./deploy";
