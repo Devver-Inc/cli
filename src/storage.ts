@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { type DirectoryListing, FileStorage } from "@flystorage/file-storage";
 import { LocalStorageAdapter } from "@flystorage/local-fs";
 import { Global } from "./global";
@@ -10,6 +12,10 @@ import { Global } from "./global";
 const storage = new FileStorage(new LocalStorageAdapter(Global.Path.data));
 
 async function write(filePath: string, contents: string): Promise<void> {
+  // The local adapter does not create a missing parent on every platform:
+  // writing a nested key such as "config/cli" into a fresh data directory
+  // failed with ENOENT on Windows. Secrets keep their own owner-only writer.
+  await mkdir(dirname(join(Global.Path.data, filePath)), { recursive: true });
   await storage.write(filePath, contents);
 }
 
