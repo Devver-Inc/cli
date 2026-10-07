@@ -1,0 +1,46 @@
+{
+  "name": "@devver/cli",
+  "version": "1.2.0",
+  "private": false,
+  "description": "Deploy and try your app in seconds",
+  "keywords": ["utility", "helper"],
+  "homepage": "https://github.com/Devver-Inc/cli#readme",
+  "bugs": {
+    "url": "https://github.com/Devver-Inc/cli/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Devver-Inc/cli.git"
+  },
+  "license": "MIT",
+  "author": "Your Name",
+  "type": "module",
+  "bin": {
+    "devver": "dist/cli.mjs",
+    "devver-server": "dist/servers/1.2.0/server.mjs"
+  },
+  "files": ["dist", "README.md"],
+  "dependencies": {
+    "@clack/prompts": "^1.1.0",
+    "@devver/server": "1.2.0",
+    "@effect/platform-node": "^4",
+    "@flystorage/file-storage": "^1.2.2",
+    "@flystorage/local-fs": "^1.2.0",
+    "@logto/node": "^3.1.8",
+    "@opentui/react": "^0.1.74",
+    "effect": "^4",
+    "js-yaml": "^4.1.1",
+    "xdg-basedir": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/react": "^19.2.9"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "module": "src/cli/index.ts"
+}

@@ -13,12 +13,12 @@ import { link, lstat, mkdir, open, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import pkg from "../../package.json" with { type: "json" };
-import { instanceParent, loadInstance } from "../server/identity";
+import pkg from "../../../../package.json" with { type: "json" };
+import { instanceParent, loadInstance } from "@devver/server/identity";
 import {
   verifyWindowsPrivate,
   windowsPrivateDirectories,
-} from "../server/windows-acl";
+} from "@devver/server/windows-acl";
 import { verifyIdentity } from "./local-server";
 import { availablePort } from "./loopback";
 

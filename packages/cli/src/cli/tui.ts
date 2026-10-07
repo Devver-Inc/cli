@@ -1,6 +1,6 @@
 import { Effect, Option } from "effect";
 import { Argument, Command } from "effect/cli";
-import pkg from "../../package.json" with { type: "json" };
+import pkg from "../../../../package.json" with { type: "json" };
 import { versionLine } from "./version";
 
 const project = Argument.String("project").pipe(Argument.optional);

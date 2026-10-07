@@ -1,6 +1,6 @@
 import { Console, Effect, Schema } from "effect";
 import { Argument, Command } from "effect/cli";
-import pkg from "../../package.json" with { type: "json" };
+import pkg from "../../../../package.json" with { type: "json" };
 import {
   type CliConfig,
   InstanceNameSchema,
