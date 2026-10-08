@@ -1,5 +1,10 @@
 import { Schema } from "effect";
-import { HttpApi, HttpApiEndpoint, HttpApiGroup } from "effect/http-api";
+import {
+  HttpApi,
+  HttpApiEndpoint,
+  HttpApiGroup,
+  HttpApiSchema,
+} from "effect/http-api";
 
 export const CONTROL_PROTOCOL_VERSION = 1;
 
@@ -16,7 +21,9 @@ export const api = HttpApi.make("DevverControl").add(
   HttpApiGroup.make("instance")
     .add(
       HttpApiEndpoint.get("identity", "/identity", {
-        success: IdentityResponse,
+        success: HttpApiSchema.WithHeaders(IdentityResponse, {
+          "cache-control": Schema.Literal("no-store"),
+        }),
       })
     )
     .prefix(API_PATH)

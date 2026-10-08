@@ -87,11 +87,7 @@ const serveOnListener = (name: string) =>
               headers: { Allow: "GET" },
             });
           }
-          return HttpServerResponse.setHeader(
-            yield* next,
-            "Cache-Control",
-            "no-store"
-          );
+          return yield* next;
         }),
       { global: true }
     );
