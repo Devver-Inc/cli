@@ -29,10 +29,8 @@
     "strict": true,
     "exactOptionalPropertyTypes": true,
     "moduleDetection": "force",
-    "composite": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
-    "declaration": true,
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "rewriteRelativeImportExtensions": true,
@@ -41,7 +39,6 @@
     // "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "isolatedModules": true,
     "sourceMap": true,
-    "declarationMap": true,
     "noUnusedLocals": true,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
@@ -81,6 +78,9 @@
           "strictBooleanExpressions": "warning",
           "strictEffectProvide": "warning",
           "tryCatchInEffectGen": "error",
+          // `effect/cli` and `effect/http` are unstable by design and are the
+          // mandated command/transport layer, so every call site would warn.
+          "unstableApiUsage": "off",
           "unnecessaryEffectGen": "warning",
           "unnecessaryFailYieldableError": "warning",
           "unnecessaryPipe": "warning",

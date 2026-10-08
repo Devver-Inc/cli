@@ -33,14 +33,12 @@ class DeploymentError extends Data.TaggedError("DeploymentError")<{
 const resolveRepository = Effect.gen(function* () {
   const projectId = yield* Effect.tryPromise(getCurrentProjectId);
   if (projectId === null || projectId === "") {
-    return yield* Effect.fail(
-      new DeploymentError({ message: "No projects found" })
-    );
+    return yield* new DeploymentError({ message: "No projects found" });
   }
   const linked = yield* Effect.tryPromise(getLinkedRepoForCwd);
   const repositories = yield* listRepos(projectId);
   const current = repositories.find((repo) => repo.name === linked?.repoName);
-  if (current) {
+  if (current !== undefined) {
     yield* Console.log(`  Linked repository: ${current.name}`);
     return { projectId, repoName: current.name, pushUrl: current.pushUrl };
   }
@@ -57,16 +55,16 @@ const resolveRepository = Effect.gen(function* () {
     ],
   });
   if (choice === "Canceled") {
-    return yield* Effect.fail(
-      new DeploymentError({ message: "Repository selection cancelled." })
-    );
+    return yield* new DeploymentError({
+      message: "Repository selection cancelled.",
+    });
   }
   if (choice === "new_repo") {
     const name = yield* Prompt.input("What is the name of the new repository?");
     if (name === "" || name === "Canceled") {
-      return yield* Effect.fail(
-        new DeploymentError({ message: "Repository creation cancelled." })
-      );
+      return yield* new DeploymentError({
+        message: "Repository creation cancelled.",
+      });
     }
     const created = yield* createRepository(projectId, { name });
     yield* Effect.tryPromise(async () =>
@@ -75,10 +73,10 @@ const resolveRepository = Effect.gen(function* () {
     return { projectId, repoName: created.name, pushUrl: created.pushUrl };
   }
   const repo = repositories.find((item) => item.name === choice);
-  if (!repo) {
-    return yield* Effect.fail(
-      new DeploymentError({ message: `Repository '${choice}' not found.` })
-    );
+  if (repo === undefined) {
+    return yield* new DeploymentError({
+      message: `Repository '${choice}' not found.`,
+    });
   }
   yield* Effect.tryPromise(async () => linkRepoForCwd(repo.name, repo.pushUrl));
   return { projectId, repoName: repo.name, pushUrl: repo.pushUrl };
@@ -95,7 +93,6 @@ const resolveDbLinks = (projectId: string) =>
   Effect.gen(function* () {
     const project = yield* getProjectById(projectId);
     if (project.databaseConfiguration?.enabled !== true) {
-      // oxlint-disable-next-line unicorn/no-useless-undefined
       return undefined;
     }
     yield* Console.log(
@@ -103,7 +100,6 @@ const resolveDbLinks = (projectId: string) =>
     );
     if (project.databaseConfiguration.type !== "mongo") {
       yield* Console.log("  Database type linking not yet supported.");
-      // oxlint-disable-next-line unicorn/no-useless-undefined
       return undefined;
     }
     const databases = yield* listMongoDatabases(projectId).pipe(
@@ -118,7 +114,6 @@ const resolveDbLinks = (projectId: string) =>
         options: Prompt.Questions.YNOpts,
       });
       if (create !== "Yes") {
-        // oxlint-disable-next-line unicorn/no-useless-undefined
         return undefined;
       }
       return yield* readDbName("Database name for MONGO_URL");
@@ -135,7 +130,6 @@ const resolveDbLinks = (projectId: string) =>
       ],
     });
     if (choice === "Canceled" || choice === "__skip__") {
-      // oxlint-disable-next-line unicorn/no-useless-undefined
       return undefined;
     }
     return choice === "__new__"
@@ -150,11 +144,9 @@ export const deploy = Command.make("deploy", {}, () =>
       yield* Effect.tryPromise(checkForGitRepo);
       const config = yield* Effect.try(() => readConfigFile());
       if (config === null) {
-        return yield* Effect.fail(
-          new DeploymentError({
-            message: "Config file not found. Run 'devver init' to create one.",
-          })
-        );
+        return yield* new DeploymentError({
+          message: "Config file not found. Run 'devver init' to create one.",
+        });
       }
       const { projectId, repoName, pushUrl } = yield* resolveRepository;
       const branch = yield* Effect.tryPromise(getCurrentBranch);
@@ -188,17 +180,17 @@ export const deploy = Command.make("deploy", {}, () =>
         branch,
         commit,
         service: config.services,
-        env: Object.keys(env).length ? env : undefined,
+        env: Object.keys(env).length === 0 ? undefined : env,
         dbLinks,
       });
       yield* Console.log(
         `Deployment created successfully! (${((performance.now() - start) / 1000).toFixed(1)}s)`
       );
       yield* Console.log(`    Deployment ID: ${result.deploymentId}`);
-      if (result.service.web) {
+      if (result.service.web !== undefined) {
         yield* Console.log(`    Web URL: ${result.service.web.url}`);
       }
-      if (result.service.api) {
+      if (result.service.api !== undefined) {
         yield* Console.log(`    API URL: ${result.service.api.url}`);
       }
     })

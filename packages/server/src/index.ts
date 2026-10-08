@@ -119,7 +119,7 @@ function parsePort(input: string | undefined) {
 if (import.meta.main) {
   const [name, port, ...extra] = process.argv.slice(2);
   const main = Effect.gen(function* () {
-    if (!name || extra.length > 0) {
+    if (name === undefined || name === "" || extra.length > 0) {
       return yield* new ServerStartupError({
         message: "Usage: devver-server <name> [port]",
       });

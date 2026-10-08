@@ -7,11 +7,9 @@
  * registered task is confirmed running with those settings.
  */
 
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { link, lstat, mkdir, open, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { promisify } from "node:util";
 
 import pkg from "../../../../package.json" with { type: "json" };
 import { instanceParent, loadInstance } from "../../../server/identity";
@@ -19,11 +17,11 @@ import {
   verifyWindowsPrivate,
   windowsPrivateDirectories,
 } from "../../../server/windows-acl";
+import { execute } from "../util/exec";
+import { isAlreadyExists } from "../util/fs-errors";
 import { verifyIdentity } from "./local-server";
 import { availablePort } from "./loopback";
 
-// oxlint-disable-next-line typescript/strict-void-return -- Node's execFile overload is supported by promisify and preserves Task Scheduler failures.
-const execute = promisify(execFile);
 // Each owner/ACL verification spawns a PowerShell command, so a supervised
 // server needs a longer readiness budget than a POSIX one.
 const READINESS_MS = 20_000;
@@ -110,11 +108,6 @@ async function diagnose(name: string) {
   }
 }
 
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- Node filesystem errors arrive untyped; inspect only the EEXIST code.
-function existing(error: unknown) {
-  return error instanceof Error && "code" in error && error.code === "EEXIST";
-}
-
 /**
  * Waits for the named instance to answer on its own control URL. Returns true
  * once it does, otherwise the last probe outcome: a readiness failure must say
@@ -170,7 +163,7 @@ async function pinServer(parent: string) {
       // A complete, fsynced copy becomes visible atomically; never replace a pin.
       await link(staging, destination);
     } catch (error) {
-      if (!existing(error)) {
+      if (!isAlreadyExists(error)) {
         throw error;
       }
     }
@@ -208,7 +201,7 @@ export async function create(name: string) {
   try {
     await mkdir(directory);
   } catch (error) {
-    if (existing(error)) {
+    if (isAlreadyExists(error)) {
       throw new Error(`Server instance '${name}' already exists`, {
         cause: error,
       });

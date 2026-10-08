@@ -11,21 +11,16 @@ import { link, lstat, mkdir, open, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import pkg from "../../../../package.json" with { type: "json" };
+import { isAlreadyExists } from "../util/fs-errors";
 
 const DIRECTORY_MODE = 0o700;
 const FILE_MODE = 0o700;
-
-// Filesystem errors are unknown until the Node EEXIST code is checked.
-// oxlint-disable-next-line anti-slop/no-unknown-parameters
-function existing(error: unknown) {
-  return error instanceof Error && "code" in error && error.code === "EEXIST";
-}
 
 async function privateDirectory(path: string) {
   try {
     await mkdir(path, { mode: DIRECTORY_MODE });
   } catch (error) {
-    if (!existing(error)) {
+    if (!isAlreadyExists(error)) {
       throw error;
     }
   }
@@ -70,7 +65,7 @@ export async function pinServer(parent: string) {
       // A complete, fsynced copy becomes visible atomically; never replace a pin.
       await link(staging, destination);
     } catch (error) {
-      if (!existing(error)) {
+      if (!isAlreadyExists(error)) {
         throw error;
       }
     }

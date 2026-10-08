@@ -24,28 +24,6 @@ function formatApiError(err: ApiError): string {
   return message;
 }
 
-/** Recover a readable message from Effect's FiberFailure-wrapped errors,
- * whose `.message` renders as "[object Object]". */
-function formatFiberFailure(input: Error): string {
-  const msg = input.message === "" ? String(input) : input.message;
-  if (OBJECT_OBJECT_RE.test(msg)) {
-    if (input.cause !== undefined) {
-      // Recursive cause formatting must share the public error policy.
-      // oxlint-disable-next-line unicorn/throw-new-error, eslint/no-use-before-define
-      const causeMsg = FormatError(input.cause);
-      if (causeMsg !== undefined && causeMsg !== "") {
-        return causeMsg;
-      }
-    }
-    try {
-      return JSON.stringify(input, null, 2);
-    } catch {
-      return `${input.name}: ${msg}`;
-    }
-  }
-  return msg;
-}
-
 /**
  * Format an unknown error into a human-readable CLI message.
  *
@@ -54,11 +32,11 @@ function formatFiberFailure(input: Error): string {
  * - Error: shows .message
  * - anything else: generic fallback
  *
- * Returns `undefined` only when the input is `undefined`.
+ * Returns `undefined` for nullish input.
  */
 // Errors from Effect finalizers can contain arbitrary thrown values.
 // oxlint-disable-next-line anti-slop/no-unknown-parameters
-export function FormatError(input: unknown): string | undefined {
+export function formatError(input: unknown): string | undefined {
   if (input === undefined || input === null) {
     return undefined;
   }
@@ -73,9 +51,19 @@ export function FormatError(input: unknown): string | undefined {
     return input.message;
   }
 
-  // Generic Error
+  // Effect's FiberFailure may render a cause as "[object Object]".
   if (input instanceof Error) {
-    return formatFiberFailure(input);
+    const message = input.message === "" ? String(input) : input.message;
+    if (!OBJECT_OBJECT_RE.test(message)) {
+      return message;
+    }
+    if (input.cause !== undefined) {
+      const causeMessage = formatError(input.cause);
+      if (causeMessage !== undefined && causeMessage !== "") {
+        return causeMessage;
+      }
+    }
+    return "Unexpected error";
   }
 
   // Do not stringify arbitrary objects (which could contain credentials).

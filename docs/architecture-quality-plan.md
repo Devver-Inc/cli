@@ -27,6 +27,6 @@ The **core domain** begins with project settings; repository selection and deplo
 ## Quality gates
 
 - `bun run typecheck` must remain strict: Effect errors fail; warnings remain visible. Do not suppress type/unsafe findings to make lint pass.
-- `bun run check` passes without linting vendored `repos/`; keep it green. Decode unknown JSON/HTTP/fixture inputs at their owner boundaries. Disable a rule only for a demonstrated incompatibility with Effect/Node semantics, document why, and keep runtime validations.
+- `bun run check` passes without linting vendored `repos/`, with zero errors and zero warnings; keep it green. Effect diagnostics are enforced: tagged errors are raised as `return yield* new SomeError(...)`, `Schema.Finite` replaces `Schema.Number` for finite domains, service keys are deterministic (`@devver/cli/api/client/*`), and the auth callback forks with the surrounding services through `Effect.runForkWith`. Decode unknown JSON/HTTP/fixture inputs at their owner boundaries. Disable a rule only for a demonstrated incompatibility with Effect/Node semantics, document why, and keep runtime validations.
 - `bun test` and `bun run lint:boundaries` remain green; add one focused regression check per nontrivial slice. Windows state/supervision requires the isolated Windows CI gate.
 - Never run a repo-wide mutating fixer without inspecting its proposed effect; past autofixes changed `Effect.succeed(undefined)` and `FormatError(reason)` incorrectly. Preserve unrelated working-tree changes and do not edit `repos/effect/`.

@@ -70,12 +70,10 @@ export function writeConfigFile(
     (r) => r.detected.name === "nestjs" || r.detected.name === "express"
   );
 
-  let serviceName = "web";
-  if (isWebFramework) {
-    serviceName = "web";
-  } else if (isApiFramework) {
-    serviceName = "api";
-  }
+  const serviceName =
+    isWebFramework === undefined && isApiFramework !== undefined
+      ? "api"
+      : "web";
 
   const detectedTypes = new Set(detection.results.map((r) => r.detected.name));
   const hasMongo =

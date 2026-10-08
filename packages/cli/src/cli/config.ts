@@ -28,9 +28,9 @@ const get = Command.make("get", { key: configKey }, ({ key }) =>
   // oxlint-disable-next-line typescript/consistent-return
   Effect.gen(function* () {
     if (key !== "api-url") {
-      return yield* Effect.fail(
-        new ConfigCommandError({ message: `Invalid config key '${key}'` })
-      );
+      return yield* new ConfigCommandError({
+        message: `Invalid config key '${key}'`,
+      });
     }
     const value = yield* Effect.tryPromise(async () => getConfigValue(key));
     yield* Console.log(
@@ -57,9 +57,9 @@ const unset = Command.make("unset", { key: configKey }, ({ key }) =>
   // oxlint-disable-next-line typescript/consistent-return
   Effect.gen(function* () {
     if (key !== "api-url") {
-      return yield* Effect.fail(
-        new ConfigCommandError({ message: `Invalid config key '${key}'` })
-      );
+      return yield* new ConfigCommandError({
+        message: `Invalid config key '${key}'`,
+      });
     }
     yield* Effect.tryPromise(async () => unsetConfigValue(key));
     yield* Console.log(`✓ Unset ${key}`);

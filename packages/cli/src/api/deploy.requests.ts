@@ -56,14 +56,14 @@ export const PM2ProcessStatusSchema = Schema.Literals([
 
 export const PM2ProcessSchema = Schema.Struct({
   name: Schema.String,
-  pm_id: Schema.Number,
+  pm_id: Schema.Finite,
   status: PM2ProcessStatusSchema,
-  cpu: Schema.Number,
-  memory: Schema.Number,
+  cpu: Schema.Finite,
+  memory: Schema.Finite,
 });
 
 export const ServiceDeployResultSchema = Schema.Struct({
-  port: Schema.Number,
+  port: Schema.Finite,
   url: Schema.String,
 });
 
@@ -91,8 +91,8 @@ export const GetLogsSchema = Schema.Struct({
 });
 
 export const RestoreResultSchema = Schema.Struct({
-  restoredRepos: Schema.Number,
-  restoredDeployments: Schema.Number,
+  restoredRepos: Schema.Finite,
+  restoredDeployments: Schema.Finite,
 });
 
 export const PM2ActionSchema = Schema.Literals(["start", "stop", "restart"]);
@@ -105,7 +105,7 @@ export const ControlPm2ProcessResultSchema = Schema.Struct({
 
 export const MongoDatabaseSchema = Schema.Struct({
   name: Schema.String,
-  sizeOnDisk: Schema.Number,
+  sizeOnDisk: Schema.Finite,
   empty: Schema.Boolean,
 });
 

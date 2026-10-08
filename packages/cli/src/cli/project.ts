@@ -44,7 +44,7 @@ const list = Command.make("list", {}, () =>
       return;
     }
     const only = projects.length === 1 ? projects[0] : undefined;
-    if (only) {
+    if (only !== undefined) {
       yield* Console.log("You only have one project:", only.name);
       yield* Effect.tryPromise(async () => setCurrentProjectId(only.id));
       return;
@@ -104,7 +104,6 @@ const databaseConfiguration = Effect.gen(function* () {
   }
   if (wantDb !== "Yes") {
     // An omitted database is a successful optional result, not cancellation.
-    // oxlint-disable-next-line unicorn/no-useless-undefined
     return undefined;
   }
   const rootUsername = yield* Prompt.input("Mongo root username");
@@ -112,18 +111,18 @@ const databaseConfiguration = Effect.gen(function* () {
     return yield* projectCreationCancelled;
   }
   if (rootUsername === "") {
-    return yield* Effect.fail(
-      new ProjectCommandError({ message: "Mongo root username is required." })
-    );
+    return yield* new ProjectCommandError({
+      message: "Mongo root username is required.",
+    });
   }
   const rootPassword = yield* Prompt.secretInput("Mongo root password");
   if (rootPassword === "Canceled") {
     return yield* projectCreationCancelled;
   }
   if (rootPassword === "") {
-    return yield* Effect.fail(
-      new ProjectCommandError({ message: "Mongo root password is required." })
-    );
+    return yield* new ProjectCommandError({
+      message: "Mongo root password is required.",
+    });
   }
   const replicas = yield* Prompt.input(
     `Replicas (1-3) [${defaultDb.replicaCount}]`
@@ -170,13 +169,13 @@ const create = Command.make(
     ),
     cpu: Flag.Finite("cpu").pipe(
       Flag.withSchema(
-        Schema.Number.check(Schema.isBetween({ minimum: 0.5, maximum: 2 }))
+        Schema.Finite.check(Schema.isBetween({ minimum: 0.5, maximum: 2 }))
       ),
       Flag.withDefault(0.5)
     ),
     ram: Flag.Finite("ram").pipe(
       Flag.withSchema(
-        Schema.Number.check(Schema.isBetween({ minimum: 0.5, maximum: 2 }))
+        Schema.Finite.check(Schema.isBetween({ minimum: 0.5, maximum: 2 }))
       ),
       Flag.withDefault(0.5)
     ),
@@ -203,7 +202,7 @@ const create = Command.make(
       yield* Console.log(
         `Project created successfully!\n    Project ID: ${project.id}`
       );
-      if (db) {
+      if (db !== undefined) {
         yield* Console.log(`    Database: ${db.type} (provisioning)`);
         yield* Console.log(
           "    Run 'devver deploy' to link it to a deployment."

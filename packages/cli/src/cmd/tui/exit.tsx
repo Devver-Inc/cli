@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useRef } from "react";
 import type { ReactNode } from "react";
 
-import { FormatError } from "../../error";
+import { formatError } from "../../error";
 
 type Exit = (reason?: Error) => Promise<void>;
 const ExitContext = createContext<Exit | undefined>(undefined);
@@ -22,9 +22,7 @@ export function ExitProvider({
       exiting.current = true;
       await onExit?.();
       if (reason !== undefined) {
-        // FormatError is a formatter, not an Error constructor.
-        // oxlint-disable-next-line unicorn/throw-new-error
-        const formatted = FormatError(reason);
+        const formatted = formatError(reason);
         if (formatted !== undefined && formatted !== "") {
           process.stderr.write(`${formatted}\n`);
         }

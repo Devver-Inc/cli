@@ -86,7 +86,7 @@ export async function checkForGitRepo() {
     requireSuccess(await git("add", "."), "add");
     requireSuccess(await git("commit", "-m", "Initial commit"), "commit");
     console.log("  ✓ Initial commit created");
-  } else if (!head.stdout) {
+  } else if (head.stdout === "") {
     throw new DeployAbortError("Git rev-parse HEAD returned an empty commit");
   }
 }
@@ -96,7 +96,7 @@ export async function getCurrentBranch(): Promise<string> {
     await git("rev-parse", "--abbrev-ref", "HEAD"),
     "rev-parse branch"
   );
-  if (!branch || branch === "HEAD") {
+  if (branch === "" || branch === "HEAD") {
     throw new DeployAbortError("Cannot deploy without a named Git branch");
   }
   console.log(`  Current branch: ${branch}`);
@@ -124,7 +124,7 @@ export async function checkRemoteBranch(
     await git("ls-remote", "--heads", pushUrl, `refs/heads/${branch}`),
     "ls-remote"
   );
-  if (output) {
+  if (output !== "") {
     console.log(`  ✓ Branch '${branch}' exists on remote`);
     return true;
   }
@@ -170,7 +170,7 @@ export async function checkForConflicts(
       "rev-list"
     )
   );
-  if (!counts) {
+  if (counts === null) {
     throw new DeployAbortError(
       "Git rev-list returned invalid ahead/behind counts"
     );

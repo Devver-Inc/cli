@@ -1,5 +1,3 @@
-// Both tagged errors belong to the same scoped authentication callback protocol.
-// oxlint-disable eslint/max-classes-per-file
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -122,6 +120,10 @@ export async function logout(): Promise<string | undefined> {
 export const serveCallback = (handle: (requestUrl: string) => Promise<void>) =>
   Effect.gen(function* () {
     const completed = yield* Deferred.make<undefined, AuthCallbackError>();
+    // The HTTP callback resolves the Deferred outside the Effect runtime, so it
+    // must fork with this scope's services instead of a fresh runtime.
+    const services = yield* Effect.context();
+    const runFork = Effect.runForkWith(services);
 
     const handler = (
       request: IncomingMessage,
@@ -142,8 +144,7 @@ export const serveCallback = (handle: (requestUrl: string) => Promise<void>) =>
             })
             .end(CallbackPage.success);
           // Deferred completion requires an explicit undefined value.
-          // oxlint-disable-next-line unicorn/no-useless-undefined
-          Effect.runFork(Deferred.succeed(completed, undefined));
+          runFork(Deferred.succeed(completed, undefined));
         } catch (error) {
           response
             .writeHead(400, {
@@ -151,7 +152,7 @@ export const serveCallback = (handle: (requestUrl: string) => Promise<void>) =>
               Connection: "close",
             })
             .end(CallbackPage.failure);
-          Effect.runFork(
+          runFork(
             Deferred.fail(
               completed,
               new AuthCallbackError({
@@ -195,11 +196,9 @@ export const serveCallback = (handle: (requestUrl: string) => Promise<void>) =>
       { concurrency: 1 }
     );
     if (!bound.includes(true)) {
-      return yield* Effect.fail(
-        new AuthError({
-          message: `Could not listen on port ${REDIRECT_PORT} for the sign-in callback. Close whatever is using it and try again.`,
-        })
-      );
+      return yield* new AuthError({
+        message: `Could not listen on port ${REDIRECT_PORT} for the sign-in callback. Close whatever is using it and try again.`,
+      });
     }
 
     // Return the completion Effect to the caller; login must open the browser first.
@@ -224,9 +223,9 @@ export const login = Effect.gen(function* () {
 
   const authUrl = url();
   if (authUrl === undefined || authUrl === "") {
-    return yield* Effect.fail(
-      new AuthError({ message: "Logto did not provide a sign-in URL." })
-    );
+    return yield* new AuthError({
+      message: "Logto did not provide a sign-in URL.",
+    });
   }
   return { authUrl, completed };
 });

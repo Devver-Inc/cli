@@ -1,18 +1,15 @@
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, open, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { promisify } from "node:util";
 
 import pkg from "../../../../package.json" with { type: "json" };
 import { instanceParent, loadInstance } from "../../../server/identity";
+import { execute } from "../util/exec";
 import { verifyIdentity } from "./local-server";
 import { availablePort } from "./loopback";
 import { pinServer } from "./supervised-server-posix";
 
-// oxlint-disable-next-line typescript/strict-void-return -- Node's execFile overload is supported by promisify and preserves subprocess failures.
-const execute = promisify(execFile);
 const PRIVATE_DIRECTORY = 0o700;
 
 function escapeXml(value: string) {

@@ -6,35 +6,30 @@ import LogtoClient, { UserScope } from "@logto/node";
 
 import { Storage } from "../storage";
 
-class LogtoStorageAdapter {
-  // Logto's storage contract requires instance methods; path mapping is shared by them.
-  // oxlint-disable-next-line eslint/class-methods-use-this
-  private readonly getLogtoPath = (key: string) => `logto/${key}`;
+const logtoPath = (key: string) => `logto/${key}`;
 
-  async getItem(key: string): Promise<string | null> {
+const storage = {
+  getItem: async (key: string): Promise<string | null> => {
     try {
-      const exists = await Storage.fileExists(this.getLogtoPath(key));
-      if (!exists) {
+      if (!(await Storage.fileExists(logtoPath(key)))) {
         return null;
       }
-      return await Storage.readToString(this.getLogtoPath(key));
+      return await Storage.readToString(logtoPath(key));
     } catch {
       return null;
     }
-  }
-
-  async setItem(key: string, value: string): Promise<void> {
-    await Storage.write(this.getLogtoPath(key), value);
-  }
-
-  async removeItem(key: string): Promise<void> {
+  },
+  setItem: async (key: string, value: string): Promise<void> => {
+    await Storage.write(logtoPath(key), value);
+  },
+  removeItem: async (key: string): Promise<void> => {
     try {
-      await Storage.deleteFile(this.getLogtoPath(key));
+      await Storage.deleteFile(logtoPath(key));
     } catch {
-      // Ignore errors if file doesn't exist
+      // An already absent file is the desired end state.
     }
-  }
-}
+  },
+};
 
 export function createLogtoClient(onNavigate?: (url: string) => void) {
   return new LogtoClient(
@@ -55,7 +50,7 @@ export function createLogtoClient(onNavigate?: (url: string) => void) {
       navigate: (url) => {
         onNavigate?.(url);
       },
-      storage: new LogtoStorageAdapter(),
+      storage,
     }
   );
 }

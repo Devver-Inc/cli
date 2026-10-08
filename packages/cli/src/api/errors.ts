@@ -19,7 +19,7 @@ export const BackendErrorBodySchema = Schema.Struct({
     Schema.Union([Schema.String, Schema.Array(Schema.String)])
   ),
   error: Schema.optional(Schema.String),
-  statusCode: Schema.optional(Schema.Number),
+  statusCode: Schema.optional(Schema.Finite),
   field: Schema.optional(Schema.String),
   value: Schema.optional(Schema.String),
   errors: Schema.optional(

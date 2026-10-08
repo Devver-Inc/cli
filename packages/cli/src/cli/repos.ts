@@ -61,11 +61,9 @@ const list = Command.make("list", {}, () =>
         if (repo === undefined) {
           // Effect's never-success branch preserves narrowing for repo.
           // oxlint-disable-next-line typescript/consistent-return
-          return yield* Effect.fail(
-            new RepositorySelectionError({
-              message: "Repository selection is no longer valid",
-            })
-          );
+          return yield* new RepositorySelectionError({
+            message: "Repository selection is no longer valid",
+          });
         }
         yield* Effect.tryPromise(async () =>
           linkRepoForCwd(repo.name, repo.pushUrl)

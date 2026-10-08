@@ -1,5 +1,3 @@
-// One deep HTTP module owns its transport error and three Effect service tags.
-// oxlint-disable eslint/max-classes-per-file
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import {
   FetchHttpClient,
@@ -31,12 +29,12 @@ export class ApiError extends Data.TaggedError("ApiError")<{
 export class AuthToken extends Context.Service<
   AuthToken,
   { readonly token: string | null }
->()("AuthToken") {}
+>()("@devver/cli/api/client/AuthToken") {}
 
 export class ApiBaseUrl extends Context.Service<
   ApiBaseUrl,
   { readonly url: string }
->()("ApiBaseUrl") {}
+>()("@devver/cli/api/client/ApiBaseUrl") {}
 
 export type ApiRequestError =
   | ApiError
@@ -72,10 +70,8 @@ interface ApiClientService {
 }
 
 export class ApiClient extends Context.Service<ApiClient, ApiClientService>()(
-  "ApiClient"
+  "@devver/cli/api/client/ApiClient"
 ) {}
-
-// const BASE_URL = process.env.API_URL ?? "https://app.devver.app/api/v1";
 
 /**
  * Check HTTP response status. On failure, reads the response body to extract
@@ -90,7 +86,6 @@ const checkStatus = (
         const body: BackendErrorBody | undefined = yield* response.json.pipe(
           Effect.flatMap(Schema.decodeUnknownEffect(BackendErrorBodySchema)),
           // No backend error body is different from a malformed one; both use the status.
-          // oxlint-disable-next-line unicorn/no-useless-undefined
           Effect.orElseSucceed(() => undefined)
         );
 
@@ -105,11 +100,9 @@ const checkStatus = (
           status: response.status,
           message: detail ?? `Request failed with status ${response.status}`,
         };
-        return yield* Effect.fail(
-          code === undefined
-            ? new ApiError(options)
-            : new ApiError({ ...options, code })
-        );
+        return yield* code === undefined
+          ? new ApiError(options)
+          : new ApiError({ ...options, code });
       });
 
 export const ApiClientLive = Layer.effect(

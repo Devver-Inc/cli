@@ -15,6 +15,8 @@ import { lstat, mkdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 
+import { isAlreadyExists } from "./fs-errors";
+
 // oxlint-disable-next-line typescript/strict-void-return -- Node's execFile overload is supported by promisify and retains its rejection semantics.
 const execute = promisify(execFile);
 const ROOT = "devver";
@@ -153,11 +155,6 @@ function requireWindows() {
   }
 }
 
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- Node filesystem errors arrive untyped; inspect only the EEXIST code.
-function existing(error: unknown) {
-  return error instanceof Error && "code" in error && error.code === "EEXIST";
-}
-
 /**
  * Verifies entries created below the protected root. Each inherits the root's
  * single owner-only rule, so protection is checked on the root alone.
@@ -197,7 +194,7 @@ export async function windowsPrivateDirectories(...paths: string[]) {
     try {
       await mkdir(path);
     } catch (error) {
-      if (!existing(error)) {
+      if (!isAlreadyExists(error)) {
         throw error;
       }
     }

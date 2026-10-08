@@ -58,7 +58,7 @@ export class FileSystemContext implements DetectionContext {
 
   /** Recursively walks cwd, caching results. Skips node_modules. */
   private scanFiles(): Set<string> {
-    if (this.cachedFiles) {
+    if (this.cachedFiles !== null) {
       return this.cachedFiles;
     }
 
@@ -157,7 +157,7 @@ export function createDependencyDetector(
     name,
     displayName,
     async detect(ctx) {
-      if (!ctx.pkg) {
+      if (ctx.pkg === null) {
         return false;
       }
       const allDeps = {

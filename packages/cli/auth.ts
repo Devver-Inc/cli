@@ -1,4 +1,4 @@
-// biome-ignore lint/performance/noBarrelFile: Named exports define the small auth interface, not a subtree barrel.
+// Named exports define the small auth interface, not a subtree barrel.
 export { getAccessToken } from "./src/auth/client";
 export { createLogtoClient } from "./src/auth/logto";
 export {

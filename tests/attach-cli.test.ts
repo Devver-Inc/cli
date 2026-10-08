@@ -171,7 +171,7 @@ test("config list renders the attached target without object coercion and marks 
     expect(cleared.output).not.toContain("api-url");
     expect(cleared.output).toContain(`local-target = listed at ${running.url}`);
   } finally {
-    if (running) {
+    if (running !== undefined) {
       await stop(running.child);
     }
     rmSync(ws.root, { recursive: true, force: true });

@@ -3,5 +3,11 @@ import ultracite from "ultracite/oxfmt";
 
 export default defineConfig({
   ...ultracite,
-  ignorePatterns: [...(ultracite.ignorePatterns ?? []), "repos/**"],
+  // `repos/**` is vendored reference material; `.claude/` holds untracked local
+  // agent settings that no contributor shares.
+  ignorePatterns: [
+    ...(ultracite.ignorePatterns ?? []),
+    "repos/**",
+    ".claude/**",
+  ],
 });

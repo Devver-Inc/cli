@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { Schema } from "effect";
 import { xdgData } from "xdg-basedir";
 
+import { isAlreadyExists } from "./fs-errors";
 import {
   existingWindowsServersDirectory,
   verifyWindowsPrivate,
@@ -53,12 +54,6 @@ const SERVICE = {
 const NAME = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/u;
 const PRIVATE_DIRECTORY = 0o700;
 const PRIVATE_FILE = 0o600;
-
-// Node filesystem errors enter as unknown; only the error code is inspected.
-// oxlint-disable-next-line anti-slop/no-unknown-parameters
-function isExisting(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "EEXIST";
-}
 
 function checkDataRoot(
   stat: Awaited<ReturnType<typeof lstat>>,
@@ -130,7 +125,7 @@ export async function instanceParent(name: string) {
     await mkdir(root, { mode: PRIVATE_DIRECTORY });
     created = true;
   } catch (error) {
-    if (!isExisting(error)) {
+    if (!isAlreadyExists(error)) {
       throw error;
     }
   }
@@ -139,7 +134,7 @@ export async function instanceParent(name: string) {
   try {
     await mkdir(servers, { mode: PRIVATE_DIRECTORY });
   } catch (error) {
-    if (!isExisting(error)) {
+    if (!isAlreadyExists(error)) {
       throw error;
     }
   }
@@ -152,8 +147,6 @@ async function existingStat(path: string) {
     return await lstat(path);
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      // Explicit undefined keeps the async helper's return branches consistent.
-      // oxlint-disable-next-line unicorn/no-useless-undefined
       return undefined;
     }
     throw error;
@@ -173,14 +166,12 @@ async function existingParent() {
   const root = join(data, "devver");
   const rootStat = await existingStat(root);
   if (rootStat === undefined) {
-    // oxlint-disable-next-line unicorn/no-useless-undefined
     return undefined;
   }
   checkDataRoot(rootStat, false);
   const servers = join(root, "servers");
   const serversStat = await existingStat(servers);
   if (serversStat === undefined) {
-    // oxlint-disable-next-line unicorn/no-useless-undefined
     return undefined;
   }
   checkOwner(serversStat, PRIVATE_DIRECTORY, "directory");
@@ -273,7 +264,7 @@ export async function loadInstance(name: string) {
     try {
       await mkdir(directory, { mode: PRIVATE_DIRECTORY });
     } catch (error) {
-      if (!isExisting(error)) {
+      if (!isAlreadyExists(error)) {
         throw error;
       }
     }
@@ -295,7 +286,7 @@ export async function loadInstance(name: string) {
       await handle.close();
     }
   } catch (error) {
-    if (!isExisting(error)) {
+    if (!isAlreadyExists(error)) {
       throw error;
     }
   }

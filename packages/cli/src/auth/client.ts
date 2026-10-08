@@ -11,7 +11,7 @@ const StoredTokensSchema = Schema.Record(
   Schema.String,
   Schema.Struct({
     token: Schema.String,
-    expiresAt: Schema.Number,
+    expiresAt: Schema.Finite,
     scope: Schema.optional(Schema.String),
   })
 );

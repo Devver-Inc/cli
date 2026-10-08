@@ -59,8 +59,9 @@ export async function readConfig(): Promise<CliConfig> {
   }
   try {
     const config = decodeCliConfig(parsed);
-    if (config["local-target"]) {
-      validateControlUrl(config["local-target"].url);
+    const target = config["local-target"];
+    if (target !== undefined) {
+      validateControlUrl(target.url);
     }
     return config;
   } catch {

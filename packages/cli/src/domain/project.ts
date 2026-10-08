@@ -18,8 +18,8 @@ export const ProjectDescriptionField = Schema.NullishOr(
 );
 
 export const MachineConfigurationBase = {
-  cpuCores: Schema.Number.check(Schema.isBetween({ minimum: 0.5, maximum: 2 })),
-  ram: Schema.Number.check(Schema.isBetween({ minimum: 0.5, maximum: 2 })),
+  cpuCores: Schema.Finite.check(Schema.isBetween({ minimum: 0.5, maximum: 2 })),
+  ram: Schema.Finite.check(Schema.isBetween({ minimum: 0.5, maximum: 2 })),
 };
 
 export const OverlayAccessControlBase = {
@@ -48,14 +48,8 @@ export const CreateProjectSchema = Schema.Struct({
       replicaCount: Schema.Int.check(
         Schema.isBetween({ minimum: 1, maximum: 3 })
       ),
-      ram: Schema.Number.check(
-        Schema.isFinite(),
-        Schema.isGreaterThanOrEqualTo(0.5)
-      ),
-      cpuCores: Schema.Number.check(
-        Schema.isFinite(),
-        Schema.isGreaterThanOrEqualTo(0.1)
-      ),
+      ram: Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0.5)),
+      cpuCores: Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0.1)),
       storage: Schema.Int.check(Schema.isBetween({ minimum: 5, maximum: 500 })),
     })
   ),
@@ -70,7 +64,7 @@ export class InvalidProjectInput extends Data.TaggedError(
 }> {}
 
 export const validateCreateProject = (input: CreateProjectDto) =>
-  Schema.decodeUnknownEffect(CreateProjectSchema)(input).pipe(
+  Schema.decodeEffect(CreateProjectSchema)(input).pipe(
     Effect.mapError(
       () =>
         new InvalidProjectInput({

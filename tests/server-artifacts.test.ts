@@ -87,7 +87,7 @@ async function smoke(executable: string, args: string[], path: string) {
     };
   } finally {
     child?.kill();
-    if (child) {
+    if (child !== undefined) {
       await child.exited;
     }
     rmSync(root, { recursive: true, force: true });

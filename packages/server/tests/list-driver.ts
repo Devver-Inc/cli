@@ -1,7 +1,8 @@
 import { listInstances, loadInstance } from "../identity";
 
-const [command, name] = process.argv.slice(2);
-if (command === "create" && name) {
+// Defaults keep the missing-argument case explicit: argv is typed `string[]`.
+const [command = "", name = ""] = process.argv.slice(2);
+if (command === "create" && name !== "") {
   console.log(JSON.stringify(await loadInstance(name)));
 } else if (command === "list") {
   console.log(JSON.stringify(await listInstances()));

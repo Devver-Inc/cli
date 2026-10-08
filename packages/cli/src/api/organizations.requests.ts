@@ -25,10 +25,6 @@ export const getOrganization = (
 export const getOrganizations = (
   organizationIds: string[]
 ): Effect.Effect<OrganizationDto[], ApiRequestError, ApiClient> =>
-  Effect.gen(function* () {
-    const organizations = yield* Effect.all(
-      organizationIds.map((id) => getOrganization(id)),
-      { concurrency: "unbounded" }
-    );
-    return organizations;
+  Effect.forEach(organizationIds, (id) => getOrganization(id), {
+    concurrency: "unbounded",
   });

@@ -4,16 +4,16 @@ declare const DEVVER_VERSION: string;
 declare const DEVVER_CHANNEL: string;
 declare const DEVVER_COMMIT: string;
 
-// These compile-time defines are unbound when the source runs without a build.
+// The build replaces these identifiers with string literals; running from
+// source leaves them unbound, so only a `typeof` guard is safe here.
+// oxlint-disable anti-slop/no-runtime-typeof
 const stampedVersion =
-  // oxlint-disable-next-line anti-slop/no-runtime-typeof
   typeof DEVVER_VERSION === "string" ? DEVVER_VERSION : undefined;
 const stampedChannel =
-  // oxlint-disable-next-line anti-slop/no-runtime-typeof
   typeof DEVVER_CHANNEL === "string" ? DEVVER_CHANNEL : undefined;
 const stampedCommit =
-  // oxlint-disable-next-line anti-slop/no-runtime-typeof
   typeof DEVVER_COMMIT === "string" ? DEVVER_COMMIT : undefined;
+// oxlint-enable anti-slop/no-runtime-typeof
 
 function git(...args: string[]): string | undefined {
   const result = spawnSync("git", args, {

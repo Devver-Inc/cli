@@ -1,4 +1,4 @@
-// biome-ignore lint/performance/noBarrelFile: Named exports are a focused package interface.
+// Named exports are a focused package interface.
 export { readConfigFile } from "./src/config";
 export {
   getDeploymentEnv,

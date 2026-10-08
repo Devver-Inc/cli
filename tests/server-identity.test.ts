@@ -148,7 +148,7 @@ test("a foreground server serves identity on loopback and rejects browser cross-
     expect((await fetch(`${running.url}/missing`)).status).toBe(404);
   } finally {
     child?.kill();
-    if (child) {
+    if (child !== undefined) {
       await child.exited;
     }
     rmSync(root, { recursive: true, force: true });
@@ -212,7 +212,7 @@ test("named server identities survive restarts without sharing or replacing corr
     expect(run(root, "../escape").status).not.toBe(0);
   } finally {
     child?.kill();
-    if (child) {
+    if (child !== undefined) {
       await child.exited;
     }
     rmSync(root, { recursive: true, force: true });
@@ -273,7 +273,7 @@ test("legacy read-only data roots work; writable or symlinked roots cannot repla
     expect(readFileSync(linkedFile, "utf-8")).toBe(state);
   } finally {
     child?.kill();
-    if (child) {
+    if (child !== undefined) {
       await child.exited;
     }
     rmSync(root, { recursive: true, force: true });

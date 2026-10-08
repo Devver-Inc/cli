@@ -1,24 +1,17 @@
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, open, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { promisify } from "node:util";
 
 import pkg from "../../../../package.json" with { type: "json" };
 import { instanceParent, loadInstance } from "../../../server/identity";
+import { execute } from "../util/exec";
+import { isAlreadyExists } from "../util/fs-errors";
 import { verifyIdentity } from "./local-server";
 import { availablePort } from "./loopback";
 import { pinServer } from "./supervised-server-posix";
 
-// oxlint-disable-next-line typescript/strict-void-return -- Node's execFile overload is supported by promisify and preserves subprocess failures.
-const execute = promisify(execFile);
 const DIRECTORY_MODE = 0o700;
-
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- Node filesystem errors arrive untyped; inspect only the EEXIST code.
-function existing(error: unknown) {
-  return error instanceof Error && "code" in error && error.code === "EEXIST";
-}
 
 async function manager(...args: string[]) {
   const result = await execute(args[0] ?? "systemctl", args.slice(1), {
@@ -55,7 +48,7 @@ export async function create(name: string) {
   try {
     await mkdir(directory, { mode: DIRECTORY_MODE });
   } catch (error) {
-    if (existing(error)) {
+    if (isAlreadyExists(error)) {
       throw new Error(`Server instance '${name}' already exists`, {
         cause: error,
       });

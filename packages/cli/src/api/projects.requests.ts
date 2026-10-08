@@ -29,10 +29,10 @@ export const DatabaseConfigurationResponseSchema = Schema.Struct({
   enabled: Schema.Boolean,
   rootUsername: Schema.optional(Schema.String),
   hasRootPassword: Schema.optional(Schema.Boolean),
-  replicaCount: Schema.optional(Schema.Number),
-  ram: Schema.optional(Schema.Number),
-  cpuCores: Schema.optional(Schema.Number),
-  storage: Schema.optional(Schema.Number),
+  replicaCount: Schema.optional(Schema.Finite),
+  ram: Schema.optional(Schema.Finite),
+  cpuCores: Schema.optional(Schema.Finite),
+  storage: Schema.optional(Schema.Finite),
 });
 
 // -- Project ---------------------------------------------------------------
@@ -77,10 +77,10 @@ export const GetProjectsSchema = Schema.Array(GetProjectSchema);
 export const PaginatedProjectsSchema = Schema.Struct({
   data: Schema.Array(GetProjectListItemSchema),
   meta: Schema.Struct({
-    currentPage: Schema.Number,
-    totalItemsCount: Schema.Number,
-    totalPagesCount: Schema.Number,
-    itemsPerPage: Schema.Number,
+    currentPage: Schema.Finite,
+    totalItemsCount: Schema.Finite,
+    totalPagesCount: Schema.Finite,
+    itemsPerPage: Schema.Finite,
   }),
 });
 

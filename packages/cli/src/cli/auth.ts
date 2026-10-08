@@ -44,7 +44,7 @@ const logout = Command.make("logout", {}, () =>
 const status = Command.make("status", {}, () =>
   Effect.gen(function* () {
     const user = yield* Effect.tryPromise(getUser);
-    if (!user) {
+    if (user === null) {
       yield* Console.log("✗ Not logged in");
       return;
     }
@@ -60,9 +60,9 @@ const status = Command.make("status", {}, () =>
       }
       const selected = organizations.find((org) => org.id === currentOrg);
       yield* Console.log(
-        selected
-          ? `\nCurrent organization: ${selected.name}`
-          : `\nCurrent organization: ${organizations[0]?.name ?? "Unknown"} (default)`
+        selected === undefined
+          ? `\nCurrent organization: ${organizations[0]?.name ?? "Unknown"} (default)`
+          : `\nCurrent organization: ${selected.name}`
       );
     }
     const projectId = yield* Effect.tryPromise(getCurrentProjectId);
@@ -75,7 +75,7 @@ const status = Command.make("status", {}, () =>
     }
     const linked = yield* Effect.tryPromise(getLinkedRepoForCwd);
     yield* Console.log(
-      `\nCurrent repository: ${linked ? linked.repoName : "No repository linked to this folder"}`
+      `\nCurrent repository: ${linked === null ? "No repository linked to this folder" : linked.repoName}`
     );
   })
 );

@@ -16,33 +16,30 @@ export const withApi = <A, E, R>(effect: Effect.Effect<A, E, R | ApiClient>) =>
     const { apiUrl } = yield* root;
     const config = yield* Effect.tryPromise(readConfig);
     if (config["local-target"] !== undefined) {
-      return yield* Effect.fail(
-        new ApiTargetError({
-          message:
-            "This operation is not supported on the attached local server. Run 'devver detach' to use an explicit cloud --api-url.",
-        })
-      );
+      return yield* new ApiTargetError({
+        message:
+          "This operation is not supported on the attached local server. Run 'devver detach' to use an explicit cloud --api-url.",
+      });
     }
     const url = Option.getOrUndefined(apiUrl);
     if (url === undefined || url === "") {
-      return yield* Effect.fail(
-        new ApiTargetError({
-          message:
-            "No CLI target attached. Run 'devver attach <url>' for a local server or provide an explicit cloud --api-url.",
-        })
-      );
+      return yield* new ApiTargetError({
+        message:
+          "No CLI target attached. Run 'devver attach <url>' for a local server or provide an explicit cloud --api-url.",
+      });
     }
     const token = yield* Effect.tryPromise(getAccessToken);
     if (token === null || token === "") {
-      return yield* Effect.fail(
-        new ApiTargetError({
-          message: "Not authenticated. Run 'devver auth login'.",
-        })
-      );
+      return yield* new ApiTargetError({
+        message: "Not authenticated. Run 'devver auth login'.",
+      });
     }
     const layer = ApiClientLayer.pipe(
       Layer.provide(Layer.succeed(AuthToken, { token })),
       Layer.provide(Layer.succeed(ApiBaseUrl, { url }))
     );
+    // AGENTS.md: one authenticated API layer per command, scoped by the
+    // surrounding Effect.scoped, not composed at the process entry point.
+    // @effect-diagnostics-next-line strictEffectProvide:off
     return yield* effect.pipe(Effect.provide(layer));
   }).pipe(Effect.scoped);

@@ -33,7 +33,7 @@ async function probe(url: string) {
     throw new Error(`Identity probe returned HTTP ${response.status}`);
   }
   const reader = response.body?.getReader();
-  if (!reader) {
+  if (reader === undefined) {
     throw new Error("Identity response has no body");
   }
   const chunks: Uint8Array[] = [];
@@ -111,7 +111,7 @@ const status = Command.make("status", {}, () =>
   Effect.tryPromise(async () => {
     const config: CliConfig = await readConfig();
     const target = config["local-target"];
-    if (!target) {
+    if (target === undefined) {
       return "No server attached";
     }
     let reachability = "unreachable";
