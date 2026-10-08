@@ -25,9 +25,9 @@ Use [`NativeImage`](/docs/reference/native-image) when you need to decode, inspe
 ## Renderable API
 
 ```typescript
-import { ImageRenderable, createCliRenderer } from "@opentui/core"
+import { ImageRenderable, createCliRenderer } from "@opentui/core";
 
-const renderer = await createCliRenderer()
+const renderer = await createCliRenderer();
 const image = new ImageRenderable(renderer, {
   id: "cover",
   source: "./cover.webp",
@@ -36,10 +36,10 @@ const image = new ImageRenderable(renderer, {
   fit: "cover",
   protocol: "auto",
   onError: console.error,
-})
+});
 
-renderer.root.add(image)
-await image.loadPromise
+renderer.root.add(image);
+await image.loadPromise;
 ```
 
 `source` accepts every `ImageSource` form: a path, `file:`/HTTP(S)/`blob:`/`data:` URL, `URL`, `Blob`, `Response`, `Uint8Array`, or `ArrayBuffer`. It also accepts `NativeImage`. Format detection uses encoded bytes when the source needs decoding. `ImageRenderable` retains an existing `NativeImage`. You still own and must dispose the source reference.
@@ -47,26 +47,38 @@ await image.loadPromise
 ## React
 
 ```tsx
-import { createCliRenderer } from "@opentui/core"
-import { createRoot } from "@opentui/react"
+import { createCliRenderer } from "@opentui/core";
+import { createRoot } from "@opentui/react";
 
-const renderer = await createCliRenderer()
+const renderer = await createCliRenderer();
 createRoot(renderer).render(
-  <image source="./cover.webp" fit="cover" protocol="auto" style={{ width: 40, height: 15 }} />,
-)
+  <image
+    source="./cover.webp"
+    fit="cover"
+    protocol="auto"
+    style={{ width: 40, height: 15 }}
+  />
+);
 ```
 
 ## Solid
 
 ```tsx
-import { createCliRenderer } from "@opentui/core"
-import { render } from "@opentui/solid"
+import { createCliRenderer } from "@opentui/core";
+import { render } from "@opentui/solid";
 
-const renderer = await createCliRenderer()
+const renderer = await createCliRenderer();
 await render(
-  () => <image source="./cover.webp" fit="cover" protocol="auto" style={{ width: 40, height: 15 }} />,
-  renderer,
-)
+  () => (
+    <image
+      source="./cover.webp"
+      fit="cover"
+      protocol="auto"
+      style={{ width: 40, height: 15 }}
+    />
+  ),
+  renderer
+);
 ```
 
 You can update `source`, callbacks, fit, and protocol after construction. Replacing `source` keeps the current image visible until the replacement succeeds. It cancels obsolete loading and disposes stale native images. Setting `source` to `undefined` clears it. Clearing `fit` or `protocol` restores `"fit"` or `"auto"`.
@@ -83,12 +95,12 @@ Sizing uses terminal pixel resolution when available and a 2:1 cell-height fallb
 
 ## Rendering protocol
 
-| `protocol` | Behavior                                                            |
-| ---------- | ------------------------------------------------------------------- |
-| `auto`     | Global override, then Kitty, then Sixel, then Unicode blocks        |
-| `kitty`    | Force Kitty graphics                                                |
-| `sixel`    | Force Sixel. Falls back to blocks without terminal pixel resolution |
-| `blocks`   | Portable Unicode quadrant-block rendering                           |
+| `protocol` | Behavior |
+| --- | --- |
+| `auto` | Global override, then Kitty, then Sixel, then Unicode blocks |
+| `kitty` | Force Kitty graphics |
+| `sixel` | Force Sixel. Falls back to blocks without terminal pixel resolution |
+| `blocks` | Portable Unicode quadrant-block rendering |
 
 The `blocks` protocol renders generated RGBA pixels as terminal cells:
 
@@ -120,20 +132,17 @@ Split-footer scrollback snapshots use the same protocol resolution as live image
 Set `kittyImageTransport` when you create the renderer, or assign `renderer.kittyImageTransport` to change it at runtime. It controls image transmission, not protocol selection or placement. Kitty commands still use the renderer's output backend.
 
 ```typescript
-const renderer = await createCliRenderer({ kittyImageTransport: "zlib" })
-renderer.kittyImageTransport = "file"
+const renderer = await createCliRenderer({ kittyImageTransport: "zlib" });
+renderer.kittyImageTransport = "file";
 // After a transmission, inspect the actual choice rather than assuming the request succeeded.
-const status = renderer.kittyImageTransportStatus
+const status = renderer.kittyImageTransportStatus;
 ```
 
 - `"raw"` is the default. It sends existing encoded PNG data unchanged. Otherwise, opaque pixels use RGB24, and other pixels use RGBA32.
 - `"zlib"` tries native level-1 compression. It uses raw if compression expands the stream, exceeds the 64 MiB preparation limit, or cannot allocate buffers. Encoded PNG data stays unchanged.
 - `"file"` writes a temporary file and sends its path for the local terminal to read. It still copies pixels, without shared memory or GPU sharing.
 
-Changing transport retransmits visible Kitty images without replacing their sources. File
-negotiation remains asynchronous. Selecting an inline mode keeps outstanding files alive
-until their acknowledgments or deadlines, so queued output can still use them. Switching
-back to file reuses the session's probe result; it does not reset a failed or cancelled session.
+Changing transport retransmits visible Kitty images without replacing their sources. File negotiation remains asynchronous. Selecting an inline mode keeps outstanding files alive until their acknowledgments or deadlines, so queued output can still use them. Switching back to file reuses the session's probe result; it does not reset a failed or cancelled session.
 
 Scrollback snapshots never use file transport because the renderer does not retain their sources for retries. They use self-contained raw or PNG output, or zlib when requested.
 
@@ -159,19 +168,19 @@ Timeouts, terminal or output errors, `cancelKittyImageTransport()`, suspend, and
 
 ## Options and state
 
-| Member               | Type                                                        | Description                                                     |
-| -------------------- | ----------------------------------------------------------- | --------------------------------------------------------------- |
-| `source`             | `ImageRenderableSource`                                     | Encoded image source or `NativeImage`. Optional                 |
-| `fit`                | `"fit" \| "cover" \| "fill"`                                | Destination sizing                                              |
-| `protocol`           | `"auto" \| "kitty" \| "sixel" \| "blocks"`                  | Requested rendering protocol                                    |
-| `onLoad`             | `(image: NativeImage) => void`                              | Called after the current source loads                           |
-| `onError`            | `(error: unknown) => void`                                  | Called when the current source fails                            |
-| `image`              | `NativeImage \| null`                                       | Currently displayed renderable-owned image                      |
-| `loading`            | `boolean`                                                   | Whether the current source is loading                           |
-| `loadError`          | `unknown`                                                   | Current load error, otherwise `null`                            |
-| `loadPromise`        | `Promise<void> \| null`                                     | Settles after the current load attempt                          |
-| `effectiveProtocol`  | `kitty \| sixel \| blocks`                                  | Current resolved protocol. Can change with capabilities or size |
-| `cellAspectRatio`    | `number`                                                    | Physical or fallback cell aspect ratio                          |
+| Member | Type | Description |
+| --- | --- | --- |
+| `source` | `ImageRenderableSource` | Encoded image source or `NativeImage`. Optional |
+| `fit` | `"fit" \| "cover" \| "fill"` | Destination sizing |
+| `protocol` | `"auto" \| "kitty" \| "sixel" \| "blocks"` | Requested rendering protocol |
+| `onLoad` | `(image: NativeImage) => void` | Called after the current source loads |
+| `onError` | `(error: unknown) => void` | Called when the current source fails |
+| `image` | `NativeImage \| null` | Currently displayed renderable-owned image |
+| `loading` | `boolean` | Whether the current source is loading |
+| `loadError` | `unknown` | Current load error, otherwise `null` |
+| `loadPromise` | `Promise<void> \| null` | Settles after the current load attempt |
+| `effectiveProtocol` | `kitty \| sixel \| blocks` | Current resolved protocol. Can change with capabilities or size |
+| `cellAspectRatio` | `number` | Physical or fallback cell aspect ratio |
 | `getFittedSize(...)` | `(width, height, cellAspect?, sourceWidth?, sourceHeight?)` | Resolve destination cells. Omitted overrides use current values |
 
 The renderable owns `image` and the `NativeImage` passed to `onLoad`. Do not dispose or transfer them. Current-source failures set `loadError`, call `onError`, and resolve `loadPromise`. Superseded, cleared, or destroyed loads resolve without callbacks. Exceptions from either callback reject after state settles. Successful replacement, clearing, and destruction release owned images. A failed replacement keeps the current image.

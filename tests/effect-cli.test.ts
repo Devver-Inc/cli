@@ -1,13 +1,17 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
+
 import pkg from "../package.json";
 
 function cli(...args: string[]) {
-  const child = Bun.spawnSync(["bun", "run", "src/cli/index.ts", ...args], {
-    cwd: join(import.meta.dir, ".."),
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+  const child = Bun.spawnSync(
+    ["bun", "run", "packages/cli/src/cli/index.ts", ...args],
+    {
+      cwd: join(import.meta.dir, ".."),
+      stdout: "pipe",
+      stderr: "pipe",
+    }
+  );
   return {
     status: child.exitCode,
     output: `${child.stdout.toString()}${child.stderr.toString()}`,

@@ -2,7 +2,18 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { Schema } from "effect";
+
 import { idToken } from "./jwt";
+
+const decodeProbe = Schema.decodeUnknownSync(
+  Schema.Struct({
+    token: Schema.optional(Schema.String),
+    message: Schema.optional(Schema.NullOr(Schema.String)),
+    refreshes: Schema.Finite,
+  })
+);
 
 const repo = join(import.meta.dir, "..");
 
@@ -47,10 +58,10 @@ function probe(root: string, body: string) {
       },
       signOut: async () => {},
     };
-    mock.module(${JSON.stringify(join(repo, "src/auth/logto.ts"))}, () => ({
+    mock.module(${JSON.stringify(join(repo, "packages/cli/src/auth/logto.ts"))}, () => ({
       createLogtoClient: () => fake,
     }));
-    const { getAccessToken } = await import(${JSON.stringify(join(repo, "src/auth/client.ts"))});
+    const { getAccessToken } = await import(${JSON.stringify(join(repo, "packages/cli/auth.ts"))});
     const failure = async (work) => {
       try { await work(); return null; } catch (error) { return error.message; }
     };
@@ -72,7 +83,7 @@ function probe(root: string, body: string) {
     throw new Error(`probe failed: ${result.stderr.toString()}`);
   }
   const lines = result.stdout.toString().trim().split("\n");
-  return JSON.parse(lines.at(-1) ?? "null");
+  return decodeProbe(JSON.parse(lines.at(-1) ?? "null"));
 }
 
 test("a valid stored token is used without contacting the provider", () => {
@@ -105,6 +116,27 @@ test("an expired stored token refreshes, and refresh failures propagate", () => 
       message: "refresh failed",
       refreshes: 2,
     });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a non-finite stored expiry fails closed without exposing credentials", () => {
+  const root = session(Math.floor(Date.now() / 1000) + 3600);
+  writeFileSync(
+    join(root, "data", "devver", "logto", "accessToken"),
+    '{"@http://localhost:9999#org-1":{"token":"private-token","expiresAt":1e1000}}'
+  );
+  try {
+    const result = probe(
+      root,
+      "console.log(JSON.stringify({ message: await failure(getAccessToken), refreshes }));"
+    );
+    expect(result.message).toContain(
+      "Stored access token has an unexpected shape"
+    );
+    expect(result.message).not.toContain("private-token");
+    expect(result.refreshes).toBe(0);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

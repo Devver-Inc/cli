@@ -17,21 +17,21 @@ These levels can coexist, but they have different ownership and cleanup rules.
 `renderer.keyInput` emits parsed `keypress`, `keyrelease`, and `paste` events.
 
 ```typescript
-import { type KeyEvent, createCliRenderer } from "@opentui/core"
+import { type KeyEvent, createCliRenderer } from "@opentui/core";
 
-const renderer = await createCliRenderer()
+const renderer = await createCliRenderer();
 
 const onKeyPress = (key: KeyEvent) => {
   if (key.name === "escape") {
-    renderer.destroy()
+    renderer.destroy();
   }
-}
+};
 
-renderer.keyInput.on("keypress", onKeyPress)
+renderer.keyInput.on("keypress", onKeyPress);
 
 renderer.once("destroy", () => {
-  renderer.keyInput.off("keypress", onKeyPress)
-})
+  renderer.keyInput.off("keypress", onKeyPress);
+});
 ```
 
 Direct listeners run before the focused renderable. They are suitable for a global exit key, a small shortcut set, or input diagnostics.
@@ -40,20 +40,20 @@ Use `prependListener()` when listener order matters. Remove listeners when their
 
 ## Read `KeyEvent`
 
-| Property                          | Type                               | Meaning                                                                      |
-| --------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------- |
-| `name`                            | `string`                           | Canonical key identity, such as `"a"`, `"space"`, `"return"`, or `"escape"`. |
-| `sequence`                        | `string`                           | Decoded text or sequence associated with the key.                            |
-| `raw`                             | `string`                           | The original terminal sequence decoded as a string.                          |
-| `source`                          | `"raw" \| "kitty"`                 | The parser path.                                                             |
-| `ctrl`, `shift`, `meta`, `option` | `boolean`                          | Reported common modifiers. `meta` includes the Alt path.                     |
-| `super`, `hyper`                  | `boolean \| undefined`             | Extended modifiers when the terminal reports them.                           |
-| `eventType`                       | `"press" \| "repeat" \| "release"` | Parsed event type. Kitty repeats use `"press"` with `repeated: true`.        |
-| `repeated`                        | `boolean \| undefined`             | Whether Kitty reported a repeat.                                             |
-| `number`                          | `boolean`                          | Whether legacy parsing identified a digit.                                   |
-| `code`                            | `string \| undefined`              | A recognized terminal key code.                                              |
-| `capsLock`, `numLock`             | `boolean \| undefined`             | Kitty lock state when reported.                                              |
-| `baseCode`                        | `number \| undefined`              | Kitty base-layout code point for layout-stable matching.                     |
+| Property | Type | Meaning |
+| --- | --- | --- |
+| `name` | `string` | Canonical key identity, such as `"a"`, `"space"`, `"return"`, or `"escape"`. |
+| `sequence` | `string` | Decoded text or sequence associated with the key. |
+| `raw` | `string` | The original terminal sequence decoded as a string. |
+| `source` | `"raw" \| "kitty"` | The parser path. |
+| `ctrl`, `shift`, `meta`, `option` | `boolean` | Reported common modifiers. `meta` includes the Alt path. |
+| `super`, `hyper` | `boolean \| undefined` | Extended modifiers when the terminal reports them. |
+| `eventType` | `"press" \| "repeat" \| "release"` | Parsed event type. Kitty repeats use `"press"` with `repeated: true`. |
+| `repeated` | `boolean \| undefined` | Whether Kitty reported a repeat. |
+| `number` | `boolean` | Whether legacy parsing identified a digit. |
+| `code` | `string \| undefined` | A recognized terminal key code. |
+| `capsLock`, `numLock` | `boolean \| undefined` | Kitty lock state when reported. |
+| `baseCode` | `number \| undefined` | Kitty base-layout code point for layout-stable matching. |
 
 `sequence` is not always equal to `raw`. For example, a Kitty control sequence can produce `name: "space"` and `sequence: " "`.
 
@@ -78,20 +78,20 @@ See [Interaction, focus, and selection](/docs/core-concepts/interaction) for foc
 Input, Textarea, Select, and TabSelect expose `keyBindings` for local actions. These four components also accept `keyAliasMap`.
 
 ```typescript
-import { TextareaRenderable, createCliRenderer } from "@opentui/core"
+import { TextareaRenderable, createCliRenderer } from "@opentui/core";
 
-const renderer = await createCliRenderer()
+const renderer = await createCliRenderer();
 const editor = new TextareaRenderable(renderer, {
   width: 40,
   height: 8,
   keyBindings: [{ name: "s", ctrl: true, action: "submit" }],
   onSubmit() {
-    console.log("Submit", editor.plainText)
+    console.log("Submit", editor.plainText);
   },
-})
+});
 
-renderer.root.add(editor)
-editor.focus()
+renderer.root.add(editor);
+editor.focus();
 ```
 
 A key binding contains `name`, optional `ctrl`, `shift`, `meta`, and `super`, plus a component-specific `action`.
@@ -115,17 +115,17 @@ Keymap can consume a matched event before the focused component receives it. Rea
 Paste is terminal input. It is not a read from the host clipboard.
 
 ```typescript
-import { type PasteEvent, createCliRenderer } from "@opentui/core"
+import { type PasteEvent, createCliRenderer } from "@opentui/core";
 
-const renderer = await createCliRenderer()
-const decoder = new TextDecoder()
+const renderer = await createCliRenderer();
+const decoder = new TextDecoder();
 
 const onPaste = (event: PasteEvent) => {
-  console.log(decoder.decode(event.bytes))
-  console.log(event.metadata?.mimeType, event.metadata?.kind)
-}
+  console.log(decoder.decode(event.bytes));
+  console.log(event.metadata?.mimeType, event.metadata?.kind);
+};
 
-renderer.keyInput.on("paste", onPaste)
+renderer.keyInput.on("paste", onPaste);
 ```
 
 `PasteEvent.bytes` preserves the terminal payload. Optional metadata contains `mimeType` and `kind`, where kind is `"text"`, `"binary"`, or `"unknown"`.

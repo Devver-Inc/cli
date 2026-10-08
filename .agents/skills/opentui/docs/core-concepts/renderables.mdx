@@ -14,11 +14,16 @@ Retained means the same objects stay in the tree between frames. Change their pr
 Create a renderable with a render context. A `CliRenderer` implements that context.
 
 ```typescript
-import { BoxRenderable, RGBA, TextRenderable, createCliRenderer } from "@opentui/core"
+import {
+  BoxRenderable,
+  RGBA,
+  TextRenderable,
+  createCliRenderer,
+} from "@opentui/core";
 
-const renderer = await createCliRenderer()
-const foreground = RGBA.defaultForeground()
-const fill = RGBA.fromIndex(243)
+const renderer = await createCliRenderer();
+const foreground = RGBA.defaultForeground();
+const fill = RGBA.fromIndex(243);
 
 const panel = new BoxRenderable(renderer, {
   id: "panel",
@@ -28,15 +33,15 @@ const panel = new BoxRenderable(renderer, {
   border: true,
   borderColor: foreground,
   backgroundColor: fill,
-})
+});
 const status = new TextRenderable(renderer, {
   id: "status",
   content: "Waiting",
   fg: foreground,
-})
+});
 
-panel.add(status)
-renderer.root.add(panel)
+panel.add(status);
+renderer.root.add(panel);
 ```
 
 The shaded panel contains a text child:
@@ -50,8 +55,8 @@ The shaded panel contains a text child:
 Update the existing nodes. The wider panel also gives its text child more space:
 
 ```typescript
-status.content = "Ready"
-panel.width = 30
+status.content = "Ready";
+panel.width = 30;
 ```
 
 ```text terminal=renderable-mutated
@@ -67,8 +72,12 @@ Setters such as `content`, `width`, `visible`, and `zIndex` request another rend
 Each renderable has at most one parent. `add()` reparents an existing node when necessary.
 
 ```typescript
-const row = new BoxRenderable(renderer, { width: 34, flexDirection: "row", gap: 2 })
-renderer.root.add(row)
+const row = new BoxRenderable(renderer, {
+  width: 34,
+  flexDirection: "row",
+  gap: 2,
+});
+renderer.root.add(row);
 
 const [first, second] = ["first", "second"].map((id) => {
   const parent = new BoxRenderable(renderer, {
@@ -79,18 +88,20 @@ const [first, second] = ["first", "second"].map((id) => {
     paddingX: 1,
     border: true,
     borderColor: foreground,
-  })
-  row.add(parent)
-  return parent
-})
+  });
+  row.add(parent);
+  return parent;
+});
 const message = new BoxRenderable(renderer, {
   id: "message",
   width: 10,
   height: 1,
   backgroundColor: fill,
-})
-message.add(new TextRenderable(renderer, { content: "Message", fg: foreground }))
-first.add(message)
+});
+message.add(
+  new TextRenderable(renderer, { content: "Message", fg: foreground })
+);
+first.add(message);
 ```
 
 ```text terminal=renderable-reparent-before
@@ -102,10 +113,10 @@ first.add(message)
 Add the same subtree to `second`. You do not need to remove it from `first`:
 
 ```typescript
-second.add(message)
+second.add(message);
 
-console.log(message.parent === second) // true
-console.log(first.getChildrenCount()) // 0
+console.log(message.parent === second); // true
+console.log(first.getChildrenCount()); // 0
 ```
 
 ```text terminal=renderable-reparent-after
@@ -139,24 +150,27 @@ const panel = new BoxRenderable(renderer, {
   height: 4,
   border: true,
   borderColor: foreground,
-})
-const detail = new BoxRenderable(renderer, { height: 1, backgroundColor: fill })
-detail.add(new TextRenderable(renderer, { content: "Detail", fg: foreground }))
-const next = new TextRenderable(renderer, { content: "Next", fg: foreground })
-panel.add(detail)
-panel.add(next)
-renderer.root.add(panel)
+});
+const detail = new BoxRenderable(renderer, {
+  height: 1,
+  backgroundColor: fill,
+});
+detail.add(new TextRenderable(renderer, { content: "Detail", fg: foreground }));
+const next = new TextRenderable(renderer, { content: "Next", fg: foreground });
+panel.add(detail);
+panel.add(next);
+renderer.root.add(panel);
 ```
 
 Both hiding and detaching move `Next` up. Only detaching changes tree membership:
 
 ```typescript
-detail.visible = false
-console.log(panel.getChildrenCount(), detail.parent === panel) // 2, true
+detail.visible = false;
+console.log(panel.getChildrenCount(), detail.parent === panel); // 2, true
 
-detail.visible = true
-panel.remove(detail)
-console.log(panel.getChildrenCount(), detail.parent) // 1, null
+detail.visible = true;
+panel.remove(detail);
+console.log(panel.getChildrenCount(), detail.parent); // 1, null
 ```
 
 ```text terminal=renderable-visibility
@@ -190,8 +204,8 @@ Shared mouse, focus, and selection behavior belongs to [Interaction, focus, and 
 `destroy()` detaches direct children but does not destroy them. Use `destroyRecursively()` when this node owns the complete subtree.
 
 ```typescript
-detail.destroyRecursively()
-panel.destroyRecursively()
+detail.destroyRecursively();
+panel.destroyRecursively();
 ```
 
 The renderer destroys its root recursively during renderer cleanup. Destroy detached subtrees yourself when you no longer need them.

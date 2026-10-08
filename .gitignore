@@ -31,6 +31,7 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 .eslintcache
 .cache
 *.tsbuildinfo
+*.bun-build
 
 # IntelliJ based IDEs
 .idea
@@ -39,3 +40,4 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 plans
 data
+repos

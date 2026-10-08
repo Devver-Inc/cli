@@ -1,4 +1,4 @@
-# react
+# Devver CLI
 
 To install dependencies:
 
@@ -16,9 +16,9 @@ export PATH="$PWD:$PATH"          # in another terminal, from the repo root
 devver --version                  # runs the freshly built ./devver
 ```
 
-The watcher rebuilds the executable; an already-running `devver` process does not restart. For automatic process restarts, use `bun run dev` instead. The watch-built executable reports the `dev` channel; release builds use `scripts/build.ts` for stamped version and commit.
+The watcher rebuilds the executable; an already-running `devver` process does not restart. For automatic process restarts, use `bun run dev` instead. The watch-built executable reports the `dev` channel; release builds use `scripts/build.ts` for stamped version and commit. npm publishes only `@devver/cli`, including a bundled offline server at `dist/servers/<version>/server.mjs`; the server workspace is not published.
 
-This project was created using `bun create tui`. [create-tui](https://git.new/create-tui) is the easiest way to get started with OpenTUI.
+The private root manages the `packages/cli` publishable workspace and the `packages/server` source-only workspace. Build with `bun run build:npm` for Node/npm or `bun run build` for standalone executables. Run `bun run check`, `bun run typecheck`, and `bun test` from the root.
 
 # Stable and nightly builds
 
@@ -66,6 +66,7 @@ All commits must follow the [Conventional Commits](https://www.conventionalcommi
 ```
 
 **Types:**
+
 - `feat`: New feature (triggers minor version bump)
 - `fix`: Bug fix (triggers patch version bump)
 - `refactor`: Code refactoring
@@ -77,10 +78,12 @@ All commits must follow the [Conventional Commits](https://www.conventionalcommi
 - `ci`: CI/CD changes
 
 **Breaking Changes:**
+
 - Add `!` after type: `feat!: breaking change`
 - Or include `BREAKING CHANGE:` in commit footer (triggers major version bump)
 
 **Examples:**
+
 ```bash
 feat(auth): add OAuth2 support
 fix(api): resolve timeout issue in production
@@ -144,8 +147,10 @@ To enable Homebrew publishing:
 If you need to create a release manually:
 
 ```bash
-# 1. Update version in package.json
-npm version patch  # or minor, or major
+# 1. Update the canonical root version and synchronize both workspaces
+npm version patch --no-git-tag-version  # or minor, or major
+bun run sync:version
+bun run check:version
 
 # 2. Update CHANGELOG.md manually
 
@@ -165,6 +170,7 @@ Following [Semantic Versioning](https://semver.org/):
 - **Patch (0.0.1)**: Bug fixes
 
 Pre-1.0.0 versions:
+
 - Breaking changes bump minor version
 - Features and fixes bump patch version
 
@@ -203,10 +209,10 @@ Test the standalone build:
 
 ```bash
 # Build for your platform
-bun build ./src/cli/index.ts --compile --outfile devver-test
+bun run build
 
 # Test the binary
-./devver-test --version
+./devver --version
 ```
 
 ## Resources

@@ -2,9 +2,18 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { idToken } from "./jwt";
 
-const entry = join(import.meta.dir, "..", "src", "cli", "index.ts");
+const entry = join(
+  import.meta.dir,
+  "..",
+  "packages",
+  "cli",
+  "src",
+  "cli",
+  "index.ts"
+);
 
 test("project create requires an explicit target even with legacy API defaults", () => {
   const root = mkdtempSync(join(tmpdir(), "devver-api-routing-"));
@@ -66,7 +75,7 @@ test("one scoped API layer uses selected credentials and reports HTTP failures",
   const server = Bun.serve({
     port: 0,
     fetch(request) {
-      requests++;
+      requests += 1;
       expect(request.headers.get("authorization")).toBe(
         "Bearer local-only-token"
       );
@@ -85,7 +94,7 @@ test("one scoped API layer uses selected credentials and reports HTTP failures",
       });
     },
   });
-  const run = async (explicit = true) => {
+  const run = async (explicit = true, name = "demo") => {
     const child = Bun.spawn(
       [
         "bun",
@@ -93,7 +102,7 @@ test("one scoped API layer uses selected credentials and reports HTTP failures",
         entry,
         "project",
         "create",
-        "demo",
+        name,
         ...(explicit ? ["--api-url", `${server.url.origin}/api/v1`] : []),
       ],
       {
@@ -126,6 +135,10 @@ test("one scoped API layer uses selected credentials and reports HTTP failures",
     const failure = await run();
     expect(failure.status).not.toBe(0);
     expect(failure.output).toContain("BACKEND_DOWN");
+    expect(requests).toBe(2);
+    const invalid = await run(true, "x".repeat(129));
+    expect(invalid.status).not.toBe(0);
+    expect(invalid.output).toContain("Invalid project settings");
     expect(requests).toBe(2);
     writeFileSync(join(data, "auth", "currentOrganization"), "invalid");
     const invalidOrg = await run();
@@ -181,7 +194,7 @@ test("one scoped API layer uses selected credentials and reports HTTP failures",
     );
     expect(requests).toBe(2);
   } finally {
-    server.stop();
+    await server.stop();
     rmSync(root, { recursive: true, force: true });
   }
 });

@@ -7,18 +7,17 @@ description: Display a scannable QR code from text content
 
 `QRCodeRenderable` displays text or URLs as a QR Code Model 2 symbol. It uses half-block cells to keep the symbol square in terminal cell geometry.
 
-For module matrices, terminal strings, SVG, and raw bytes, use the standalone [QR encoder](/docs/reference/qr-encoder).
-The same package exports this encoder. It also supports explicit segments, ECI, GS1/FNC1, and structured append.
+For module matrices, terminal strings, SVG, and raw bytes, use the standalone [QR encoder](/docs/reference/qr-encoder). The same package exports this encoder. It also supports explicit segments, ECI, GS1/FNC1, and structured append.
 
 ## Availability
 
-| Field           | Availability                                                                         |
-| --------------- | ------------------------------------------------------------------------------------ |
-| Package         | Core `@opentui/qrcode`, React `@opentui/qrcode/react`, Solid `@opentui/qrcode/solid` |
-| Core renderable | `QRCodeRenderable`                                                                   |
-| React           | Call `registerQRCode()` once, then use `<qr-code>`                                   |
-| Solid           | Call `registerQRCode()` once, then use `<qr_code>`                                   |
-| Status          | Separately registered                                                                |
+| Field | Availability |
+| --- | --- |
+| Package | Core `@opentui/qrcode`, React `@opentui/qrcode/react`, Solid `@opentui/qrcode/solid` |
+| Core renderable | `QRCodeRenderable` |
+| React | Call `registerQRCode()` once, then use `<qr-code>` |
+| Solid | Call `registerQRCode()` once, then use `<qr_code>` |
+| Status | Separately registered |
 
 Install the QR code package separately:
 
@@ -31,31 +30,31 @@ bun add @opentui/qrcode
 ### Renderable API
 
 ```typescript
-import { createCliRenderer } from "@opentui/core"
-import { QRCodeRenderable } from "@opentui/qrcode"
+import { createCliRenderer } from "@opentui/core";
+import { QRCodeRenderable } from "@opentui/qrcode";
 
-const renderer = await createCliRenderer()
+const renderer = await createCliRenderer();
 
 const qr = new QRCodeRenderable(renderer, {
   id: "docs-link",
   content: "https://opentui.com/docs",
   quietZone: 4,
   scale: 2,
-})
+});
 
-renderer.root.add(qr)
+renderer.root.add(qr);
 ```
 
 ### React JSX
 
 ```tsx
-import { createCliRenderer } from "@opentui/core"
-import { createRoot } from "@opentui/react"
-import { registerQRCode } from "@opentui/qrcode/react"
+import { createCliRenderer } from "@opentui/core";
+import { createRoot } from "@opentui/react";
+import { registerQRCode } from "@opentui/qrcode/react";
 
-registerQRCode()
+registerQRCode();
 
-const renderer = await createCliRenderer()
+const renderer = await createCliRenderer();
 createRoot(renderer).render(
   <qr-code
     content="https://opentui.com/docs"
@@ -63,17 +62,17 @@ createRoot(renderer).render(
     scale={2}
     foregroundColor="#111827"
     backgroundColor="#ffffff"
-  />,
-)
+  />
+);
 ```
 
 ### Solid JSX
 
 ```tsx
-import { render } from "@opentui/solid"
-import { registerQRCode } from "@opentui/qrcode/solid"
+import { render } from "@opentui/solid";
+import { registerQRCode } from "@opentui/qrcode/solid";
 
-registerQRCode()
+registerQRCode();
 
 render(() => (
   <qr_code
@@ -83,7 +82,7 @@ render(() => (
     foregroundColor="#111827"
     backgroundColor="#ffffff"
   />
-))
+));
 ```
 
 ## Sizing
@@ -96,7 +95,7 @@ const qr = new QRCodeRenderable(renderer, {
   quietZone: 4,
   scale: 2,
   fit: "contain",
-})
+});
 ```
 
 Use `fit: "none"` when you want the configured scale to be the only rendered size.
@@ -132,40 +131,39 @@ const qr = new QRCodeRenderable(renderer, {
   content: "https://opentui.com/docs",
   fallbackContent: "Resize for QR",
   fallbackColor: "#94a3b8",
-})
+});
 ```
 
-Fallback painting currently indexes UTF-16 code units and writes one cell for each unit. Use one-cell Basic Multilingual
-Plane characters. Emoji, joined or combining graphemes, and wide characters can split, disappear, or misalign.
+Fallback painting currently indexes UTF-16 code units and writes one cell for each unit. Use one-cell Basic Multilingual Plane characters. Emoji, joined or combining graphemes, and wide characters can split, disappear, or misalign.
 
 ## Error correction
 
 Set `errorCorrectionLevel` with the QR package error correction enum:
 
 ```typescript
-import { ErrorCorrectionLevel, QRCodeRenderable } from "@opentui/qrcode"
+import { ErrorCorrectionLevel, QRCodeRenderable } from "@opentui/qrcode";
 
 const qr = new QRCodeRenderable(renderer, {
   content: "opentui.com",
   errorCorrectionLevel: ErrorCorrectionLevel.H,
-})
+});
 ```
 
 Higher error correction improves resilience but can increase the QR version and rendered size for longer content.
 
 ## Properties
 
-| Property               | Type                   | Default     | Description                                      |
-| ---------------------- | ---------------------- | ----------- | ------------------------------------------------ |
-| `content`              | `string`               | `""`        | Text content to encode                           |
-| `errorCorrectionLevel` | `ErrorCorrectionLevel` | `M`         | QR error correction level                        |
-| `quietZone`            | `number`               | `4`         | Blank module border around the QR code           |
-| `scale`                | `number`               | `1`         | Terminal columns per QR module before fitting    |
-| `fit`                  | `"contain" \| "none"`  | `"contain"` | Whether the QR code may shrink to fit its parent |
-| `foregroundColor`      | `ColorInput`           | `"#000000"` | Dark module color                                |
-| `backgroundColor`      | `ColorInput`           | `"#ffffff"` | Light module and quiet-zone color                |
-| `fallbackContent`      | `string`               | `""`        | Text rendered when the QR code cannot fit        |
-| `fallbackColor`        | `ColorInput`           | `"#ffffff"` | Fallback text color                              |
+| Property | Type | Default | Description |
+| --- | --- | --- | --- |
+| `content` | `string` | `""` | Text content to encode |
+| `errorCorrectionLevel` | `ErrorCorrectionLevel` | `M` | QR error correction level |
+| `quietZone` | `number` | `4` | Blank module border around the QR code |
+| `scale` | `number` | `1` | Terminal columns per QR module before fitting |
+| `fit` | `"contain" \| "none"` | `"contain"` | Whether the QR code may shrink to fit its parent |
+| `foregroundColor` | `ColorInput` | `"#000000"` | Dark module color |
+| `backgroundColor` | `ColorInput` | `"#ffffff"` | Light module and quiet-zone color |
+| `fallbackContent` | `string` | `""` | Text rendered when the QR code cannot fit |
+| `fallbackColor` | `ColorInput` | `"#ffffff"` | Fallback text color |
 
 ## Related APIs
 

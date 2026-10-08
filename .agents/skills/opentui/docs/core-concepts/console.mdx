@@ -10,33 +10,33 @@ The console overlay captures global console logs and draws them above the render
 ## Enable capture
 
 ```typescript
-import { createCliRenderer, ConsolePosition } from "@opentui/core"
+import { createCliRenderer, ConsolePosition } from "@opentui/core";
 
 const renderer = await createCliRenderer({
   consoleOptions: {
     position: ConsolePosition.BOTTOM,
     sizePercent: 30,
   },
-})
+});
 
-console.log("request started")
-console.error("request failed")
+console.log("request started");
+console.error("request failed");
 
-renderer.console.show()
+renderer.console.show();
 ```
 
 `consoleMode` has two values:
 
-| Mode                | Behavior                                                            |
-| ------------------- | ------------------------------------------------------------------- |
-| `"console-overlay"` | Activate process-wide capture. This is the renderer default         |
-| `"disabled"`        | Deactivate capture and restore the original global `console` object |
+| Mode | Behavior |
+| --- | --- |
+| `"console-overlay"` | Activate process-wide capture. This is the renderer default |
+| `"disabled"` | Deactivate capture and restore the original global `console` object |
 
 You can change the mode while the renderer is active:
 
 ```typescript
-renderer.consoleMode = "disabled"
-renderer.consoleMode = "console-overlay"
+renderer.consoleMode = "disabled";
+renderer.consoleMode = "console-overlay";
 ```
 
 Setting the mode to `"disabled"` does not call `renderer.console.hide()`. Hide a visible surface separately when needed. Renderer destruction destroys the surface and restores the original console.
@@ -68,9 +68,9 @@ Set `startInDebugMode: true`, or call `renderer.console.setDebugMode(true)`, to 
 Caller collection skips five stack lines, then inspects one line. Its pattern accepts absolute Unix paths and Windows drive paths. It displays `unknown` when that line does not match. Logs captured before debug mode was enabled do not gain caller information later.
 
 ```typescript
-renderer.console.setDebugMode(true)
-console.debug("includes caller information")
-renderer.console.toggleDebugMode()
+renderer.console.setDebugMode(true);
+console.debug("includes caller information");
+renderer.console.toggleDebugMode();
 ```
 
 ## Show, focus, and hide
@@ -84,11 +84,11 @@ renderer.console.toggleDebugMode()
 Use the direct methods when application state already determines the action:
 
 ```typescript
-renderer.console.show()
-renderer.console.focus()
-renderer.console.blur()
-renderer.console.hide()
-renderer.console.clear()
+renderer.console.show();
+renderer.console.focus();
+renderer.console.blur();
+renderer.console.hide();
+renderer.console.clear();
 ```
 
 `Escape` blurs the console but does not hide it. The public `visible` property reports visibility. The public `bounds` property reports its current `x`, `y`, `width`, and `height`.
@@ -97,8 +97,8 @@ OpenTUI does not reserve a global toggle key. Add one through the renderer keybo
 
 ```typescript
 renderer.keyInput.on("keypress", (key) => {
-  if (key.name === "`") renderer.console.toggle()
-})
+  if (key.name === "`") renderer.console.toggle();
+});
 ```
 
 See [Keyboard input](/docs/core-concepts/keyboard) for parsed key events.
@@ -131,12 +131,12 @@ Custom `keyBindings` merge with the defaults. `keyAliasMap` extends the normal k
 `ConsolePosition` has four values:
 
 ```typescript
-import { ConsolePosition } from "@opentui/core"
+import { ConsolePosition } from "@opentui/core";
 
-ConsolePosition.TOP
-ConsolePosition.RIGHT
-ConsolePosition.BOTTOM
-ConsolePosition.LEFT
+ConsolePosition.TOP;
+ConsolePosition.RIGHT;
+ConsolePosition.BOTTOM;
+ConsolePosition.LEFT;
 ```
 
 Top and bottom positions apply `sizePercent` to terminal height. Left and right positions apply it to terminal width. The default is bottom at `30` percent. `+` adds 5 and caps the result at `100`. `-` subtracts 5 and floors the result at `10`. The initial option is used as supplied.
@@ -149,7 +149,7 @@ const renderer = await createCliRenderer({
     startInDebugMode: false,
     title: "Console",
   },
-})
+});
 ```
 
 `ConsoleOptions` has these defaults:

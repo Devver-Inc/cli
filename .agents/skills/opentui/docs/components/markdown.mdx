@@ -22,25 +22,30 @@ description: Render markdown with syntax-aware styling
 ### Renderable API
 
 ````typescript
-import { MarkdownRenderable, SyntaxStyle, RGBA, createCliRenderer } from "@opentui/core"
+import {
+  MarkdownRenderable,
+  SyntaxStyle,
+  RGBA,
+  createCliRenderer,
+} from "@opentui/core";
 
-const renderer = await createCliRenderer()
+const renderer = await createCliRenderer();
 
 const syntaxStyle = SyntaxStyle.fromStyles({
   "markup.heading.1": { fg: RGBA.fromHex("#58A6FF"), bold: true },
   "markup.list": { fg: RGBA.fromHex("#FF7B72") },
   "markup.raw": { fg: RGBA.fromHex("#A5D6FF") },
   default: { fg: RGBA.fromHex("#E6EDF3") },
-})
+});
 
 const markdown = new MarkdownRenderable(renderer, {
   id: "readme",
   width: 60,
   content: "# Hello\n\n- One\n- Two\n\n```ts\nconst x = 1\n```",
   syntaxStyle,
-})
+});
 
-renderer.root.add(markdown)
+renderer.root.add(markdown);
 ````
 
 ## Fenced language normalization
@@ -55,10 +60,10 @@ Code fence info strings are normalized before Tree-sitter highlighting.
 Normalization uses `infoStringToFiletype()`. You can extend or override mappings at runtime:
 
 ```typescript
-import { extensionToFiletype, basenameToFiletype } from "@opentui/core"
+import { extensionToFiletype, basenameToFiletype } from "@opentui/core";
 
-extensionToFiletype.set("templ", "html")
-basenameToFiletype.set("mytoolrc", "yaml")
+extensionToFiletype.set("templ", "html");
+basenameToFiletype.set("mytoolrc", "yaml");
 ```
 
 ## Concealment
@@ -70,7 +75,7 @@ const markdown = new MarkdownRenderable(renderer, {
   content: "**bold** and `code`",
   syntaxStyle,
   conceal: true,
-})
+});
 ```
 
 Use `concealCode` to control concealment inside fenced code blocks independently (`false` by default).
@@ -84,11 +89,11 @@ const markdown = new MarkdownRenderable(renderer, {
   content: "",
   syntaxStyle,
   streaming: true,
-})
+});
 
-markdown.content += "# Live log\n"
-markdown.content += "- line 1\n"
-markdown.streaming = false
+markdown.content += "# Live log\n";
+markdown.content += "- line 1\n";
+markdown.streaming = false;
 ```
 
 ### Stable block prefix
@@ -98,23 +103,23 @@ markdown.streaming = false
 To use it, render with `internalBlockMode: "top-level"`. The renderable keeps each top-level markdown block as a separate child renderable. These blocks include headings, paragraphs, lists, tables, and fenced code. `markdown._stableBlockCount` gives the current stable prefix length. This matches the shape that [`ScrollbackSurface`](/docs/core-concepts/renderer#writing-to-scrollback) expects for row-by-row commits.
 
 ```typescript
-import { MarkdownRenderable, RGBA, SyntaxStyle } from "@opentui/core"
+import { MarkdownRenderable, RGBA, SyntaxStyle } from "@opentui/core";
 
 const syntaxStyle = SyntaxStyle.fromStyles({
   default: { fg: RGBA.fromHex("#E6EDF3") },
-})
+});
 
 const md = new MarkdownRenderable(renderer, {
   content: "",
   syntaxStyle,
   streaming: true,
   internalBlockMode: "top-level",
-})
+});
 
-md.content = "# Title\n\nPara 1"
+md.content = "# Title\n\nPara 1";
 // md._stableBlockCount might be 1 here. "# Title" is settled, but "Para 1" could still grow.
 
-md.content = "# Title\n\nPara 1\n\nPara 2"
+md.content = "# Title\n\nPara 1\n\nPara 2";
 // md._stableBlockCount rises as earlier blocks are sealed by a blank line
 ```
 
@@ -142,25 +147,25 @@ const markdown = new MarkdownRenderable(renderer, {
     borderColor: "#6b7280",
     selectable: true,
   },
-})
+});
 ```
 
 ### `tableOptions`
 
-| Option         | Type                           | Default                 | Description                                       |
-| -------------- | ------------------------------ | ----------------------- | ------------------------------------------------- |
-| `style`        | `"grid" \| "columns"`          | depends on block mode   | Visual preset (see [Table styles](#table-styles)) |
-| `widthMode`    | `"content" \| "full"`          | depends on style        | `"full"` expands columns to fill available width  |
-| `columnFitter` | `"proportional" \| "balanced"` | `"proportional"`        | How columns shrink when space is constrained      |
-| `wrapMode`     | `"none" \| "char" \| "word"`   | `"word"`                | Wrapping mode inside each table cell              |
-| `cellPadding`  | `number`                       | `0`                     | Padding on all sides of each cell                 |
-| `cellPaddingX` | `number`                       | `cellPadding`           | Horizontal padding on each side                   |
-| `cellPaddingY` | `number`                       | `cellPadding`           | Vertical padding on each side                     |
-| `borders`      | `boolean`                      | depends on style        | Enable inner and outer borders                    |
-| `outerBorder`  | `boolean`                      | `borders`               | Override outer border visibility                  |
-| `borderStyle`  | `BorderStyle`                  | `"single"`              | Table border character set                        |
-| `borderColor`  | `ColorInput`                   | conceal fg or `#888888` | Border color for markdown tables                  |
-| `selectable`   | `boolean`                      | `true`                  | Enable table cell text selection                  |
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `style` | `"grid" \| "columns"` | depends on block mode | Visual preset (see [Table styles](#table-styles)) |
+| `widthMode` | `"content" \| "full"` | depends on style | `"full"` expands columns to fill available width |
+| `columnFitter` | `"proportional" \| "balanced"` | `"proportional"` | How columns shrink when space is constrained |
+| `wrapMode` | `"none" \| "char" \| "word"` | `"word"` | Wrapping mode inside each table cell |
+| `cellPadding` | `number` | `0` | Padding on all sides of each cell |
+| `cellPaddingX` | `number` | `cellPadding` | Horizontal padding on each side |
+| `cellPaddingY` | `number` | `cellPadding` | Vertical padding on each side |
+| `borders` | `boolean` | depends on style | Enable inner and outer borders |
+| `outerBorder` | `boolean` | `borders` | Override outer border visibility |
+| `borderStyle` | `BorderStyle` | `"single"` | Table border character set |
+| `borderColor` | `ColorInput` | conceal fg or `#888888` | Border color for markdown tables |
+| `selectable` | `boolean` | `true` | Enable table cell text selection |
 
 ### Table styles
 
@@ -203,11 +208,11 @@ const markdown = new MarkdownRenderable(renderer, {
   syntaxStyle,
   renderNode: (token, context) => {
     if (token.type === "heading") {
-      return context.defaultRender()
+      return context.defaultRender();
     }
-    return undefined
+    return undefined;
   },
-})
+});
 ```
 
 ### Custom fenced-code languages
@@ -223,9 +228,9 @@ import {
   createMarkdownCodeBlockRenderer,
   type CliRenderer,
   type MarkdownCodeBlockRenderer,
-} from "@opentui/core"
+} from "@opentui/core";
 
-const syntaxStyle = SyntaxStyle.fromStyles({ default: {} })
+const syntaxStyle = SyntaxStyle.fromStyles({ default: {} });
 
 const renderTaskFlow =
   (renderer: CliRenderer): MarkdownCodeBlockRenderer =>
@@ -233,7 +238,7 @@ const renderTaskFlow =
     const steps = token.text
       .split("\n")
       .filter((line) => line.startsWith("step "))
-      .map((line) => line.slice("step ".length))
+      .map((line) => line.slice("step ".length));
 
     const card = new BoxRenderable(renderer, {
       border: true,
@@ -242,39 +247,42 @@ const renderTaskFlow =
       paddingX: 1,
       flexDirection: "column",
       width: "100%",
-    })
+    });
 
     for (const step of steps) {
-      card.add(new TextRenderable(renderer, { content: `- ${step}`, width: "100%" }))
+      card.add(
+        new TextRenderable(renderer, { content: `- ${step}`, width: "100%" })
+      );
     }
 
-    return card
-  }
+    return card;
+  };
 
 const markdown = new MarkdownRenderable(renderer, {
-  content: "```taskflow\nstep Parse markdown done\nstep Render widget active\n```",
+  content:
+    "```taskflow\nstep Parse markdown done\nstep Render widget active\n```",
   syntaxStyle,
   renderNode: createMarkdownCodeBlockRenderer({
     taskflow: renderTaskFlow(renderer),
   }),
-})
+});
 ````
 
 ## Properties
 
-| Property            | Type                                                                            | Default       | Description                                                   |
-| ------------------- | ------------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------- |
-| `content`           | `string`                                                                        | `""`          | Markdown source                                               |
-| `syntaxStyle`       | `SyntaxStyle`                                                                   | required      | Style definitions for tokens                                  |
-| `fg`                | `ColorInput`                                                                    | -             | Base foreground color (flows into inner code blocks)          |
-| `bg`                | `ColorInput`                                                                    | -             | Base background color (flows into inner code blocks)          |
-| `conceal`           | `boolean`                                                                       | `true`        | Hide markdown markers in markdown text                        |
-| `concealCode`       | `boolean`                                                                       | `false`       | Hide markers inside fenced code blocks                        |
-| `streaming`         | `boolean`                                                                       | `false`       | Incremental mode. Set `false` to finalize                     |
-| `tableOptions`      | `MarkdownTableOptions`                                                          | -             | Options for markdown table rendering                          |
-| `internalBlockMode` | `"coalesced" \| "top-level"`                                                    | `"coalesced"` | Experimental: expose top-level blocks as separate renderables |
-| `treeSitterClient`  | `TreeSitterClient`                                                              | -             | Custom Tree-sitter client for code blocks                     |
-| `renderNode`        | `(token: Token, context: RenderNodeContext) => Renderable \| null \| undefined` | -             | Custom render hook per markdown block                         |
+| Property | Type | Default | Description |
+| --- | --- | --- | --- |
+| `content` | `string` | `""` | Markdown source |
+| `syntaxStyle` | `SyntaxStyle` | required | Style definitions for tokens |
+| `fg` | `ColorInput` | - | Base foreground color (flows into inner code blocks) |
+| `bg` | `ColorInput` | - | Base background color (flows into inner code blocks) |
+| `conceal` | `boolean` | `true` | Hide markdown markers in markdown text |
+| `concealCode` | `boolean` | `false` | Hide markers inside fenced code blocks |
+| `streaming` | `boolean` | `false` | Incremental mode. Set `false` to finalize |
+| `tableOptions` | `MarkdownTableOptions` | - | Options for markdown table rendering |
+| `internalBlockMode` | `"coalesced" \| "top-level"` | `"coalesced"` | Experimental: expose top-level blocks as separate renderables |
+| `treeSitterClient` | `TreeSitterClient` | - | Custom Tree-sitter client for code blocks |
+| `renderNode` | `(token: Token, context: RenderNodeContext) => Renderable \| null \| undefined` | - | Custom render hook per markdown block |
 
 OpenTUI bundles a limited parser set. See the [Tree-sitter reference](/docs/reference/tree-sitter) before you highlight other fenced-code languages.
 

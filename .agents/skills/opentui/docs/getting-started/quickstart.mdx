@@ -6,18 +6,15 @@ skill:
   intents: [installation, quickstart]
 ---
 
-{/* docs-lint-disable mdx-esm-import */}
-import ScrollbackRecording from "../../../components/ScrollbackRecording.astro"
+{/* docs-lint-disable mdx-esm-import */} import ScrollbackRecording from "../../../components/ScrollbackRecording.astro"
 
 # Quickstart
 
-Build a small counter controlled by the arrow keys. The finished app uses layout, text, keyboard input, live updates,
-and explicit cleanup.
+Build a small counter controlled by the arrow keys. The finished app uses layout, text, keyboard input, live updates, and explicit cleanup.
 
 ## Prerequisite
 
-This guide uses [Bun](https://bun.sh) to run TypeScript source. See [Runtime and platform support](/docs/getting-started/runtime-support)
-for other runtime and platform requirements.
+This guide uses [Bun](https://bun.sh) to run TypeScript source. See [Runtime and platform support](/docs/getting-started/runtime-support) for other runtime and platform requirements.
 
 Create an empty project and add OpenTUI:
 
@@ -32,19 +29,23 @@ bun add @opentui/core
 Create `index.ts`:
 
 ```typescript
-import { BoxRenderable, TextRenderable, createCliRenderer } from "@opentui/core"
+import {
+  BoxRenderable,
+  TextRenderable,
+  createCliRenderer,
+} from "@opentui/core";
 
 const renderer = await createCliRenderer({
   exitOnCtrlC: true,
   backgroundColor: "#1131E9",
-})
+});
 
-let count = 0
+let count = 0;
 const counter = new TextRenderable(renderer, {
   id: "counter",
   content: "Count  0",
   fg: "#FFFFFF",
-})
+});
 
 const panel = new BoxRenderable(renderer, {
   width: 42,
@@ -52,7 +53,7 @@ const panel = new BoxRenderable(renderer, {
   backgroundColor: "#1131E9",
   alignItems: "center",
   justifyContent: "center",
-})
+});
 const content = new BoxRenderable(renderer, {
   width: 38,
   height: 7,
@@ -61,34 +62,38 @@ const content = new BoxRenderable(renderer, {
   flexDirection: "column",
   gap: 1,
   alignItems: "center",
-})
+});
 
-content.add(new TextRenderable(renderer, { content: "Hello, OpenTUI!", fg: "#DCE3FF" }))
-content.add(counter)
-content.add(new TextRenderable(renderer, { content: "left/right change | q quit", fg: "#AEBBFF" }))
-panel.add(content)
-renderer.root.add(panel)
+content.add(
+  new TextRenderable(renderer, { content: "Hello, OpenTUI!", fg: "#DCE3FF" })
+);
+content.add(counter);
+content.add(
+  new TextRenderable(renderer, {
+    content: "left/right change | q quit",
+    fg: "#AEBBFF",
+  })
+);
+panel.add(content);
+renderer.root.add(panel);
 
 renderer.keyInput.on("keypress", (key) => {
   if (key.name === "q") {
-    renderer.destroy()
-    return
+    renderer.destroy();
+    return;
   }
 
-  if (key.name === "left") count--
-  else if (key.name === "right") count++
-  else return
+  if (key.name === "left") count--;
+  else if (key.name === "right") count++;
+  else return;
 
-  counter.content = `Count  ${count}`
-})
+  counter.content = `Count  ${count}`;
+});
 ```
 
-`createCliRenderer()` takes control of the terminal and returns a `CliRenderer`. Its `root` property is the root of the
-component tree. `BoxRenderable` and `TextRenderable` are imperative tree nodes. The event handler updates the counter's
-`content` property directly.
+`createCliRenderer()` takes control of the terminal and returns a `CliRenderer`. Its `root` property is the root of the component tree. `BoxRenderable` and `TextRenderable` are imperative tree nodes. The event handler updates the counter's `content` property directly.
 
-The renderer emits parsed keyboard events through `keyInput`. The handler changes `counter.content`, which schedules a
-new frame.
+The renderer emits parsed keyboard events through `keyInput`. The handler changes `counter.content`, which schedules a new frame.
 
 ## Run it
 
@@ -98,9 +103,7 @@ bun index.ts
 
 Press the Left and Right arrow keys. The count updates in place.
 
-The application creates and owns the renderer. It must call `renderer.destroy()` on every shutdown path to release
-resources and restore the terminal. This example calls it when you press `q`. `exitOnCtrlC: true` handles the `Ctrl+C`
-path.
+The application creates and owns the renderer. It must call `renderer.destroy()` on every shutdown path to release resources and restore the terminal. This example calls it when you press `q`. `exitOnCtrlC: true` handles the `Ctrl+C` path.
 
 {/* docs-lint-disable mdx-component-node */}
 

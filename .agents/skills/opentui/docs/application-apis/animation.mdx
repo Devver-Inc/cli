@@ -17,11 +17,16 @@ Use a timeline for numeric renderable properties or application state. The API m
 Attach the global engine before you create or play a registered timeline.
 
 ```typescript
-import { BoxRenderable, createCliRenderer, createTimeline, engine } from "@opentui/core"
+import {
+  BoxRenderable,
+  createCliRenderer,
+  createTimeline,
+  engine,
+} from "@opentui/core";
 
-const renderer = await createCliRenderer()
-engine.attach(renderer)
-const root = renderer.root
+const renderer = await createCliRenderer();
+engine.attach(renderer);
+const root = renderer.root;
 
 const box = new BoxRenderable(renderer, {
   id: "moving-box",
@@ -31,35 +36,35 @@ const box = new BoxRenderable(renderer, {
   width: 8,
   height: 3,
   backgroundColor: "blue",
-})
-root.add(box)
+});
+root.add(box);
 
-let finish!: () => void
+let finish!: () => void;
 const finished = new Promise<void>((resolve) => {
-  finish = resolve
-})
+  finish = resolve;
+});
 
 const timeline = createTimeline({
   duration: 600,
   autoplay: false,
   onComplete: finish,
-})
+});
 
 timeline.add(box, {
   left: 30,
   duration: 600,
   ease: "outQuad",
-})
+});
 
-timeline.play()
+timeline.play();
 
 try {
-  await finished
+  await finished;
 } finally {
-  timeline.pause()
-  engine.unregister(timeline)
-  engine.detach()
-  renderer.destroy()
+  timeline.pause();
+  engine.unregister(timeline);
+  engine.detach();
+  renderer.destroy();
 }
 ```
 
@@ -80,28 +85,28 @@ import {
   type EasingFunctions,
   type JSAnimation,
   type TimelineOptions,
-} from "@opentui/core"
+} from "@opentui/core";
 ```
 
 Framework hooks use their framework package roots:
 
 ```tsx
-import { useTimeline } from "@opentui/react"
+import { useTimeline } from "@opentui/react";
 ```
 
 ```tsx
-import { useTimeline } from "@opentui/solid"
+import { useTimeline } from "@opentui/solid";
 ```
 
 ## Choose a constructor
 
 Construction and registration are separate behaviors.
 
-| API                                    | Initial state                               | Registration            |
-| -------------------------------------- | ------------------------------------------- | ----------------------- |
-| `new Timeline(options?)`               | Always paused, including `autoplay: true`   | Not registered          |
-| `createTimeline(options?)`             | Plays unless `autoplay` is `false`          | Registers with `engine` |
-| React or Solid `useTimeline(options?)` | Plays on mount unless `autoplay` is `false` | Registers on mount      |
+| API | Initial state | Registration |
+| --- | --- | --- |
+| `new Timeline(options?)` | Always paused, including `autoplay: true` | Not registered |
+| `createTimeline(options?)` | Plays unless `autoplay` is `false` | Registers with `engine` |
+| React or Solid `useTimeline(options?)` | Plays on mount unless `autoplay` is `false` | Registers on mount |
 
 `new Timeline()` stores the `autoplay` option but does not act on it. Call `play()` and `engine.register()` yourself when you use the class directly.
 
@@ -111,13 +116,13 @@ The framework hooks create the timeline during framework setup. Their mount hand
 
 ## Timeline options
 
-| `TimelineOptions` field | Default | Behavior                                                     |
-| ----------------------- | ------- | ------------------------------------------------------------ |
-| `duration`              | `1000`  | Timeline cutoff in milliseconds                              |
-| `loop`                  | `false` | Restarts the timeline at its cutoff only when exactly `true` |
-| `autoplay`              | `true`  | Used by the factory and framework mount handlers             |
-| `onComplete`            | None    | Runs when a non-looping timeline reaches its cutoff          |
-| `onPause`               | None    | Runs on every `pause()` call                                 |
+| `TimelineOptions` field | Default | Behavior |
+| --- | --- | --- |
+| `duration` | `1000` | Timeline cutoff in milliseconds |
+| `loop` | `false` | Restarts the timeline at its cutoff only when exactly `true` |
+| `autoplay` | `true` | Used by the factory and framework mount handlers |
+| `onComplete` | None | Runs when a non-looping timeline reaches its cutoff |
+| `onPause` | None | Runs on every `pause()` call |
 
 `duration: 0` falls back to `1000` because the constructor uses a truthy fallback. Use a positive finite duration.
 
@@ -141,19 +146,19 @@ Nested property paths, arrays of component values, and object traversal are not 
 
 ### `AnimationOptions`
 
-| Field              | Type                               | Behavior                                                            |
-| ------------------ | ---------------------------------- | ------------------------------------------------------------------- |
-| `duration`         | `number`                           | Item duration in milliseconds. Required by the TypeScript interface |
-| `ease`             | `EasingFunctions`                  | Named easing function. Default is `linear`                          |
-| `onUpdate`         | `(animation: JSAnimation) => void` | Runs for each active update                                         |
-| `onComplete`       | `() => void`                       | Runs after the final item cycle                                     |
-| `onStart`          | `() => void`                       | Runs when the item first becomes active                             |
-| `onLoop`           | `() => void`                       | Runs when an intermediate item cycle changes                        |
-| `loop`             | `boolean \| number`                | Infinite cycles for `true`, or a numeric cycle count                |
-| `loopDelay`        | `number`                           | Delay after each item cycle. Default is `0`                         |
-| `alternate`        | `boolean`                          | Reverses every odd item cycle. Default is `false`                   |
-| `once`             | `boolean`                          | Removes the item after completion. Default is `false`               |
-| Other numeric keys | `number`                           | End values for target properties                                    |
+| Field | Type | Behavior |
+| --- | --- | --- |
+| `duration` | `number` | Item duration in milliseconds. Required by the TypeScript interface |
+| `ease` | `EasingFunctions` | Named easing function. Default is `linear` |
+| `onUpdate` | `(animation: JSAnimation) => void` | Runs for each active update |
+| `onComplete` | `() => void` | Runs after the final item cycle |
+| `onStart` | `() => void` | Runs when the item first becomes active |
+| `onLoop` | `() => void` | Runs when an intermediate item cycle changes |
+| `loop` | `boolean \| number` | Infinite cycles for `true`, or a numeric cycle count |
+| `loopDelay` | `number` | Delay after each item cycle. Default is `0` |
+| `alternate` | `boolean` | Reverses every odd item cycle. Default is `false` |
+| `once` | `boolean` | Removes the item after completion. Default is `false` |
+| Other numeric keys | `number` | End values for target properties |
 
 Untyped code that omits item `duration` currently falls back to `1000`. TypeScript callers must supply it.
 
@@ -163,12 +168,12 @@ Use a positive integer for numeric `loop`. `false`, `undefined`, and `1` all run
 
 `onUpdate` receives a `JSAnimation` object:
 
-| Field         | Meaning                                                       |
-| ------------- | ------------------------------------------------------------- |
-| `targets`     | The normalized target array after property mutation           |
-| `deltaTime`   | The update delta supplied for this evaluation                 |
-| `progress`    | Eased forward progress before `alternate` reverses assignment |
-| `currentTime` | Current time of this timeline                                 |
+| Field | Meaning |
+| --- | --- |
+| `targets` | The normalized target array after property mutation |
+| `deltaTime` | The update delta supplied for this evaluation |
+| `progress` | Eased forward progress before `alternate` reverses assignment |
+| `currentTime` | Current time of this timeline |
 
 Back and elastic easing can make `progress` less than `0` or greater than `1`. The easing input itself is clamped to `0..1`.
 
@@ -202,9 +207,9 @@ The API does not accept a custom easing function through `ease`.
 Use numeric start times in milliseconds.
 
 ```typescript
-timeline.add(firstTarget, { x: 20, duration: 300 }, 0)
-timeline.call(() => startSecondPhase(), 300)
-timeline.add(secondTarget, { opacity: 1, duration: 200 }, 300)
+timeline.add(firstTarget, { x: 20, duration: 300 }, 0);
+timeline.call(() => startSecondPhase(), 300);
+timeline.add(secondTarget, { opacity: 1, duration: 200 }, 300);
 ```
 
 `add()` and `call()` accept `number | string` at runtime. Every string currently resolves to time `0`.
@@ -219,19 +224,19 @@ Normal completed items and callbacks remain in `items`. Only a completed `once` 
 
 ## Timeline methods
 
-| Method                                   | Behavior                                                               |
-| ---------------------------------------- | ---------------------------------------------------------------------- |
-| `add(target, properties, startTime = 0)` | Adds a numeric animation and returns `this`                            |
-| `once(target, properties)`               | Adds a removable animation at `currentTime` and returns `this`         |
-| `call(callback, startTime = 0)`          | Adds a scheduled callback and returns `this`                           |
-| `sync(timeline, startTime = 0)`          | Gives this timeline scheduled control of one child                     |
-| `play()`                                 | Starts or resumes. A completed timeline restarts                       |
-| `pause()`                                | Pauses this timeline and all synced children                           |
-| `restart()`                              | Sets time to zero, resets item flags, and starts playback              |
-| `resetItems()`                           | Resets item and child flags without changing parent time or play state |
-| `update(deltaTime)`                      | Evaluates synced children, items, loops, and completion                |
-| `addStateChangeListener(listener)`       | Adds a play-state listener used by the engine                          |
-| `removeStateChangeListener(listener)`    | Removes matching play-state listeners                                  |
+| Method | Behavior |
+| --- | --- |
+| `add(target, properties, startTime = 0)` | Adds a numeric animation and returns `this` |
+| `once(target, properties)` | Adds a removable animation at `currentTime` and returns `this` |
+| `call(callback, startTime = 0)` | Adds a scheduled callback and returns `this` |
+| `sync(timeline, startTime = 0)` | Gives this timeline scheduled control of one child |
+| `play()` | Starts or resumes. A completed timeline restarts |
+| `pause()` | Pauses this timeline and all synced children |
+| `restart()` | Sets time to zero, resets item flags, and starts playback |
+| `resetItems()` | Resets item and child flags without changing parent time or play state |
+| `update(deltaTime)` | Evaluates synced children, items, loops, and completion |
+| `addStateChangeListener(listener)` | Adds a play-state listener used by the engine |
+| `removeStateChangeListener(listener)` | Removes matching play-state listeners |
 
 `pause()` invokes `onPause` even when the timeline is already paused. It also calls `pause()` on every synced child.
 
@@ -286,14 +291,14 @@ Do not depend on a pending child staying idle after its parent pauses. Unregiste
 
 `engine` is one process-global scheduler. It can attach to one `CliRenderer` at a time.
 
-| Method                 | Behavior                                                     |
-| ---------------------- | ------------------------------------------------------------ |
-| `attach(renderer)`     | Detaches any prior renderer and installs a frame callback    |
-| `detach()`             | Removes the frame callback and drops engine-owned live state |
-| `register(timeline)`   | Adds one timeline and watches its state                      |
-| `unregister(timeline)` | Removes one timeline and its state listener                  |
-| `clear()`              | Unregisters all timelines from the global engine             |
-| `update(deltaTime)`    | Updates every registered timeline that is not synced         |
+| Method | Behavior |
+| --- | --- |
+| `attach(renderer)` | Detaches any prior renderer and installs a frame callback |
+| `detach()` | Removes the frame callback and drops engine-owned live state |
+| `register(timeline)` | Adds one timeline and watches its state |
+| `unregister(timeline)` | Removes one timeline and its state listener |
+| `clear()` | Unregisters all timelines from the global engine |
+| `update(deltaTime)` | Updates every registered timeline that is not synced |
 
 Attach the renderer before `createTimeline()` or `play()`. `attach()` installs the callback but does not recheck timelines that already started.
 
@@ -322,12 +327,12 @@ See [Lifecycle and cleanup](/docs/core-concepts/lifecycle) for renderer ownershi
 
 ## Framework mapping
 
-| API                     | Setup                                              | Cleanup                                                  |
-| ----------------------- | -------------------------------------------------- | -------------------------------------------------------- |
-| Core `new Timeline()`   | Application registers and plays it                 | Application pauses and unregisters it                    |
-| Core `createTimeline()` | Factory registers and normally plays it            | Application pauses and unregisters it                    |
-| React `useTimeline()`   | Hook mount effect registers and normally plays it  | Effect cleanup pauses and unregisters the mount instance |
-| Solid `useTimeline()`   | Hook mount handler registers and normally plays it | Cleanup pauses and unregisters it                        |
+| API | Setup | Cleanup |
+| --- | --- | --- |
+| Core `new Timeline()` | Application registers and plays it | Application pauses and unregisters it |
+| Core `createTimeline()` | Factory registers and normally plays it | Application pauses and unregisters it |
+| React `useTimeline()` | Hook mount effect registers and normally plays it | Effect cleanup pauses and unregisters the mount instance |
+| Solid `useTimeline()` | Hook mount handler registers and normally plays it | Cleanup pauses and unregisters it |
 
 The React `createRoot(renderer).render(...)` path attaches the engine. Solid `render(...)` and `testRender(...)` also attach it.
 

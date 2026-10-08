@@ -1,14 +1,15 @@
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+
 import pkg from "../package.json";
 import { buildDefines, commitStamp } from "../scripts/stamp";
 
 const repo = join(import.meta.dir, "..");
-const entry = join(repo, "src", "cli", "index.ts");
+const entry = join(repo, "packages", "cli", "src", "cli", "index.ts");
 const DEV_VERSION =
-  /^devver v\d+\.\d+\.\d+ \(dev, (?:[0-9a-f]{7}(?:-dirty)?|unknown)\)$/;
-const COMMIT = /^(?:[0-9a-f]{7}(?:-dirty)?|unknown)$/;
+  /^devver v\d+\.\d+\.\d+ \(dev, (?:[0-9a-f]{7}(?:-dirty)?|unknown)\)$/u;
+const COMMIT = /^(?:[0-9a-f]{7}(?:-dirty)?|unknown)$/u;
 
 test("nightly stamp keeps the package version and marks the release channel", () => {
   const previous = process.env.DEVVER_RELEASE_CHANNEL;

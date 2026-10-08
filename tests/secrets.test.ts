@@ -8,7 +8,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readSecretsFile, setDeploymentEnv } from "../src/config/secrets";
+
+import { readSecretsFile, setDeploymentEnv } from "../packages/cli/config";
 
 test("secrets are private and corrupt files are not overwritten", () => {
   const root = mkdtempSync(join(tmpdir(), "devver-secrets-"));
@@ -21,7 +22,14 @@ test("secrets are private and corrupt files are not overwritten", () => {
     }
     writeFileSync(file, "broken JSON");
     expect(() => readSecretsFile(root)).toThrow("Invalid secrets file");
-    expect(() => setDeploymentEnv("app", { PASSWORD: "new" }, root)).toThrow();
+    try {
+      readSecretsFile(root);
+    } catch (error) {
+      expect(error instanceof Error ? error.cause : error).toBeUndefined();
+    }
+    expect(() => {
+      setDeploymentEnv("app", { PASSWORD: "new" }, root);
+    }).toThrow();
     expect(readFileSync(file, "utf-8")).toBe("broken JSON");
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -30,7 +38,15 @@ test("secrets are private and corrupt files are not overwritten", () => {
 
 test("unsupported secret command never echoes the value", () => {
   const child = Bun.spawnSync(
-    ["bun", "run", "src/cli/index.ts", "secret", "set", "KEY", "private-value"],
+    [
+      "bun",
+      "run",
+      "packages/cli/src/cli/index.ts",
+      "secret",
+      "set",
+      "KEY",
+      "private-value",
+    ],
     {
       cwd: join(import.meta.dir, ".."),
       stdout: "pipe",

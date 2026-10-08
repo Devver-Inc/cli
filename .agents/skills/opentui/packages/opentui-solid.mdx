@@ -31,18 +31,16 @@ categories:
 Solid components run once. Signals update renderable properties without a virtual DOM.
 
 ```tsx
-import { createCliRenderer } from "@opentui/core"
-import { render } from "@opentui/solid"
+import { createCliRenderer } from "@opentui/core";
+import { render } from "@opentui/solid";
 
-const renderer = await createCliRenderer({ exitOnCtrlC: true })
+const renderer = await createCliRenderer({ exitOnCtrlC: true });
 
-await render(() => <text>Hello, Solid!</text>, renderer)
+await render(() => <text>Hello, Solid!</text>, renderer);
 ```
 
 `render()` adopts this renderer. The code that creates the renderer owns `renderer.destroy()`.
 
 Bun can transform Solid TSX through the package preload. Node.js requires compiled Solid TSX.
 
-Read the [Solid bindings](/docs/bindings/solid), [components overview](/docs/components),
-[runtime and platform support](/docs/getting-started/runtime-support), and
-[package entry points](/docs/reference/package-entrypoints).
+Read the [Solid bindings](/docs/bindings/solid), [components overview](/docs/components), [runtime and platform support](/docs/getting-started/runtime-support), and [package entry points](/docs/reference/package-entrypoints).

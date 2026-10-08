@@ -1,0 +1,19 @@
+{
+  "name": "@devver/server",
+  "version": "1.2.0",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./identity": "./identity.ts",
+    "./windows-acl": "./windows-acl.ts"
+  },
+  "scripts": {
+    "build": "bun build src/index.ts --target=node --packages=bundle --outfile=dist/server.mjs",
+    "test": "bun test tests/*.test.ts"
+  },
+  "dependencies": {
+    "@effect/platform-node": "^4",
+    "effect": "^4",
+    "xdg-basedir": "^5.1.0"
+  }
+}

@@ -1,18 +1,44 @@
 import { expect, test } from "bun:test";
 import {
+  chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { createServer, type Server } from "node:http";
+import { createServer } from "node:http";
+import type { Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const cli = join(import.meta.dir, "..", "src", "cli", "index.ts");
-const server = join(import.meta.dir, "..", "src", "server", "index.ts");
-const CONTROL_URL = /^http:\/\/127\.0\.0\.1:\d+\/api\/v1$/;
+import { Schema } from "effect";
+
+import pkg from "../package.json" with { type: "json" };
+import { CliConfigSchema } from "../packages/cli/src/config/api";
+
+const cli = join(
+  import.meta.dir,
+  "..",
+  "packages",
+  "cli",
+  "src",
+  "cli",
+  "index.ts"
+);
+const server = join(
+  import.meta.dir,
+  "..",
+  "packages",
+  "server",
+  "src",
+  "index.ts"
+);
+const CONTROL_URL = /^http:\/\/127\.0\.0\.1:\d+\/api\/v1$/u;
+const decodeAddress = Schema.decodeUnknownSync(
+  Schema.Struct({ port: Schema.Finite })
+);
 
 function workspace() {
   const root = mkdtempSync(join(tmpdir(), "devver-attach-"));
@@ -51,9 +77,11 @@ async function foreground(
     const reader = child.stdout.getReader();
     const output = await Promise.race([
       reader.read(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Server did not start")), 5000)
-      ),
+      new Promise<never>((_resolve, reject) => {
+        setTimeout(() => {
+          reject(new Error("Server did not start"));
+        }, 5000);
+      }),
     ]);
     reader.releaseLock();
     const url = new TextDecoder().decode(output.value).trim();
@@ -73,14 +101,13 @@ async function responder(
   body: string,
   headers: Record<string, string> = {}
 ) {
-  const service = createServer((_request, response) =>
-    response.writeHead(status, headers).end(body)
-  );
-  await new Promise<void>((resolve) => service.listen(0, "127.0.0.1", resolve));
-  const address = service.address();
-  if (!address || typeof address === "string") {
-    throw new Error("Not listening");
-  }
+  const service = createServer((_request, response) => {
+    response.writeHead(status, headers).end(body);
+  });
+  await new Promise<void>((resolve) => {
+    service.listen(0, "127.0.0.1", resolve);
+  });
+  const address = decodeAddress(service.address());
   return { service, url: `http://127.0.0.1:${address.port}/api/v1` };
 }
 
@@ -106,10 +133,9 @@ test("storing api-url fails instead of reporting a routing change it cannot make
     expect(stored.output).toContain("devver attach");
     expect(stored.output).not.toContain("✓");
     // Nothing was persisted, so no later command can read it back as a target.
-    expect(await ws.run("config", "get", "api-url")).toMatchObject({
-      status: 0,
-      output: expect.stringContaining("is not set"),
-    });
+    const read = await ws.run("config", "get", "api-url");
+    expect(read.status).toBe(0);
+    expect(read.output).toContain("is not set");
   } finally {
     rmSync(ws.root, { recursive: true, force: true });
   }
@@ -146,12 +172,188 @@ test("config list renders the attached target without object coercion and marks 
     expect(cleared.output).not.toContain("api-url");
     expect(cleared.output).toContain(`local-target = listed at ${running.url}`);
   } finally {
-    if (running) {
+    if (running !== undefined) {
       await stop(running.child);
     }
     rmSync(ws.root, { recursive: true, force: true });
   }
 });
+
+test("cloud selects the official API and switches cleanly with a local server", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  const ws = workspace();
+  let running: Awaited<ReturnType<typeof foreground>> | undefined;
+  const configFile = join(ws.root, "devver", "config", "cli");
+  const saved = () =>
+    Schema.decodeUnknownSync(CliConfigSchema)(
+      JSON.parse(readFileSync(configFile, "utf-8"))
+    );
+  try {
+    const selected = await ws.run("cloud");
+    expect(selected.status, selected.output).toBe(0);
+    expect(selected.output).toContain("https://app.devver.app/api/v1");
+    expect(saved()["cloud-target"]).toBe(true);
+    expect((await ws.run("config", "list")).output).toContain(
+      "cloud-target = https://app.devver.app/api/v1"
+    );
+
+    running = await foreground(ws.env, "switchable");
+    expect((await ws.run("attach", running.url)).status).toBe(0);
+    expect(saved()["cloud-target"]).toBeUndefined();
+    expect(saved()["local-target"]?.url).toBe(running.url);
+
+    expect((await ws.run("cloud")).status).toBe(0);
+    expect(saved()["cloud-target"]).toBe(true);
+    expect(saved()["local-target"]).toBeUndefined();
+    expect((await ws.run("detach")).status).toBe(0);
+    expect(saved()["cloud-target"]).toBeUndefined();
+    expect(saved()["local-target"]).toBeUndefined();
+
+    writeFileSync(configFile, '{"local-target":{"url":"broken"}}');
+    expect((await ws.run("cloud")).status).not.toBe(0);
+    expect(readFileSync(configFile, "utf-8")).toBe(
+      '{"local-target":{"url":"broken"}}'
+    );
+  } finally {
+    if (running !== undefined) {
+      await stop(running.child);
+    }
+    rmSync(ws.root, { recursive: true, force: true });
+  }
+});
+
+test("server list reads sorted instances, verifies responders and preserves selection and state", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  const ws = workspace();
+  const children: ReturnType<typeof Bun.spawn>[] = [];
+  const services: Server[] = [];
+  try {
+    const empty = await ws.run("server", "list");
+    expect(empty.status).toBe(0);
+    expect(empty.output).toContain("No server instances found");
+    expect(existsSync(join(ws.root, "devver", "servers"))).toBe(false);
+    const second = await foreground(ws.env, "zeta");
+    children.push(second.child);
+    const first = await foreground(ws.env, "alpha");
+    children.push(first.child);
+    const uuid = "031fdbdf-3c42-4d19-8909-9a2cf4690cb0";
+    const serviceFile = (name: string) =>
+      join(ws.root, "devver", "servers", name, "service.json");
+    const save = (
+      name: string,
+      url: string,
+      serverVersion = pkg.version,
+      port = Number(new URL(url).port)
+    ) => {
+      const service =
+        process.platform === "darwin"
+          ? { label: `com.devver.server.${uuid}`, port, serverVersion }
+          : { unit: `devver-${uuid}.service`, port, serverVersion };
+      writeFileSync(serviceFile(name), JSON.stringify(service), {
+        mode: 0o600,
+      });
+    };
+    save("zeta", second.url);
+    save("alpha", first.url);
+    expect((await ws.run("attach", first.url)).status).toBe(0);
+    const configFile = join(ws.root, "devver", "config", "cli");
+    const selectedConfig = readFileSync(configFile, "utf-8");
+    const listed = await ws.run("server", "list");
+    expect(listed.status).toBe(0);
+    expect(listed.output.indexOf("alpha (")).toBeLessThan(
+      listed.output.indexOf("zeta (")
+    );
+    expect(listed.output).toContain(
+      `${first.url} — version ${pkg.version}: reachable [selected]`
+    );
+    expect(listed.output).toContain(
+      `${second.url} — version ${pkg.version}: reachable`
+    );
+    save("alpha", first.url, "0.1.0");
+    expect((await ws.run("server", "list")).output).toContain(
+      `${first.url} — version 0.1.0: mismatched version [selected]`
+    );
+    save("alpha", first.url);
+    expect(readFileSync(configFile, "utf-8")).toBe(selectedConfig);
+
+    await stop(second.child);
+    children.pop();
+    expect((await ws.run("server", "list")).output).toContain(
+      `${second.url} — version ${pkg.version}: unreachable`
+    );
+    const foreign = await responder(
+      200,
+      JSON.stringify({
+        instanceId: uuid,
+        name: "foreign",
+        serverVersion: pkg.version,
+        controlProtocolVersion: 1,
+      })
+    );
+    services.push(foreign.service);
+    save("zeta", foreign.url);
+    expect((await ws.run("server", "list")).output).toContain(
+      "mismatched identity"
+    );
+    const older = await responder(
+      200,
+      JSON.stringify({
+        instanceId: uuid,
+        name: "zeta",
+        serverVersion: "0.1.0",
+        controlProtocolVersion: 1,
+      })
+    );
+    services.push(older.service);
+    save("zeta", older.url, "0.1.0");
+    expect((await ws.run("server", "list")).output).toContain("incompatible");
+    const redirect = await responder(302, "", { Location: first.url });
+    services.push(redirect.service);
+    save("zeta", redirect.url);
+    expect((await ws.run("server", "list")).output).toContain(
+      `${redirect.url} — version ${pkg.version}: unreachable`
+    );
+
+    writeFileSync(serviceFile("zeta"), "private invalid JSON");
+    const unsafe = await ws.run("server", "list");
+    expect(unsafe.status).not.toBe(0);
+    expect(unsafe.output).toContain("zeta");
+    expect(unsafe.output).not.toContain("private invalid JSON");
+    expect(readFileSync(serviceFile("zeta"), "utf-8")).toBe(
+      "private invalid JSON"
+    );
+    save("zeta", redirect.url, pkg.version, 99_999);
+    expect((await ws.run("server", "list")).status).not.toBe(0);
+    save("zeta", redirect.url);
+    chmodSync(serviceFile("zeta"), 0o644);
+    const exposed = await ws.run("server", "list");
+    expect(exposed.status).not.toBe(0);
+    expect(exposed.output).toContain("zeta");
+    chmodSync(serviceFile("zeta"), 0o600);
+    expect(readFileSync(configFile, "utf-8")).toBe(selectedConfig);
+    writeFileSync(configFile, '{"local-target":{"url":"broken"}}');
+    expect((await ws.run("server", "list")).status).not.toBe(0);
+    expect(readFileSync(configFile, "utf-8")).toBe(
+      '{"local-target":{"url":"broken"}}'
+    );
+  } finally {
+    await Promise.all(children.map(stop));
+    await Promise.all(
+      services.map(async (service) => {
+        await new Promise<void>((resolve) => {
+          service.close(() => {
+            resolve();
+          });
+        });
+      })
+    );
+    rmSync(ws.root, { recursive: true, force: true });
+  }
+}, 30_000);
 
 test("attach switches verified foreground servers across CLI processes and detach leaves them running", async () => {
   if (process.platform === "win32") {
@@ -269,15 +471,12 @@ test("invalid and incompatible attachments fail without replacing a selected ser
     expect(
       (await ws.run("attach", "http://127.0.0.1:1/api/v1")).status
     ).not.toBe(0);
-    const stalled = createServer(() => undefined);
+    const stalled = createServer(() => {});
     services.push(stalled);
-    await new Promise<void>((resolve) =>
-      stalled.listen(0, "127.0.0.1", resolve)
-    );
-    const stalledAddress = stalled.address();
-    if (!stalledAddress || typeof stalledAddress === "string") {
-      throw new Error("Not listening");
-    }
+    await new Promise<void>((resolve) => {
+      stalled.listen(0, "127.0.0.1", resolve);
+    });
+    const stalledAddress = decodeAddress(stalled.address());
     const started = Date.now();
     expect(
       (await ws.run("attach", `http://127.0.0.1:${stalledAddress.port}/api/v1`))
@@ -289,12 +488,12 @@ test("invalid and incompatible attachments fail without replacing a selected ser
     expect(selected.output).toContain(first.url);
 
     const configFile = join(ws.root, "devver", "config", "cli");
-    const saved = readFileSync(configFile, "utf8");
+    const saved = readFileSync(configFile, "utf-8");
     writeFileSync(configFile, '{"local-target":{"url":"broken"}}');
     expect((await ws.run("server", "status")).status).not.toBe(0);
     expect((await ws.run("attach", first.url)).status).not.toBe(0);
     expect((await ws.run("detach")).status).not.toBe(0);
-    expect(readFileSync(configFile, "utf8")).toBe(
+    expect(readFileSync(configFile, "utf-8")).toBe(
       '{"local-target":{"url":"broken"}}'
     );
     writeFileSync(
@@ -308,9 +507,13 @@ test("invalid and incompatible attachments fail without replacing a selected ser
   } finally {
     await stop(first.child);
     await Promise.all(
-      services.map((service) => {
+      services.map(async (service) => {
         service.closeAllConnections();
-        return new Promise<void>((resolve) => service.close(() => resolve()));
+        return new Promise<void>((resolve) => {
+          service.close(() => {
+            resolve();
+          });
+        });
       })
     );
     rmSync(ws.root, { recursive: true, force: true });

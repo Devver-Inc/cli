@@ -9,8 +9,33 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const entry = join(import.meta.dir, "..", "src", "util", "git", "index.ts");
-const commitHash = /^[a-f0-9]{40,64}$/;
+import { Schema } from "effect";
+
+const decodeProbe = Schema.decodeUnknownSync(
+  Schema.Struct({
+    branch: Schema.String,
+    commit: Schema.String,
+    present: Schema.Boolean,
+    absent: Schema.Boolean,
+    refused: Schema.NullOr(Schema.String),
+    missing: Schema.NullOr(Schema.String),
+    safe: Schema.NullOr(Schema.String),
+    failedFetch: Schema.NullOr(Schema.String),
+    skipped: Schema.NullOr(Schema.String),
+  })
+);
+
+const entry = join(
+  import.meta.dir,
+  "..",
+  "packages",
+  "cli",
+  "src",
+  "util",
+  "git",
+  "index.ts"
+);
+const commitHash = /^[a-f0-9]{40,64}$/u;
 
 const git = (cwd: string, ...args: string[]) => {
   const result = Bun.spawnSync(["git", ...args], {
@@ -53,7 +78,7 @@ function inspect(cwd: string, source: string, env?: Record<string, string>) {
     throw new Error(`preflight probe failed: ${result.stderr.toString()}`);
   }
   const lines = result.stdout.toString().trim().split("\n");
-  return JSON.parse(lines.at(-1) ?? "null");
+  return decodeProbe(JSON.parse(lines.at(-1) ?? "null"));
 }
 
 test("Git preflight distinguishes absent branches from transport failures and conflicts", () => {

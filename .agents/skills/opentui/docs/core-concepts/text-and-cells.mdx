@@ -16,13 +16,23 @@ String length and terminal width are different values. Keep that distinction whe
 Use `t` as a template tag. Style helpers return chunks that you can insert into the template.
 
 ```typescript
-import { RGBA, TextRenderable, bold, italic, t, underline, createCliRenderer } from "@opentui/core"
+import {
+  RGBA,
+  TextRenderable,
+  bold,
+  italic,
+  t,
+  underline,
+  createCliRenderer,
+} from "@opentui/core";
 
-const renderer = await createCliRenderer()
+const renderer = await createCliRenderer();
 
-const content = t`${bold("Status")}: ready\n${italic("Note")}: saved locally\n${bold(underline("Next"))}: review changes`
+const content = t`${bold("Status")}: ready\n${italic("Note")}: saved locally\n${bold(underline("Next"))}: review changes`;
 
-renderer.root.add(new TextRenderable(renderer, { content, fg: RGBA.defaultForeground() }))
+renderer.root.add(
+  new TextRenderable(renderer, { content, fg: RGBA.defaultForeground() })
+);
 ```
 
 `Status` is bold, `Note` is italic, and `Next` combines bold and underline. The rest of each line keeps its default attributes:
@@ -40,10 +50,10 @@ Helpers preserve a chunk's existing style and link while adding new attributes. 
 Use `TextAttributes` when a component accepts an `attributes` bit mask. Combine values with bitwise OR.
 
 ```typescript
-import { TextAttributes, createTextAttributes } from "@opentui/core"
+import { TextAttributes, createTextAttributes } from "@opentui/core";
 
-const attributes = TextAttributes.BOLD | TextAttributes.UNDERLINE
-const inverse = createTextAttributes({ inverse: true })
+const attributes = TextAttributes.BOLD | TextAttributes.UNDERLINE;
+const inverse = createTextAttributes({ inverse: true });
 ```
 
 The public inverse bit is `TextAttributes.INVERSE`. `createTextAttributes()` accepts `inverse` and the `reverse` alias. The `reverse()` style helper sets the same bit.
@@ -54,13 +64,13 @@ See [Text](/docs/components/text) for component options. See [Code](/docs/compon
 
 ## Keep text units separate
 
-| Unit                  | Meaning                                                                                            |
-| --------------------- | -------------------------------------------------------------------------------------------------- |
-| UTF-8 byte            | Encoded storage and native transport unit. One code point can use several bytes.                   |
-| Unicode code point    | One Unicode scalar value. A visible symbol can contain several code points.                        |
-| UTF-16 code unit      | JavaScript string indexing unit. A code point outside the basic multilingual plane uses two units. |
-| Grapheme cluster      | A user-perceived text unit. It can combine a base, marks, selectors, or joiners.                   |
-| Terminal display cell | One terminal column in one row. A grapheme can occupy zero, one, two, or more cells.               |
+| Unit | Meaning |
+| --- | --- |
+| UTF-8 byte | Encoded storage and native transport unit. One code point can use several bytes. |
+| Unicode code point | One Unicode scalar value. A visible symbol can contain several code points. |
+| UTF-16 code unit | JavaScript string indexing unit. A code point outside the basic multilingual plane uses two units. |
+| Grapheme cluster | A user-perceived text unit. It can combine a base, marks, selectors, or joiners. |
+| Terminal display cell | One terminal column in one row. A grapheme can occupy zero, one, two, or more cells. |
 
 OpenTUI receives JavaScript strings, encodes them as UTF-8, and segments text for measurement and drawing. The renderer's width method comes from terminal capabilities.
 
@@ -100,9 +110,9 @@ const text = new TextRenderable(renderer, {
   width: 2,
   wrapMode: "char",
   fg: RGBA.defaultForeground(),
-})
+});
 
-renderer.root.add(text)
+renderer.root.add(text);
 ```
 
 The same text at widths of two, three, and four columns:
@@ -132,14 +142,14 @@ See [Text](/docs/components/text) for the component option.
 Use `drawText()` for normal text, including combining marks, emoji sequences, tabs, and wide code points.
 
 ```typescript
-import { OptimizedBuffer, RGBA } from "@opentui/core"
+import { OptimizedBuffer, RGBA } from "@opentui/core";
 
-const buffer = OptimizedBuffer.create(20, 2, "unicode")
+const buffer = OptimizedBuffer.create(20, 2, "unicode");
 
 try {
-  buffer.drawText("A\u0301 and \u754c", 0, 0, RGBA.fromHex("#ffffff"))
+  buffer.drawText("A\u0301 and \u754c", 0, 0, RGBA.fromHex("#ffffff"));
 } finally {
-  buffer.destroy()
+  buffer.destroy();
 }
 ```
 
@@ -176,12 +186,12 @@ See [Interaction, focus, and selection](/docs/core-concepts/interaction) for glo
 `link(url)(text)` adds link metadata to a `TextChunk`. OpenTUI emits an OSC 8 hyperlink only when `capabilities.hyperlinks` is true.
 
 ```typescript
-import { TextRenderable, createCliRenderer, link, t } from "@opentui/core"
+import { TextRenderable, createCliRenderer, link, t } from "@opentui/core";
 
-const renderer = await createCliRenderer()
-const content = t`Read ${link("https://opentui.dev/docs")("the documentation")}`
-const text = new TextRenderable(renderer, { content })
-renderer.root.add(text)
+const renderer = await createCliRenderer();
+const content = t`Read ${link("https://opentui.dev/docs")("the documentation")}`;
+const text = new TextRenderable(renderer, { content });
+renderer.root.add(text);
 ```
 
 A URL can use at most 512 UTF-8 bytes. Longer URLs silently lose native link metadata and render as ordinary text.

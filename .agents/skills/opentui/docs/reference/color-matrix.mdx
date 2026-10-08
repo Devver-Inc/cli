@@ -5,11 +5,9 @@ description: Apply exact 4x4 RGBA transforms to selected or uniform FrameBuffer 
 
 # FrameBuffer color matrices
 
-This supported advanced API transforms stored foreground and background colors in an `OptimizedBuffer`. Use it when a
-[FrameBuffer](/docs/components/frame-buffer) needs a cell-level color transform.
+This supported advanced API transforms stored foreground and background colors in an `OptimizedBuffer`. Use it when a [FrameBuffer](/docs/components/frame-buffer) needs a cell-level color transform.
 
-Buffer positions are terminal cells, not image pixels. Read [Colors](/docs/core-concepts/colors) for normal color input
-and terminal palette behavior.
+Buffer positions are terminal cells, not image pixels. Read [Colors](/docs/core-concepts/colors) for normal color input and terminal palette behavior.
 
 ## Methods
 
@@ -30,8 +28,7 @@ frameBuffer.colorMatrixUniform(
 )
 ```
 
-Both methods mutate the buffer and return `void`. The matrix must contain exactly 16 floats. A different length throws
-`RangeError` before the native call.
+Both methods mutate the buffer and return `void`. The matrix must contain exactly 16 floats. A different length throws `RangeError` before the native call.
 
 `colorMatrix()` transforms only mask entries. `colorMatrixUniform()` transforms every buffer cell.
 
@@ -53,12 +50,9 @@ transformed = M * C
 result = C + (transformed - C) * effectiveStrength
 ```
 
-`strength = 0` keeps the original value. `strength = 1` uses the complete matrix result. Strength is not clamped, so a
-negative value or a value above one extrapolates.
+`strength = 0` keeps the original value. `strength = 1` uses the complete matrix result. Strength is not clamped, so a negative value or a value above one extrapolates.
 
-Intermediate calculations can be below `0` or above `1`. The stored buffer is RGBA8. Each final channel is clamped to
-`0..1`, rounded to `0..255`, and written to storage. The native source comments that say no clamping describe the float
-calculation, not the RGBA8 write.
+Intermediate calculations can be below `0` or above `1`. The stored buffer is RGBA8. Each final channel is clamped to `0..1`, rounded to `0..255`, and written to storage. The native source comments that say no clamping describe the float calculation, not the RGBA8 write.
 
 Matrix coefficients are not checked for finite values. A non-finite calculated channel is stored as zero.
 
@@ -91,27 +85,21 @@ Mask behavior is exact:
 - A non-finite or zero effective strength is skipped.
 - Duplicate coordinates apply the matrix more than once in mask order.
 
-The mask ignores the active scissor stack. Limit coordinates in the mask when the transform must stay in a clipped
-region.
+The mask ignores the active scissor stack. Limit coordinates in the mask when the transform must stay in a clipped region.
 
 ## Uniform behavior
 
-`colorMatrixUniform()` uses a four-cell SIMD path and a scalar remainder. `strength === 0` returns in TypeScript.
-Non-finite strength returns in native code.
+`colorMatrixUniform()` uses a four-cell SIMD path and a scalar remainder. `strength === 0` returns in TypeScript. Non-finite strength returns in native code.
 
-Uniform transforms ignore the active scissor and opacity stacks. They process `width * height` stored cells, including
-blank and continuation cells.
+Uniform transforms ignore the active scissor and opacity stacks. They process `width * height` stored cells, including blank and continuation cells.
 
 ## Cell color semantics
 
-Each cell color stores RGBA8 values plus terminal color-intent metadata. The matrix reads the resolved RGBA channels.
-It then writes a new explicit RGB color. A transformed indexed or default color loses its palette or default intent.
+Each cell color stores RGBA8 values plus terminal color-intent metadata. The matrix reads the resolved RGBA channels. It then writes a new explicit RGB color. A transformed indexed or default color loses its palette or default intent.
 
-The methods do not change characters, continuation tags, image placements, text attributes, or hyperlink IDs. They
-can change foreground and background alpha if the fourth matrix row does so.
+The methods do not change characters, continuation tags, image placements, text attributes, or hyperlink IDs. They can change foreground and background alpha if the fourth matrix row does so.
 
-The transform has no retained allocation or cleanup method. The supplied arrays are borrowed only for the synchronous
-call.
+The transform has no retained allocation or cleanup method. The supplied arrays are borrowed only for the synchronous call.
 
 ## Exported matrices
 
@@ -139,19 +127,19 @@ These constants encode calculations. Their names do not promise accessibility ou
 ## Apply a uniform matrix
 
 ```typescript
-import { INVERT_MATRIX, TargetChannel } from "@opentui/core"
+import { INVERT_MATRIX, TargetChannel } from "@opentui/core";
 
-frameBuffer.colorMatrixUniform(INVERT_MATRIX, 1, TargetChannel.Both)
+frameBuffer.colorMatrixUniform(INVERT_MATRIX, 1, TargetChannel.Both);
 ```
 
 ## Apply a cell mask
 
 ```typescript
-import { SEPIA_MATRIX, TargetChannel } from "@opentui/core"
+import { SEPIA_MATRIX, TargetChannel } from "@opentui/core";
 
-const cells = new Float32Array([5, 2, 1, 6, 2, 0.5, 7, 2, 0.25])
+const cells = new Float32Array([5, 2, 1, 6, 2, 0.5, 7, 2, 0.25]);
 
-frameBuffer.colorMatrix(SEPIA_MATRIX, cells, 0.8, TargetChannel.FG)
+frameBuffer.colorMatrix(SEPIA_MATRIX, cells, 0.8, TargetChannel.FG);
 ```
 
 The effective strengths in this example are `0.8`, `0.4`, and `0.2`.

@@ -22,18 +22,18 @@ description: Display text with a bundled ASCII art font
 ### Renderable API
 
 ```typescript
-import { ASCIIFontRenderable, RGBA, createCliRenderer } from "@opentui/core"
+import { ASCIIFontRenderable, RGBA, createCliRenderer } from "@opentui/core";
 
-const renderer = await createCliRenderer()
+const renderer = await createCliRenderer();
 
 const title = new ASCIIFontRenderable(renderer, {
   id: "title",
   text: "OPENTUI",
   font: "tiny",
   color: RGBA.fromInts(255, 255, 255, 255),
-})
+});
 
-renderer.root.add(title)
+renderer.root.add(title);
 ```
 
 ## Available fonts
@@ -43,37 +43,37 @@ OpenTUI includes several ASCII art font styles:
 ```typescript
 // Small, compact font
 {
-  font: "tiny"
+  font: "tiny";
 }
 
 // Block style font
 {
-  font: "block"
+  font: "block";
 }
 
 // Shaded style font
 {
-  font: "shade"
+  font: "shade";
 }
 
 // Slick style font
 {
-  font: "slick"
+  font: "slick";
 }
 
 // Large font
 {
-  font: "huge"
+  font: "huge";
 }
 
 // Grid style font
 {
-  font: "grid"
+  font: "grid";
 }
 
 // Pallet style font
 {
-  font: "pallet"
+  font: "pallet";
 }
 ```
 
@@ -108,32 +108,37 @@ const title = new ASCIIFontRenderable(renderer, {
   position: "absolute",
   left: 10,
   top: 2,
-})
+});
 ```
 
 ## Properties
 
-| Property          | Type                                   | Default         | Description                |
-| ----------------- | -------------------------------------- | --------------- | -------------------------- |
-| `text`            | `string`                               | `""`            | Text to display            |
-| `font`            | `ASCIIFontName`                        | `"tiny"`        | Font style                 |
-| `color`           | `ColorInput \| ColorInput[]`           | `"#FFFFFF"`     | Text color or color bands  |
-| `backgroundColor` | `ColorInput`                           | `"transparent"` | Background color           |
-| `selectable`      | `boolean`                              | `true`          | Whether text is selectable |
-| `selectionBg`     | `ColorInput`                           | -               | Selection background color |
-| `selectionFg`     | `ColorInput`                           | -               | Selection foreground color |
-| `position`        | `"relative" \| "absolute"`             | `"relative"`    | Effective positioning mode |
-| `top`             | number, `"auto"`, or percentage string | -               | Top position offset        |
-| `right`           | number, `"auto"`, or percentage string | -               | Right position offset      |
-| `bottom`          | number, `"auto"`, or percentage string | -               | Bottom position offset     |
-| `left`            | number, `"auto"`, or percentage string | -               | Left position offset       |
+| Property | Type | Default | Description |
+| --- | --- | --- | --- |
+| `text` | `string` | `""` | Text to display |
+| `font` | `ASCIIFontName` | `"tiny"` | Font style |
+| `color` | `ColorInput \| ColorInput[]` | `"#FFFFFF"` | Text color or color bands |
+| `backgroundColor` | `ColorInput` | `"transparent"` | Background color |
+| `selectable` | `boolean` | `true` | Whether text is selectable |
+| `selectionBg` | `ColorInput` | - | Selection background color |
+| `selectionFg` | `ColorInput` | - | Selection foreground color |
+| `position` | `"relative" \| "absolute"` | `"relative"` | Effective positioning mode |
+| `top` | number, `"auto"`, or percentage string | - | Top position offset |
+| `right` | number, `"auto"`, or percentage string | - | Right position offset |
+| `bottom` | number, `"auto"`, or percentage string | - | Bottom position offset |
+| `left` | number, `"auto"`, or percentage string | - | Left position offset |
 
 ## Example: welcome screen
 
 ```typescript
-import { ASCIIFontRenderable, BoxRenderable, TextRenderable, createCliRenderer } from "@opentui/core"
+import {
+  ASCIIFontRenderable,
+  BoxRenderable,
+  TextRenderable,
+  createCliRenderer,
+} from "@opentui/core";
 
-const renderer = await createCliRenderer()
+const renderer = await createCliRenderer();
 
 const welcomeScreen = new BoxRenderable(renderer, {
   width: "100%",
@@ -141,28 +146,28 @@ const welcomeScreen = new BoxRenderable(renderer, {
   flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
-})
+});
 welcomeScreen.add(
   new ASCIIFontRenderable(renderer, {
     text: "OPENTUI",
     font: "huge",
     color: "#00FFFF",
-  }),
-)
+  })
+);
 welcomeScreen.add(
   new TextRenderable(renderer, {
     content: "Terminal UI Framework",
     fg: "#888888",
-  }),
-)
+  })
+);
 welcomeScreen.add(
   new TextRenderable(renderer, {
     content: "Press any key to continue...",
     fg: "#444444",
-  }),
-)
+  })
+);
 
-renderer.root.add(welcomeScreen)
+renderer.root.add(welcomeScreen);
 ```
 
 ## Dynamic text
@@ -175,13 +180,13 @@ const counter = new ASCIIFontRenderable(renderer, {
   text: "0",
   font: "block",
   color: RGBA.fromHex("#FF0000"),
-})
+});
 
-let count = 0
+let count = 0;
 setInterval(() => {
-  count++
-  counter.text = count.toString()
-}, 1000)
+  count++;
+  counter.text = count.toString();
+}, 1000);
 ```
 
 ## Color effects
@@ -189,10 +194,14 @@ setInterval(() => {
 Create a shadow by overlaying two ASCII fonts:
 
 ```typescript
-import { ASCIIFontRenderable, BoxRenderable, createCliRenderer } from "@opentui/core"
+import {
+  ASCIIFontRenderable,
+  BoxRenderable,
+  createCliRenderer,
+} from "@opentui/core";
 
-const renderer = await createCliRenderer()
-const shadowTitle = new BoxRenderable(renderer, { position: "relative" })
+const renderer = await createCliRenderer();
+const shadowTitle = new BoxRenderable(renderer, { position: "relative" });
 shadowTitle.add(
   new ASCIIFontRenderable(renderer, {
     text: "HELLO",
@@ -202,17 +211,17 @@ shadowTitle.add(
     left: 1,
     top: 1,
     zIndex: 0,
-  }),
-)
+  })
+);
 shadowTitle.add(
   new ASCIIFontRenderable(renderer, {
     text: "HELLO",
     font: "block",
     color: "#FF0000",
     zIndex: 1,
-  }),
-)
-renderer.root.add(shadowTitle)
+  })
+);
+renderer.root.add(shadowTitle);
 ```
 
 ## Related concepts

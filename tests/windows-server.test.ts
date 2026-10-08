@@ -9,11 +9,18 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+
+import { Schema } from "effect";
+
 import pkg from "../package.json";
+import {
+  listInstances,
+  readInstanceService,
+} from "../packages/server/identity";
 import {
   verifyWindowsPrivate,
   windowsServersDirectory,
-} from "../src/server/windows-acl";
+} from "../packages/server/windows-acl";
 
 const repo = join(import.meta.dir, "..");
 const windows = process.platform === "win32";
@@ -22,23 +29,30 @@ const windows = process.platform === "win32";
 // themselves: their result depends on what else touched that root, and under
 // which identity. The dedicated CI job is that isolation, and sets this flag.
 const realState = process.env.DEVVER_WINDOWS_STATE_TESTS === "1";
-const CONTROL_URL = /http:\/\/127\.0\.0\.1:\d+\/api\/v1/;
+const CONTROL_URL = /http:\/\/127\.0\.0\.1:\d+\/api\/v1/u;
 // Triggers|RestartCount|State, with State as either enum or CIM value.
-const SUPERVISED = /^0\|3\|(Running|4)$/;
-const TASK_NAME = /^devver-[0-9a-f-]{36}$/;
+const SUPERVISED = /^0\|3\|(?:Running|4)$/u;
+const TASK_NAME = /^devver-[0-9a-f-]{36}$/u;
+const decodeIdentity = Schema.decodeUnknownSync(
+  Schema.Struct({
+    instanceId: Schema.String,
+    name: Schema.String,
+    serverVersion: Schema.String,
+  })
+);
 const unique = `win${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`;
 
 function powershell(script: string) {
   return execFileSync(
     "powershell.exe",
     ["-NoProfile", "-NonInteractive", "-Command", script],
-    { encoding: "utf8" }
+    { encoding: "utf-8" }
   ).trim();
 }
 
 function build() {
   const node = Bun.which("node");
-  if (!node) {
+  if (node === null) {
     throw new Error("Node is required for the Windows server tests");
   }
   const built = Bun.spawnSync(["bun", "run", "build:npm"], {
@@ -49,7 +63,7 @@ function build() {
   if (built.exitCode !== 0) {
     throw new Error(built.stderr.toString());
   }
-  const cli = join(repo, "dist", "cli.mjs");
+  const cli = join(repo, "packages/cli/dist", "cli.mjs");
   const run = (
     args: string[],
     env: Record<string, string | undefined> = {}
@@ -66,7 +80,13 @@ function build() {
       output: result.stdout.toString() + result.stderr.toString(),
     };
   };
-  const server = join(repo, "dist", "servers", pkg.version, "server.mjs");
+  const server = join(
+    repo,
+    "packages/cli/dist",
+    "servers",
+    pkg.version,
+    "server.mjs"
+  );
   return {
     node,
     /** Instance state deliberately shares the real per-user LOCALAPPDATA. */
@@ -79,6 +99,7 @@ function build() {
     // XDG override; attachment never touches instance state, so it keeps one.
     create: (name: string, env?: Record<string, string | undefined>) =>
       run([cli, "new", "server", name], env),
+    list: () => run([cli, "server", "list"]),
     attachment: (args: string[], data: string) =>
       run([cli, ...args], { XDG_DATA_HOME: data }),
     runServer: (name: string) => run([server, name, "0"]),
@@ -100,10 +121,10 @@ function windowsState() {
 
 function removeInstance(servers: string, name: string) {
   try {
-    const task: unknown = JSON.parse(
-      readFileSync(join(servers, name, "service.json"), "utf8")
-    ).task;
-    if (typeof task === "string" && TASK_NAME.test(task)) {
+    const { task } = Schema.decodeUnknownSync(
+      Schema.Struct({ task: Schema.String })
+    )(JSON.parse(readFileSync(join(servers, name, "service.json"), "utf-8")));
+    if (TASK_NAME.test(task)) {
       powershell(
         `Stop-ScheduledTask -TaskName '${task}' -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName '${task}' -Confirm:$false -ErrorAction SilentlyContinue`
       );
@@ -119,12 +140,11 @@ async function announcedUrl(child: Bun.Subprocess<"ignore", "pipe", "pipe">) {
   try {
     const announced = await Promise.race([
       reader.read(),
-      new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error("Server did not announce its URL")),
-          30_000
-        )
-      ),
+      new Promise<never>((_resolve, reject) => {
+        setTimeout(() => {
+          reject(new Error("Server did not announce its URL"));
+        }, 30_000);
+      }),
     ]);
     return new TextDecoder().decode(announced.value).trim();
   } finally {
@@ -132,23 +152,58 @@ async function announcedUrl(child: Bun.Subprocess<"ignore", "pipe", "pipe">) {
   }
 }
 
+async function rejectsWithMessage(promise: Promise<unknown>, message: string) {
+  try {
+    await promise;
+  } catch (error) {
+    if (!(error instanceof Error)) {
+      throw new Error("Expected an Error rejection", { cause: error });
+    }
+    expect(error.message).toContain(message);
+    return;
+  }
+  throw new Error("Expected a rejection");
+}
+
 test("Windows instance state helpers refuse to run on other platforms", async () => {
   if (windows) {
     return;
   }
-  await expect(windowsServersDirectory()).rejects.toThrow("require Windows");
-  await expect(
-    verifyWindowsPrivate({ path: repo, kind: "directory" })
-  ).rejects.toThrow("require Windows");
+  await rejectsWithMessage(windowsServersDirectory(), "require Windows");
+  await rejectsWithMessage(
+    verifyWindowsPrivate({ path: repo, kind: "directory" }),
+    "require Windows"
+  );
   // Creation must never fall back to POSIX mode bits for Windows instance state.
-  const { create } = await import("../src/cli/windows-supervised-server");
-  await expect(create("other-platform")).rejects.toThrow("requires Windows");
+  const { create } = await import("../packages/cli/windows-supervision");
+  await rejectsWithMessage(create("other-platform"), "requires Windows");
+});
+
+test("Windows listing rejects untrusted XDG overrides without touching instance state", () => {
+  if (!windows) {
+    return;
+  }
+  const result = Bun.spawnSync(
+    ["bun", "run", join(repo, "packages/server/tests/list-driver.ts"), "list"],
+    {
+      env: {
+        ...process.env,
+        XDG_DATA_HOME: join(tmpdir(), "untrusted-devver"),
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    }
+  );
+  expect(result.exitCode).not.toBe(0);
+  expect(result.stderr.toString()).toContain(
+    "does not accept XDG_DATA_HOME overrides"
+  );
 });
 
 test("Windows supervision stays manual-start with bounded restart and no login or boot trigger", () => {
   const source = readFileSync(
-    join(repo, "src", "cli", "windows-supervised-server.ts"),
-    "utf8"
+    join(repo, "packages", "cli", "src", "cli", "windows-supervised-server.ts"),
+    "utf-8"
   );
   // A task with no trigger can only be started on demand: nothing registers at
   // logon or boot, so supervision never outlives an explicit creation.
@@ -210,7 +265,8 @@ test("Windows refuses corrupt or widened instance state without replacing it", a
     const corrupt = state.runServer(name);
     expect(corrupt.status).not.toBe(0);
     expect(corrupt.output).toContain("invalid state");
-    expect(readFileSync(file, "utf8")).toBe("invalid JSON");
+    expect(readFileSync(file, "utf-8")).toBe("invalid JSON");
+    await rejectsWithMessage(listInstances(), name);
 
     // Everyone (S-1-1-0) is a well-known SID on every Windows language build.
     // GetAccessControl/SetAccessControl avoid Get-Acl and Set-Acl, whose module
@@ -225,7 +281,8 @@ test("Windows refuses corrupt or widened instance state without replacing it", a
     const widened = state.runServer(name);
     expect(widened.status).not.toBe(0);
     expect(widened.output).toContain("owner-only");
-    expect(readFileSync(file, "utf8")).toBe("invalid JSON");
+    await rejectsWithMessage(listInstances(), name);
+    expect(readFileSync(file, "utf-8")).toBe("invalid JSON");
   } finally {
     removeInstance(state.servers, name);
   }
@@ -246,21 +303,24 @@ test("Windows Task Scheduler keeps distinct instances alive after their creator 
       // an earlier bail-out on a non-interactive host let real failures pass.
       const created = state.create(name);
       expect(created.status, created.output).toBe(0);
-      const url = created.output.match(CONTROL_URL)?.[0] ?? "";
+      const url = CONTROL_URL.exec(created.output)?.[0] ?? "";
       expect(url).toMatch(CONTROL_URL);
       expect(created.output).toContain(`devver attach ${url}`);
       urls.push(url);
 
       // A separate process reads the identity the exited creator announced.
-      const identity = await (await fetch(`${url}/identity`)).json();
+      const identity = decodeIdentity(
+        await (await fetch(`${url}/identity`)).json()
+      );
       expect(identity.name).toBe(name);
       expect(identity.serverVersion).toBe(pkg.version);
       identities.push(identity.instanceId);
 
-      const service = JSON.parse(
-        readFileSync(join(state.servers, name, "service.json"), "utf8")
-      );
+      const service = await readInstanceService(name);
       expect(service.serverVersion).toBe(pkg.version);
+      if (!("task" in service)) {
+        throw new Error("Windows service metadata must contain a task name");
+      }
       expect(
         powershell(
           // A trigger-free task reports $null, and @($null).Count is 1, so the
@@ -272,12 +332,23 @@ test("Windows Task Scheduler keeps distinct instances alive after their creator 
       const duplicate = state.create(name);
       expect(duplicate.status).not.toBe(0);
       expect(duplicate.output).toContain("already exists");
-      expect((await (await fetch(`${url}/identity`)).json()).instanceId).toBe(
-        identity.instanceId
-      );
+      expect(
+        decodeIdentity(await (await fetch(`${url}/identity`)).json()).instanceId
+      ).toBe(identity.instanceId);
     }
     expect(identities[0]).not.toBe(identities[1]);
     expect(urls[0]).not.toBe(urls[1]);
+    const discovered = await listInstances();
+    const listed = state.list();
+    expect(listed.status, listed.output).toBe(0);
+    for (const [index, name] of names.entries()) {
+      expect(
+        discovered.find((instance) => instance.name === name)?.instanceId
+      ).toBe(identities[index]);
+      expect(listed.output).toContain(
+        `${name} (${identities[index]}) at ${urls[index]}`
+      );
+    }
 
     const [first] = urls;
     expect(state.attachment(["server", "status"], config).output).toContain(
@@ -293,9 +364,24 @@ test("Windows Task Scheduler keeps distinct instances alive after their creator 
       "No server attached"
     );
     // Detaching selects nothing: the supervised instance keeps answering.
-    expect((await (await fetch(`${first}/identity`)).json()).instanceId).toBe(
-      identities[0]
-    );
+    const [firstIdentity] = identities;
+    if (firstIdentity === undefined) {
+      throw new Error("No instance identity was recorded");
+    }
+    expect(
+      decodeIdentity(await (await fetch(`${first}/identity`)).json()).instanceId
+    ).toBe(firstIdentity);
+    const serviceFile = join(state.servers, names[0] ?? "", "service.json");
+    const originalService = readFileSync(serviceFile, "utf-8");
+    try {
+      writeFileSync(serviceFile, "invalid service JSON");
+      const invalid = state.list();
+      expect(invalid.status).not.toBe(0);
+      expect(invalid.output).toContain(names[0] ?? "");
+      expect(invalid.output).not.toContain("invalid service JSON");
+    } finally {
+      writeFileSync(serviceFile, originalService);
+    }
   } finally {
     for (const name of names) {
       removeInstance(state.servers, name);

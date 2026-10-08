@@ -3,19 +3,40 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 
+import { Schema } from "effect";
+
+const decodeSummary = Schema.decodeUnknownSync(
+  Schema.Struct({
+    bunGlobal: Schema.Boolean,
+    callback: Schema.Struct({
+      ipv4: Schema.Union([Schema.Finite, Schema.Literals(["unreachable"])]),
+      ipv6: Schema.Union([Schema.Finite, Schema.Literals(["unreachable"])]),
+      page: Schema.Struct({ status: Schema.Finite, complete: Schema.Boolean }),
+      seen: Schema.Array(Schema.String),
+    }),
+    rejected: Schema.Struct({
+      status: Schema.Finite,
+      message: Schema.NullOr(Schema.String),
+    }),
+    gitFailure: Schema.NullOr(Schema.String),
+  }),
+  { onExcessProperty: "error" }
+);
+
 const repo = join(import.meta.dir, "..");
 const driver = join(import.meta.dir, "fixtures", "node-runtime-driver.ts");
-const BUN_API = /\bBun\s*\.\s*(serve|spawn|stderr|stdout|file|color|build)\b/;
+const BUN_API =
+  /\bBun\s*\.\s*(?<api>serve|spawn|stderr|stdout|file|color|build)\b/u;
 const NPM_VERSION =
-  /^devver v\d+\.\d+\.\d+ \(npm, (?:[0-9a-f]{7}(?:-dirty)?|unknown)\)$/;
+  /^devver v\d+\.\d+\.\d+ \(npm, (?:[0-9a-f]{7}(?:-dirty)?|unknown)\)$/u;
 
 function nodeEnvironment() {
   const node = Bun.which("node");
-  if (!node) {
+  if (node === null) {
     throw new Error("node is required: the npm CLI must run without Bun");
   }
   const git = Bun.which("git");
-  if (!git) {
+  if (git === null) {
     throw new Error("git is required: the Node runtime check invokes git");
   }
   return { node, path: [dirname(node), dirname(git)].join(delimiter) };
@@ -30,7 +51,7 @@ test("the npm bundle runs under Node without eagerly loading the TUI", () => {
   });
   expect(build.exitCode, build.stderr.toString()).toBe(0);
 
-  const bundle = join(repo, "dist", "cli.mjs");
+  const bundle = join(repo, "packages/cli/dist", "cli.mjs");
   const run = (...args: string[]) => {
     const result = Bun.spawnSync([node, bundle, ...args], {
       cwd: repo,
@@ -85,7 +106,7 @@ test("auth callback and git run under Node with Bun absent", () => {
     expect(run.exitCode, run.stderr.toString()).toBe(0);
 
     const lines = run.stdout.toString().trim().split("\n");
-    const summary = JSON.parse(lines.at(-1) ?? "null");
+    const summary = decodeSummary(JSON.parse(lines.at(-1) ?? "null"));
 
     expect(summary.bunGlobal).toBe(false);
     expect(summary.callback.ipv4).toBe(404);

@@ -3,7 +3,19 @@ title: Streaming audio
 description: Play bounded PCM, MP3, or FLAC streams through the native audio mixer
 skill:
   entry: true
-  intents: [audio-streaming, audio-stream, pcm, f32le, radio, mp3, flac, icy, backpressure, reconnect]
+  intents:
+    [
+      audio-streaming,
+      audio-stream,
+      pcm,
+      f32le,
+      radio,
+      mp3,
+      flac,
+      icy,
+      backpressure,
+      reconnect,
+    ]
 ---
 
 # Streaming audio
@@ -17,43 +29,44 @@ Use streaming for generated audio, external decoders, long media, or internet ra
 Pass `format: "pcm"`, `sampleFormat: "f32le"`, `sampleRate`, and `channels` to `audio.playStream()`. The source is a `ReadableStream<Uint8Array>` or `AsyncIterable<Uint8Array>`, just like encoded audio. Playback returns the same `AudioStream` with the same controls, metadata, statistics, and lifecycle.
 
 ```typescript
-import { Audio, type AudioStream } from "@opentui/core"
+import { Audio, type AudioStream } from "@opentui/core";
 
-const audio = Audio.create({ autoStart: false })
-audio.on("error", (error) => console.error(error))
-let stream: AudioStream | undefined
+const audio = Audio.create({ autoStart: false });
+audio.on("error", (error) => console.error(error));
+let stream: AudioStream | undefined;
 
 async function* tone(): AsyncGenerator<Uint8Array> {
-  const framesPerChunk = 441
-  const chunk = new Uint8Array(framesPerChunk * 4)
-  const view = new DataView(chunk.buffer)
+  const framesPerChunk = 441;
+  const chunk = new Uint8Array(framesPerChunk * 4);
+  const view = new DataView(chunk.buffer);
   for (let offset = 0; offset < 44100; offset += framesPerChunk) {
     for (let frame = 0; frame < framesPerChunk; frame++) {
-      const sample = Math.sin((2 * Math.PI * 440 * (offset + frame)) / 44100) * 0.15
-      view.setFloat32(frame * 4, sample, true)
+      const sample =
+        Math.sin((2 * Math.PI * 440 * (offset + frame)) / 44100) * 0.15;
+      view.setFloat32(frame * 4, sample, true);
     }
-    yield chunk
+    yield chunk;
     // Reuse the buffer only after the generator resumes.
   }
 }
 
 try {
-  if (!audio.start()) throw new Error("No playback device is available")
+  if (!audio.start()) throw new Error("No playback device is available");
   stream = await audio.playStream(tone(), {
     format: "pcm",
     sampleFormat: "f32le",
     sampleRate: 44100,
     channels: 1,
     buffer: { capacityMs: 500, startupMs: 20, resumeMs: 20 },
-  })
-  stream.on("error", (error) => console.error(error))
-  await stream.closed
+  });
+  stream.on("error", (error) => console.error(error));
+  await stream.closed;
 } finally {
   try {
-    stream?.dispose()
-    await stream?.closed
+    stream?.dispose();
+    await stream?.closed;
   } finally {
-    audio.dispose()
+    audio.dispose();
   }
 }
 ```
@@ -68,14 +81,16 @@ try {
 For generated or captured `Float32Array` samples, encode bytes explicitly rather than relying on the machine's native byte order:
 
 ```typescript
-async function* pcmBytes(source: AsyncIterable<Float32Array>): AsyncGenerator<Uint8Array> {
+async function* pcmBytes(
+  source: AsyncIterable<Float32Array>
+): AsyncGenerator<Uint8Array> {
   for await (const samples of source) {
-    const bytes = new Uint8Array(samples.length * 4)
-    const view = new DataView(bytes.buffer)
+    const bytes = new Uint8Array(samples.length * 4);
+    const view = new DataView(bytes.buffer);
     for (let i = 0; i < samples.length; i++) {
-      view.setFloat32(i * 4, samples[i], true)
+      view.setFloat32(i * 4, samples[i], true);
     }
-    yield bytes
+    yield bytes;
   }
 }
 ```
@@ -107,47 +122,52 @@ Run the [generated-tone example](https://github.com/anomalyco/opentui/blob/main/
 The engine does not start output when it creates a stream. Start a playback device first, or consume headless output with `mixFrames()`.
 
 ```typescript
-import { Audio, AudioStreamError, type AudioStream } from "@opentui/core"
+import { Audio, AudioStreamError, type AudioStream } from "@opentui/core";
 
-const audio = Audio.create({ autoStart: false })
-const controller = new AbortController()
-const stopTimer = setTimeout(() => controller.abort(), 30_000)
-let stream: AudioStream | null = null
+const audio = Audio.create({ autoStart: false });
+const controller = new AbortController();
+const stopTimer = setTimeout(() => controller.abort(), 30_000);
+let stream: AudioStream | null = null;
 
 function reportSetupError(error: unknown): void {
   if (error instanceof AudioStreamError) {
-    console.error(`${error.context.action}: ${error.message}`)
+    console.error(`${error.context.action}: ${error.message}`);
   } else if (!(error instanceof DOMException && error.name === "AbortError")) {
-    throw error
+    throw error;
   }
 }
 
 audio.on("error", (error, context) => {
-  console.error(`${context.action}: ${error.message}`)
-})
+  console.error(`${context.action}: ${error.message}`);
+});
 
 try {
-  if (!audio.start()) throw new Error("No playback device is available")
+  if (!audio.start()) throw new Error("No playback device is available");
 
   stream = await audio.playStreamUrl("https://localhost/radio", {
     signal: controller.signal,
     reconnect: { maxRetries: 5 },
-  })
+  });
 
   stream.on("error", (error, context) => {
-    console.error(`${context.action}: ${error.message}`)
-  })
+    console.error(`${context.action}: ${error.message}`);
+  });
 
-  await stream.closed
+  await stream.closed;
 } catch (error) {
-  reportSetupError(error)
+  reportSetupError(error);
 } finally {
-  clearTimeout(stopTimer)
-  if (stream != null && stream.state !== "ended" && stream.state !== "errored" && stream.state !== "disposed") {
-    stream.dispose()
+  clearTimeout(stopTimer);
+  if (
+    stream != null &&
+    stream.state !== "ended" &&
+    stream.state !== "errored" &&
+    stream.state !== "disposed"
+  ) {
+    stream.dispose();
   }
-  await stream?.closed
-  audio.dispose()
+  await stream?.closed;
+  audio.dispose();
 }
 ```
 
@@ -157,18 +177,17 @@ Attach the `AudioStream` error listener immediately after setup resolves. Later 
 
 Stream setup errors reject the entry-method promise because the stream is not available for a listener yet. An unhandled later `error` event throws.
 
-A control method can return `false` and schedule an `error` event. Without a listener, the event can throw after the
-caller receives `false`.
+A control method can return `false` and schedule an `error` event. Without a listener, the event can throw after the caller receives `false`.
 
 ## Choose an entry method
 
 The three entry methods own different source policies.
 
-| Method                                  | Source and ownership                                                         |
-| --------------------------------------- | ---------------------------------------------------------------------------- |
-| `playStream(source, options?)`          | Reads one `ReadableStream<Uint8Array>` or `AsyncIterable<Uint8Array>` to EOF |
-| `playStreamUrl(url, options?)`          | Owns Fetch, HTTP validation, ICY metadata, and optional reconnects           |
-| `playStreamSource(connector, options?)` | Opens custom connections and creates a demuxer for each connection           |
+| Method | Source and ownership |
+| --- | --- |
+| `playStream(source, options?)` | Reads one `ReadableStream<Uint8Array>` or `AsyncIterable<Uint8Array>` to EOF |
+| `playStreamUrl(url, options?)` | Owns Fetch, HTTP validation, ICY metadata, and optional reconnects |
+| `playStreamSource(connector, options?)` | Opens custom connections and creates a demuxer for each connection |
 
 `playStream()` is one-shot. It does not accept request, reconnect, content-type, or metadata-encoding options.
 
@@ -182,20 +201,20 @@ The promise resolves after native playback setup is ready. Encoded streams must 
 
 ## Shared options
 
-| Option              | Default   | Constraint or effect                                           |
-| ------------------- | --------- | -------------------------------------------------------------- |
-| `format`            | `"mp3"`   | `"pcm"`, `"mp3"`, or `"flac"`                                  |
-| `sampleFormat`      | None      | Required for PCM; only `"f32le"`                               |
-| `sampleRate`        | None      | Required for PCM; integer from `8000` through `192000` Hz      |
-| `channels`          | None      | Required for PCM; `1` or `2`                                   |
-| `volume`            | `1`       | Native playback clamps it to `0..4`                            |
-| `pan`               | `0`       | Native playback clamps it to `-1..1`                           |
-| `groupId`           | `0`       | Must be an unsigned 32-bit ID for a group in the owning engine |
-| `buffer.capacityMs` | `2000`    | Decoded PCM capacity                                           |
-| `buffer.startupMs`  | `1000`    | Initial playback threshold                                     |
-| `buffer.resumeMs`   | `1000`    | Resume threshold after an underrun                             |
-| `maxProbeBytes`     | `1048576` | Maximum encoded bytes inspected during startup; unused for PCM |
-| `signal`            | None      | Cancels setup, source work, reconnect delays, and playback     |
+| Option | Default | Constraint or effect |
+| --- | --- | --- |
+| `format` | `"mp3"` | `"pcm"`, `"mp3"`, or `"flac"` |
+| `sampleFormat` | None | Required for PCM; only `"f32le"` |
+| `sampleRate` | None | Required for PCM; integer from `8000` through `192000` Hz |
+| `channels` | None | Required for PCM; `1` or `2` |
+| `volume` | `1` | Native playback clamps it to `0..4` |
+| `pan` | `0` | Native playback clamps it to `-1..1` |
+| `groupId` | `0` | Must be an unsigned 32-bit ID for a group in the owning engine |
+| `buffer.capacityMs` | `2000` | Decoded PCM capacity |
+| `buffer.startupMs` | `1000` | Initial playback threshold |
+| `buffer.resumeMs` | `1000` | Resume threshold after an underrun |
+| `maxProbeBytes` | `1048576` | Maximum encoded bytes inspected during startup; unused for PCM |
+| `signal` | None | Cancels setup, source work, reconnect delays, and playback |
 
 The three buffer durations and `maxProbeBytes` must be positive unsigned 32-bit integers. Startup and resume durations cannot exceed capacity.
 
@@ -223,12 +242,12 @@ During a reconnect, a stream that already started can play PCM left in its decod
 
 OpenTUI bounds these internal layers:
 
-| Layer                    | Bound                                                  |
-| ------------------------ | ------------------------------------------------------ |
-| Native input bytes       | `256 KiB` per stream                                   |
-| Native output PCM        | `buffer.capacityMs`, up to `268,435,452` stereo frames |
-| Native PCM conversion    | `2048` input frames per batch plus one partial frame   |
-| JavaScript source demand | One active `read()` or iterator `next()`               |
+| Layer | Bound |
+| --- | --- |
+| Native input bytes | `256 KiB` per stream |
+| Native output PCM | `buffer.capacityMs`, up to `268,435,452` stereo frames |
+| Native PCM conversion | `2048` input frames per batch plus one partial frame |
+| JavaScript source demand | One active `read()` or iterator `next()` |
 
 OpenTUI copies the current source chunk into the native input queue before it requests the next chunk. A full input queue applies backpressure to that chunk. `buffer.capacityMs` bounds the output ring, not audio also waiting in the input queue or worker batch.
 
@@ -246,11 +265,11 @@ Readiness and EOF use short-lived polling. The stream does not keep a persistent
 
 `playStreamUrl()` uses `contentTypePolicy: "validate"` by default.
 
-| Format | Accepted `Content-Type` values                                                       |
-| ------ | ------------------------------------------------------------------------------------ |
-| MP3    | `audio/mpeg`, `audio/mp3`, `application/mp3`, `application/octet-stream`, or missing |
-| FLAC   | `audio/flac`, `audio/x-flac`, `application/octet-stream`, or missing                 |
-| PCM    | `audio/pcm`, `application/octet-stream`, or missing                                  |
+| Format | Accepted `Content-Type` values |
+| --- | --- |
+| MP3 | `audio/mpeg`, `audio/mp3`, `application/mp3`, `application/octet-stream`, or missing |
+| FLAC | `audio/flac`, `audio/x-flac`, `application/octet-stream`, or missing |
+| PCM | `audio/pcm`, `application/octet-stream`, or missing |
 
 Validation ignores case and parameters such as `charset=binary`. It evaluates every initial and replacement response before native stream allocation or byte ingestion.
 
@@ -339,18 +358,20 @@ An `AudioStreamConnector<I>` opens one connection at a time:
 
 ```typescript
 interface AudioStreamConnectContext {
-  readonly signal: AbortSignal
-  readonly attempt: number
+  readonly signal: AbortSignal;
+  readonly attempt: number;
 }
 
 interface AudioStreamConnection<I> {
-  readonly body: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>
-  readonly info: I
-  close?(): void | Promise<void>
+  readonly body: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>;
+  readonly info: I;
+  close?(): void | Promise<void>;
 }
 
 interface AudioStreamConnector<I> {
-  connect(context: AudioStreamConnectContext): Promise<AudioStreamConnection<I>>
+  connect(
+    context: AudioStreamConnectContext
+  ): Promise<AudioStreamConnection<I>>;
 }
 ```
 
@@ -367,13 +388,15 @@ The `info` value goes to the connection's demuxer factory. Return `undefined` wh
 Each connector attempt receives a fresh demuxer. A demuxer has this interface:
 
 ```typescript
-type AudioStreamDemuxOutput<M> = { type: "audio"; data: Uint8Array } | { type: "metadata"; metadata: M | null }
+type AudioStreamDemuxOutput<M> =
+  | { type: "audio"; data: Uint8Array }
+  | { type: "metadata"; metadata: M | null };
 
 interface AudioStreamDemuxer<M> {
-  readonly initialMetadata: M | null
-  push(chunk: Uint8Array): Iterable<AudioStreamDemuxOutput<M>>
-  flush(): Iterable<AudioStreamDemuxOutput<M>>
-  abort?(reason: unknown): void
+  readonly initialMetadata: M | null;
+  push(chunk: Uint8Array): Iterable<AudioStreamDemuxOutput<M>>;
+  flush(): Iterable<AudioStreamDemuxOutput<M>>;
+  abort?(reason: unknown): void;
 }
 ```
 
@@ -407,17 +430,17 @@ OpenTUI calls `close()` at most once for each returned connection. It ignores ex
 
 ## Members, state, and statistics
 
-| `AudioStream` member | Behavior                                                       |
-| -------------------- | -------------------------------------------------------------- |
-| `format`             | Resolved `"pcm"`, `"mp3"`, or `"flac"` value                   |
-| `state`              | Latest cached lifecycle snapshot                               |
-| `getStats()`         | Refreshes native state and returns current or final statistics |
-| `getMetadata()`      | Returns the latest metadata snapshot or `null`                 |
-| `setVolume(volume)`  | Sets volume and returns `boolean`                              |
-| `setPan(pan)`        | Sets pan and returns `boolean`                                 |
-| `setGroup(groupId)`  | Moves the stream and returns `boolean`                         |
-| `dispose()`          | Cancels source work, reconnects, and native playback           |
-| `closed`             | Resolves after terminal event delivery and bounded cleanup     |
+| `AudioStream` member | Behavior |
+| --- | --- |
+| `format` | Resolved `"pcm"`, `"mp3"`, or `"flac"` value |
+| `state` | Latest cached lifecycle snapshot |
+| `getStats()` | Refreshes native state and returns current or final statistics |
+| `getMetadata()` | Returns the latest metadata snapshot or `null` |
+| `setVolume(volume)` | Sets volume and returns `boolean` |
+| `setPan(pan)` | Sets pan and returns `boolean` |
+| `setGroup(groupId)` | Moves the stream and returns `boolean` |
+| `dispose()` | Cancels source work, reconnects, and native playback |
+| `closed` | Resolves after terminal event delivery and bounded cleanup |
 
 `state` can be `initializing`, `buffering`, `playing`, `reconnecting`, `ended`, `errored`, or `disposed`. Read `getStats()` for an explicit native refresh.
 
@@ -425,16 +448,16 @@ Controls remain active across reconnects. They return `false` after terminal cle
 
 `getStats()` returns these fields:
 
-| Field                              | Meaning                                        |
-| ---------------------------------- | ---------------------------------------------- |
-| `state`                            | Refreshed lifecycle state                      |
-| `sampleRate`, `channels`           | Output format: engine sample rate and stereo   |
-| `bufferedFrames`, `capacityFrames` | Current output ring use and capacity           |
-| `bufferedDurationMs`               | Current buffered output duration               |
-| `bytesReceived`                    | Audio bytes accepted from demuxer outputs      |
-| `framesDecoded`, `framesPlayed`    | Cumulative produced and consumed output frames |
-| `underruns`                        | Starvation transitions after playback starts   |
-| `reconnectAttempts`                | Cumulative reconnect attempts                  |
+| Field | Meaning |
+| --- | --- |
+| `state` | Refreshed lifecycle state |
+| `sampleRate`, `channels` | Output format: engine sample rate and stereo |
+| `bufferedFrames`, `capacityFrames` | Current output ring use and capacity |
+| `bufferedDurationMs` | Current buffered output duration |
+| `bytesReceived` | Audio bytes accepted from demuxer outputs |
+| `framesDecoded`, `framesPlayed` | Cumulative produced and consumed output frames |
+| `underruns` | Starvation transitions after playback starts |
+| `reconnectAttempts` | Cumulative reconnect attempts |
 
 `bytesReceived` excludes framing and metadata bytes. For PCM it includes bytes held in a pending partial frame. Integer-divide by `channels * 4` using the input channel count to recover the number of complete input frames received.
 

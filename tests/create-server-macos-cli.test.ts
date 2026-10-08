@@ -10,20 +10,29 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+
+import { Schema } from "effect";
+
 import pkg from "../package.json";
 
 const repo = join(import.meta.dir, "..");
-const cli = join(repo, "dist", "cli.mjs");
+const cli = join(repo, "packages/cli/dist", "cli.mjs");
 const node = Bun.which("node");
 // The npm distribution must create and supervise its packaged server on Node
 // alone, so the CLI under test runs with Bun absent from PATH.
-const NODE_ONLY = node ? `${dirname(node)}:/usr/bin:/bin` : "";
-const CONTROL_URL = /http:\/\/127\.0\.0\.1:\d+\/api\/v1/;
-const JOB_PID = /\tpid = (\d+)/;
+const NODE_ONLY = node === null ? "" : `${dirname(node)}:/usr/bin:/bin`;
+const CONTROL_URL = /http:\/\/127\.0\.0\.1:\d+\/api\/v1/u;
+const JOB_PID = /\tpid = (?<pid>\d+)/u;
+const decodeIdentity = Schema.decodeUnknownSync(
+  Schema.Struct({ name: Schema.String, instanceId: Schema.String })
+);
+const decodeService = Schema.decodeUnknownSync(
+  Schema.Struct({ label: Schema.String })
+);
 
 function workspace() {
   const root = mkdtempSync(join(tmpdir(), "devver-macos-"));
-  const env: Record<string, string | undefined> = {
+  const env = {
     ...process.env,
     PATH: NODE_ONLY,
     XDG_DATA_HOME: join(root, "data"),
@@ -32,7 +41,7 @@ function workspace() {
     XDG_CACHE_HOME: join(root, "cache"),
   };
   const run = (...args: string[]) => {
-    if (!node) {
+    if (node === null) {
       throw new Error("Node required for CLI process test");
     }
     const result = Bun.spawnSync([node, cli, ...args], {
@@ -60,14 +69,14 @@ function launchctl(...args: string[]) {
 // Supervision needs a reachable per-user launchd domain; headless CI may lack one.
 function supervisableDomain() {
   if (process.platform !== "darwin") {
-    return;
+    return null;
   }
   const uid = process.getuid?.();
   if (uid === undefined) {
-    return;
+    return null;
   }
   const domain = `gui/${uid}`;
-  return launchctl("print", domain).status === 0 ? domain : undefined;
+  return launchctl("print", domain).status === 0 ? domain : null;
 }
 
 // Empty output means the job is not registered, which every caller asserts against.
@@ -161,10 +170,10 @@ test("macOS failed startup retains state when launchd cannot confirm job removal
       "recover",
       "identity.json"
     );
-    const identity = readFileSync(state, "utf8");
+    const identity = readFileSync(state, "utf-8");
     const duplicate = ws.run("new", "server", "recover");
     expect(duplicate.status).not.toBe(0);
-    expect(readFileSync(state, "utf8")).toBe(identity);
+    expect(readFileSync(state, "utf-8")).toBe(identity);
   } finally {
     rmSync(ws.root, { recursive: true, force: true });
   }
@@ -227,7 +236,7 @@ test("macOS registration without a listening server reports failed readiness and
 
 test("macOS launchd keeps named servers ready after CLI exits and attachment is explicit", async () => {
   const domain = supervisableDomain();
-  if (!(domain && node)) {
+  if (domain === null || node === null) {
     return;
   }
   expect(Bun.which("bun", { PATH: NODE_ONLY })).toBeNull();
@@ -243,14 +252,16 @@ test("macOS launchd keeps named servers ready after CLI exits and attachment is 
       const directory = join(ws.root, "data", "devver", "servers", name);
       const service = join(directory, "service.json");
       try {
-        labels.push(JSON.parse(readFileSync(service, "utf8")).label);
+        labels.push(
+          decodeService(JSON.parse(readFileSync(service, "utf-8"))).label
+        );
       } catch {
         /* no registration */
       }
       expect(created.status, created.output).toBe(0);
-      const url = created.output.match(CONTROL_URL)?.[0];
+      const url = CONTROL_URL.exec(created.output)?.[0];
       expect(url).toBeDefined();
-      if (!url) {
+      if (url === undefined) {
         throw new Error("No control URL");
       }
       urls.push(url);
@@ -260,7 +271,7 @@ test("macOS launchd keeps named servers ready after CLI exits and attachment is 
       expect(statSync(join(directory, "service.plist")).mode % 0o1000).toBe(
         0o600
       );
-      const manifest = readFileSync(join(directory, "service.plist"), "utf8");
+      const manifest = readFileSync(join(directory, "service.plist"), "utf-8");
       expect(manifest).toContain(
         "<key>ThrottleInterval</key><integer>30</integer>"
       );
@@ -282,12 +293,14 @@ test("macOS launchd keeps named servers ready after CLI exits and attachment is 
       expect(describeJob(domain, labels.at(-1) ?? "")).toContain(
         "state = running"
       );
-      const identity = await (await fetch(`${url}/identity`)).json();
+      const identity = decodeIdentity(
+        await (await fetch(`${url}/identity`)).json()
+      );
       expect(identity.name).toBe(name);
       expect(ws.run("new", "server", name).status).not.toBe(0);
-      expect((await (await fetch(`${url}/identity`)).json()).instanceId).toBe(
-        identity.instanceId
-      );
+      expect(
+        decodeIdentity(await (await fetch(`${url}/identity`)).json()).instanceId
+      ).toBe(identity.instanceId);
     }
     expect(urls[0]).not.toBe(urls[1]);
     expect(ws.run("server", "status").output).toContain("No server attached");
@@ -307,7 +320,7 @@ test("macOS launchd keeps named servers ready after CLI exits and attachment is 
 
 test("macOS launchd restarts an unsuccessful server exit at a bounded rate", async () => {
   const domain = supervisableDomain();
-  if (!(domain && node)) {
+  if (domain === null || node === null) {
     return;
   }
   const ws = workspace();
@@ -315,18 +328,30 @@ test("macOS launchd restarts an unsuccessful server exit at a bounded rate", asy
   try {
     const created = ws.run("new", "server", "restarted");
     expect(created.status, created.output).toBe(0);
-    const url = created.output.match(CONTROL_URL)?.[0];
-    if (!url) {
+    const url = CONTROL_URL.exec(created.output)?.[0];
+    if (url === undefined) {
       throw new Error("No control URL");
     }
-    label = JSON.parse(
-      readFileSync(
-        join(ws.root, "data", "devver", "servers", "restarted", "service.json"),
-        "utf8"
+    const { label: registeredLabel } = decodeService(
+      JSON.parse(
+        readFileSync(
+          join(
+            ws.root,
+            "data",
+            "devver",
+            "servers",
+            "restarted",
+            "service.json"
+          ),
+          "utf-8"
+        )
       )
-    ).label;
-    const identity = await (await fetch(`${url}/identity`)).json();
-    const pid = Number(describeJob(domain, label).match(JOB_PID)?.[1]);
+    );
+    label = registeredLabel;
+    const identity = decodeIdentity(
+      await (await fetch(`${url}/identity`)).json()
+    );
+    const pid = Number(JOB_PID.exec(describeJob(domain, label))?.groups?.pid);
     expect(Number.isSafeInteger(pid) && pid > 0).toBe(true);
     process.kill(pid, "SIGKILL");
     await Bun.sleep(5000);
@@ -337,12 +362,12 @@ test("macOS launchd restarts an unsuccessful server exit at a bounded rate", asy
       await Bun.sleep(1000);
     }
     expect(await reachable(url)).toBe(true);
-    expect((await (await fetch(`${url}/identity`)).json()).instanceId).toBe(
-      identity.instanceId
-    );
+    expect(
+      decodeIdentity(await (await fetch(`${url}/identity`)).json()).instanceId
+    ).toBe(identity.instanceId);
     expect(describeJob(domain, label)).toContain("state = running");
   } finally {
-    if (label) {
+    if (label !== "") {
       bootout(domain, label);
     }
     rmSync(ws.root, { recursive: true, force: true });

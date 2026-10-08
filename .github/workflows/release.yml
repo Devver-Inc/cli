@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 permissions:
   contents: write
@@ -29,6 +29,7 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           VERSION="${TAG#v}"
+          test "$VERSION" = "$(node -p "require('./package.json').version")" || { echo 'Tag differs from canonical root version' >&2; exit 1; }
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Planning release for $TAG (version $VERSION)"
@@ -56,13 +57,15 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install dependencies
-        run: bun install
-
       - uses: actions/setup-node@v4
-        if: runner.os != 'Windows'
         with:
-          node-version: '26.5.0'
+          node-version: "26.5.0"
+
+      - name: Synchronize release versions and locks
+        run: bun run sync:version && bun run check:version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
 
       - name: Smoke packaged CLI and server without Bun (Unix)
         if: runner.os != 'Windows'
@@ -70,7 +73,7 @@ jobs:
 
       - name: Build standalone binary
         run: |
-          bun run scripts/build.ts
+          bun run build
         shell: bash
 
       - name: Create archive (Unix)
@@ -153,12 +156,16 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Install dependencies
-        run: bun install
-
       - uses: actions/setup-node@v4
         with:
-          node-version: '26.5.0'
+          node-version: "26.5.0"
+          registry-url: https://registry.npmjs.org
+
+      - name: Synchronize release versions and locks
+        run: bun run sync:version && bun run check:version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
 
       - name: Smoke packed npm CLI and server without Bun
         run: bun test tests/server-artifacts.test.ts
@@ -167,10 +174,12 @@ jobs:
         run: bun run build:npm
 
       - name: Verify the published entrypoint exists
-        run: test -x dist/cli.mjs && node dist/cli.mjs --version
+        run: test -x packages/cli/dist/cli.mjs && node packages/cli/dist/cli.mjs --version
 
       - name: Publish to npm
-        run: npm publish --access public
+        run: npm publish --workspace @devver/cli --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   homebrew:
     name: Update Homebrew tap
