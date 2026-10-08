@@ -55,10 +55,6 @@ function isSameOrigin(request: IncomingMessage, origin: string): boolean {
 const serveOnListener = (name: string) =>
   Effect.gen(function* () {
     const instance = yield* Effect.tryPromise(async () => loadInstance(name));
-    const handler = yield* HttpRouter.toHttpEffect(
-      HttpApiBuilder.layer(api).pipe(Layer.provide(instanceHandlers(instance)))
-    );
-
     const { address } = yield* HttpServer.HttpServer;
     if (address._tag === "UnixPathAddress") {
       return yield* new ServerStartupError({
@@ -67,33 +63,47 @@ const serveOnListener = (name: string) =>
     }
     const origin = `http://${HOST}:${address.port}`;
 
-    yield* HttpServer.serveEffect(
-      Effect.gen(function* () {
-        const { source } = yield* HttpServerRequest.HttpServerRequest;
-        if (!(isNodeRequest(source) && isSameOrigin(source, origin))) {
-          return HttpServerResponse.text("Forbidden", { status: 403 });
-        }
-        // Effect's router ignores query strings and returns 404 for wrong methods.
-        if (
-          source.url !== undefined &&
-          source.url.startsWith(`${API_PATH}/identity`) &&
-          source.url !== `${API_PATH}/identity`
-        ) {
-          return HttpServerResponse.text("Not found", { status: 404 });
-        }
-        if (source.url === `${API_PATH}/identity` && source.method !== "GET") {
-          return HttpServerResponse.text("Method not allowed", {
-            status: 405,
-            headers: { Allow: "GET" },
-          });
-        }
-        return HttpServerResponse.setHeader(
-          yield* handler,
-          "Cache-Control",
-          "no-store"
-        );
-      })
+    const requestPolicy = HttpRouter.middleware(
+      (next) =>
+        Effect.gen(function* () {
+          const { source } = yield* HttpServerRequest.HttpServerRequest;
+          if (!(isNodeRequest(source) && isSameOrigin(source, origin))) {
+            return HttpServerResponse.text("Forbidden", { status: 403 });
+          }
+          // Effect's router ignores query strings and returns 404 for wrong methods.
+          if (
+            source.url !== undefined &&
+            source.url.startsWith(`${API_PATH}/identity`) &&
+            source.url !== `${API_PATH}/identity`
+          ) {
+            return HttpServerResponse.text("Not found", { status: 404 });
+          }
+          if (
+            source.url === `${API_PATH}/identity` &&
+            source.method !== "GET"
+          ) {
+            return HttpServerResponse.text("Method not allowed", {
+              status: 405,
+              headers: { Allow: "GET" },
+            });
+          }
+          return HttpServerResponse.setHeader(
+            yield* next,
+            "Cache-Control",
+            "no-store"
+          );
+        }),
+      { global: true }
     );
+    const handler = yield* HttpRouter.toHttpEffect(
+      Layer.mergeAll(
+        HttpApiBuilder.layer(api).pipe(
+          Layer.provide(instanceHandlers(instance))
+        ),
+        requestPolicy
+      )
+    );
+    yield* HttpServer.serveEffect(handler);
 
     return `${origin}${API_PATH}`;
   });

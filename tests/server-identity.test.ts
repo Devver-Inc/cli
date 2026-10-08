@@ -170,6 +170,13 @@ test("a foreground server serves identity on loopback and rejects browser cross-
     expect(methodNotAllowed.status).toBe(405);
     expect(methodNotAllowed.headers.get("allow")).toBe("GET");
     expect((await fetch(`${running.url}/missing`)).status).toBe(404);
+    expect(
+      (
+        await fetch(`${running.url}/missing`, {
+          headers: { Host: "evil.example" },
+        })
+      ).status
+    ).toBe(403);
     for (const path of [
       "/identity",
       "/api/v1/identity/",
