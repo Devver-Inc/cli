@@ -197,11 +197,13 @@ test("npm artifact includes a versioned Node server beside the lazy CLI", async 
       }
     );
     expect(install.exitCode, install.stderr.toString()).toBe(0);
-    expect(
-      lstatSync(
-        join(installed, "node_modules", ".bin", "devver-server")
-      ).isSymbolicLink()
-    ).toBe(true);
+    for (const name of ["devver", "devver-server"]) {
+      expect(
+        lstatSync(
+          join(installed, "node_modules", ".bin", name)
+        ).isSymbolicLink()
+      ).toBe(true);
+    }
     const installedServer = join(
       installed,
       "node_modules",

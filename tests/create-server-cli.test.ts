@@ -203,7 +203,15 @@ test("installed npm bin pins and starts its server after the CLI exits", async (
   try {
     const installed = join(ws.root, "installed");
     const packed = Bun.spawnSync(
-      ["npm", "pack", "--ignore-scripts", "--pack-destination", ws.root],
+      [
+        "npm",
+        "pack",
+        "--workspace",
+        "@devver/cli",
+        "--ignore-scripts",
+        "--pack-destination",
+        ws.root,
+      ],
       {
         cwd: repo,
         stdout: "pipe",
