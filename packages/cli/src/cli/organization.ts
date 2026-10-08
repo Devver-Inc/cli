@@ -18,28 +18,26 @@ export const switchOrganization = (
   choice: string,
   refresh: () => Promise<string | null> = refreshAccessToken
 ) =>
-  Effect.tryPromise(async () => setCurrentOrganization(choice)).pipe(
-    Effect.flatMap(() =>
-      Effect.tryPromise(refresh).pipe(
-        Effect.flatMap((token) =>
-          token !== null && token !== ""
-            ? Effect.void
-            : Effect.fail(
-                new OrganizationSwitchError({
-                  message: "Failed to refresh organization credentials",
-                })
-              )
-        ),
-        Effect.tapError(() =>
-          Effect.tryPromise(async () =>
-            current !== null && current !== ""
-              ? setCurrentOrganization(current)
-              : clearCurrentOrganization()
-          )
+  Effect.gen(function* () {
+    yield* Effect.tryPromise(async () => setCurrentOrganization(choice));
+    return yield* Effect.gen(function* () {
+      const token = yield* Effect.tryPromise(refresh);
+      if (token === null || token === "") {
+        return yield* new OrganizationSwitchError({
+          message: "Failed to refresh organization credentials",
+        });
+      }
+      return undefined;
+    }).pipe(
+      Effect.tapError(() =>
+        Effect.tryPromise(async () =>
+          current !== null && current !== ""
+            ? setCurrentOrganization(current)
+            : clearCurrentOrganization()
         )
       )
-    )
-  );
+    );
+  });
 
 const list = Command.make("list", {}, () =>
   Effect.gen(function* () {
