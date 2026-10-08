@@ -12,7 +12,7 @@ Keep the existing Effect v4 command tree, one authenticated `ApiClient` Layer pe
 | `packages/cli/src/api/` | Decode HTTP responses, validate outgoing DTOs through the domain, typed transport errors | CLI prompts, persisted credentials |
 | `packages/cli/src/auth/` and `config/` | Decode JWT/file/YAML/JSON unknowns, protect secrets and store state | Command presentation |
 | `packages/cli/src/cli/` | Select target, acquire auth Layer once, interpret typed outcomes | Request schema and HTTP implementation |
-| `packages/server/src/` | Owner-only identity state, supervised runtime, loopback listener, and the route table in `routes.ts` | CLI/cloud transport; no merged process |
+| `packages/server/src/` | Owner-only identity state, supervised runtime, loopback listener, and Effect `HttpApi` declarations in `api.ts` with implementations in `handlers.ts` | CLI/cloud transport; no merged process |
 | `packages/cli/src/tui/` (planned move) | Scoped renderer/view | CLI command parsing or persistent state |
 
 The **core domain** begins with project settings; repository selection and deployment preflight are candidates for later pure Schemas/decisions that need neither Node, HTTP nor CLI types. Keep it private to the owning package until more than one package needs it; then move the shared contract behind a package entry point. CLI commands and server/HTTP code are adapters at that seam, not a reason to build a generic ports framework.
@@ -21,7 +21,7 @@ The **core domain** begins with project settings; repository selection and deplo
 
 1. **Project creation (in progress):** `domain/project.ts` owns the shared project settings, `CreateProjectSchema` (including finite database resources), and sanitized `InvalidProjectInput`. The API adapter validates before `ApiClient.post`; CLI flags use domain constants without importing HTTP schemas. A CLI integration test proves invalid names send zero requests; a domain regression rejects infinite database resources without exposing `rootPassword` and preserves omission of an absent description. Finish with cancellation-before-mutation checks.
 2. **Version/manifest trust (started):** `scripts/sync-version.ts` decodes required manifest/lock fields with Effect Schema before comparing or writing, preserves unrelated manifest keys, and constructs new objects rather than mutating decoded readonly data. A malformed-manifest check proves `--check` never writes. `tests/workspaces.test.ts` also decodes the manifest fields used in its assertions.
-3. **Local identity contract:** compare the `IdentityResponse` type in `packages/server/src/routes.ts` with the `packages/cli/src/cli/local-server.ts` decoder. If they drift, expose one schema through a package root entry point, without crossing private `src/` boundaries or merging runtimes.
+3. **Local identity contract:** compare the `IdentityResponse` schema in `packages/server/src/api.ts` with the `packages/cli/src/cli/local-server.ts` decoder. If they drift, expose one schema through a package root entry point, without crossing private `src/` boundaries or merging runtimes.
 4. **Deploy decisions:** extract only the first independently testable preflight/decision from `cli/deploy.ts`; preserve check-before-push ordering and cancellation. Avoid blanket ports for filesystem, Logto, git, or TUI until production and test adapters actually use a seam.
 
 ## Quality gates

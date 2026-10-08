@@ -1,111 +1,110 @@
 #!/usr/bin/env node
 import { createServer } from "node:http";
 import type { IncomingMessage } from "node:http";
-import type { AddressInfo } from "node:net";
 
-import { NodeRuntime } from "@effect/platform-node";
-import { Data, Effect } from "effect";
+import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
+import { Data, Effect, Layer } from "effect";
+import {
+  HttpRouter,
+  HttpServer,
+  HttpServerRequest,
+  HttpServerResponse,
+} from "effect/http";
+import { HttpApiBuilder } from "effect/http-api";
 
+import { API_PATH, api } from "./api";
+import { instanceHandlers } from "./handlers";
 import { loadInstance } from "./identity";
-import { matchRoute } from "./routes";
 
 const HOST = "127.0.0.1";
-const API_PATH = "/api/v1";
 const PORT = /^(?<zero>0|[1-9]\d*)$/u;
 
 class ServerStartupError extends Data.TaggedError("ServerStartupError")<{
   message: string;
 }> {}
 
-/** A bound loopback socket, as opposed to a pipe name or an unbound server. */
-const isTcpAddress = (
-  address: ReturnType<ReturnType<typeof createServer>["address"]>
-): address is AddressInfo => address !== null && typeof address !== "string";
+const isNodeRequest = (
+  source: HttpServerRequest.HttpServerRequest["source"]
+): source is IncomingMessage =>
+  "rawHeaders" in source && Array.isArray(source.rawHeaders);
 
 function headerCount(request: IncomingMessage, name: string): number {
   let count = 0;
-  for (let i = 0; i < request.rawHeaders.length; i += 2) {
-    if (request.rawHeaders[i]?.toLowerCase() === name) {
+  for (let index = 0; index < request.rawHeaders.length; index += 2) {
+    if (request.rawHeaders[index]?.toLowerCase() === name) {
       count += 1;
     }
   }
   return count;
 }
 
-export const serve = (name: string, port: number) =>
+function isSameOrigin(request: IncomingMessage, origin: string): boolean {
+  const originHeaders = headerCount(request, "origin");
+  const fetchSite = request.headers["sec-fetch-site"];
+  return (
+    headerCount(request, "host") === 1 &&
+    request.headers.host === new URL(origin).host &&
+    (originHeaders === 0 ||
+      (originHeaders === 1 && request.headers.origin === origin)) &&
+    (fetchSite === undefined ||
+      fetchSite === "same-origin" ||
+      fetchSite === "none")
+  );
+}
+
+const serveOnListener = (name: string) =>
   Effect.gen(function* () {
     const instance = yield* Effect.tryPromise(async () => loadInstance(name));
-    const server = createServer((request, response) => {
-      const address = server.address();
-      if (!isTcpAddress(address)) {
-        response.writeHead(503).end();
-        return;
-      }
-      const origin = `http://${HOST}:${address.port}`;
-      if (
-        headerCount(request, "host") !== 1 ||
-        request.headers.host !== `${HOST}:${address.port}` ||
-        (headerCount(request, "origin") > 0 &&
-          (headerCount(request, "origin") !== 1 ||
-            request.headers.origin !== origin)) ||
-        (request.headers["sec-fetch-site"] !== undefined &&
-          request.headers["sec-fetch-site"] !== "same-origin" &&
-          request.headers["sec-fetch-site"] !== "none")
-      ) {
-        response.writeHead(403).end("Forbidden");
-        return;
-      }
-      // The prefix is required and the path below it must match exactly, so a
-      // query string, a trailing slash or an unprefixed path is not a route.
-      const url = request.url ?? "";
-      const match = url.startsWith(API_PATH)
-        ? matchRoute(url.slice(API_PATH.length), request.method)
-        : ({ outcome: "unknown-path" } as const);
-      if (match.outcome === "unknown-path") {
-        response.writeHead(404).end("Not found");
-        return;
-      }
-      if (match.outcome === "wrong-method") {
-        response
-          .writeHead(405, { Allow: match.allow })
-          .end("Method not allowed");
-        return;
-      }
-      response
-        .writeHead(200, {
-          "Content-Type": "application/json; charset=utf-8",
-          "Cache-Control": "no-store",
-        })
-        .end(JSON.stringify(match.route.handler({ instance })));
-    });
-
-    yield* Effect.addFinalizer(() =>
-      Effect.sync(() => {
-        server.closeAllConnections();
-        server.close();
-      })
+    const handler = yield* HttpRouter.toHttpEffect(
+      HttpApiBuilder.layer(api).pipe(Layer.provide(instanceHandlers(instance)))
     );
-    yield* Effect.callback<null, Error>((resume) => {
-      function onListening() {
-        // oxlint-disable-next-line no-use-before-define -- Paired listener removal requires referring to the error handler declared below.
-        server.off("error", onError);
-        resume(Effect.succeed(null));
-      }
-      function onError(error: Error) {
-        server.off("listening", onListening);
-        resume(Effect.fail(error));
-      }
-      server.once("error", onError);
-      server.once("listening", onListening);
-      server.listen(port, HOST);
-    });
-    const address = server.address();
-    if (!isTcpAddress(address)) {
+
+    const { address } = yield* HttpServer.HttpServer;
+    if (address._tag === "UnixPathAddress") {
       return yield* new ServerStartupError({
         message: "Server did not bind a loopback port",
       });
     }
-    return `http://${HOST}:${address.port}${API_PATH}`;
+    const origin = `http://${HOST}:${address.port}`;
+
+    yield* HttpServer.serveEffect(
+      Effect.gen(function* () {
+        const { source } = yield* HttpServerRequest.HttpServerRequest;
+        if (!(isNodeRequest(source) && isSameOrigin(source, origin))) {
+          return HttpServerResponse.text("Forbidden", { status: 403 });
+        }
+        // Effect's router ignores query strings and returns 404 for wrong methods.
+        if (
+          source.url !== undefined &&
+          source.url.startsWith(`${API_PATH}/identity`) &&
+          source.url !== `${API_PATH}/identity`
+        ) {
+          return HttpServerResponse.text("Not found", { status: 404 });
+        }
+        if (source.url === `${API_PATH}/identity` && source.method !== "GET") {
+          return HttpServerResponse.text("Method not allowed", {
+            status: 405,
+            headers: { Allow: "GET" },
+          });
+        }
+        return HttpServerResponse.setHeader(
+          yield* handler,
+          "Cache-Control",
+          "no-store"
+        );
+      })
+    );
+
+    return `${origin}${API_PATH}`;
+  });
+
+// Build in the caller's scope so returning the URL does not close the listener.
+export const serve = (name: string, port: number) =>
+  Effect.gen(function* () {
+    const listener = yield* Layer.build(
+      NodeHttpServer.layer(() => createServer(), { host: HOST, port })
+    );
+    return yield* serveOnListener(name).pipe(Effect.provide(listener));
   });
 
 function parsePort(input: string | undefined) {

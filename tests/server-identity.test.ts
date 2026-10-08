@@ -109,6 +109,7 @@ test("a foreground server serves identity on loopback and rejects browser cross-
     expect(publicListener).toBe(false);
     const identity = await fetch(`${running.url}/identity`);
     expect(identity.status).toBe(200);
+    expect(identity.headers.get("cache-control")).toBe("no-store");
     const details = decodeIdentity(await identity.json());
     expect(details.instanceId).toBeString();
     expect(details.name).toBe("demo");
@@ -128,6 +129,27 @@ test("a foreground server serves identity on loopback and rejects browser cross-
         })
       ).status
     ).toBe(403);
+    const duplicateHostStatus = await new Promise<string>((resolve, reject) => {
+      const socket = createConnection({
+        host: "127.0.0.1",
+        port: Number(new URL(running.url).port),
+      });
+      socket.once("connect", () => {
+        socket.write(
+          `GET /api/v1/identity HTTP/1.1\r\nHost: ${new URL(running.url).host}\r\nHost: evil.example\r\nConnection: close\r\n\r\n`
+        );
+      });
+      socket.once("data", (data: Buffer) => {
+        resolve(data.toString().split("\r\n")[0] ?? "");
+        socket.destroy();
+      });
+      socket.once("error", reject);
+      socket.setTimeout(1000, () => {
+        socket.destroy();
+        reject(new Error("duplicate Host probe timed out"));
+      });
+    });
+    expect(duplicateHostStatus).not.toContain(" 200 ");
     expect(
       (
         await fetch(`${running.url}/identity`, {
@@ -148,7 +170,6 @@ test("a foreground server serves identity on loopback and rejects browser cross-
     expect(methodNotAllowed.status).toBe(405);
     expect(methodNotAllowed.headers.get("allow")).toBe("GET");
     expect((await fetch(`${running.url}/missing`)).status).toBe(404);
-    // Only the prefixed, exactly matching path is a route.
     for (const path of [
       "/identity",
       "/api/v1/identity/",
