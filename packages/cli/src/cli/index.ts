@@ -2,6 +2,7 @@
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Effect } from "effect";
 import { Command } from "effect/cli";
+
 import pkg from "../../../../package.json" with { type: "json" };
 import { auth } from "./auth";
 import { config, init } from "./config";
@@ -35,8 +36,9 @@ export const cli = root.pipe(
 );
 
 if (import.meta.main) {
-  Command.run(cli, { version: versionLine(pkg.version) }).pipe(
-    Effect.provide(NodeServices.layer),
-    NodeRuntime.runMain
+  NodeRuntime.runMain(
+    Command.run(cli, { version: versionLine(pkg.version) }).pipe(
+      Effect.provide(NodeServices.layer)
+    )
   );
 }

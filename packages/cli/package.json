@@ -4,20 +4,19 @@
   "private": false,
   "description": "Deploy and try your app in seconds",
   "keywords": [
-    "utility",
-    "helper"
+    "helper",
+    "utility"
   ],
   "homepage": "https://github.com/Devver-Inc/cli#readme",
   "bugs": {
     "url": "https://github.com/Devver-Inc/cli/issues"
   },
+  "license": "MIT",
+  "author": "Your Name",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Devver-Inc/cli.git"
   },
-  "license": "MIT",
-  "author": "Your Name",
-  "type": "module",
   "bin": {
     "devver": "dist/cli.mjs",
     "devver-server": "dist/servers/1.2.0/server.mjs"
@@ -26,6 +25,16 @@
     "dist",
     "README.md"
   ],
+  "type": "module",
+  "module": "src/cli/index.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "cd ../.. && bun run build:npm",
+    "test": "bun test tests/cli-entry.test.ts",
+    "prepack": "cd ../.. && bun run build:npm"
+  },
   "dependencies": {
     "@clack/prompts": "^1.1.0",
     "@effect/platform-node": "^4",
@@ -47,14 +56,5 @@
   },
   "peerDependencies": {
     "typescript": "^5"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "module": "src/cli/index.ts",
-  "scripts": {
-    "build": "cd ../.. && bun run build:npm",
-    "test": "bun test tests/cli-entry.test.ts",
-    "prepack": "cd ../.. && bun run build:npm"
   }
 }

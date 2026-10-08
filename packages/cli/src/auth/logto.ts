@@ -3,9 +3,12 @@
  * All Logto state (tokens, session) is persisted under `logto/` in the data dir.
  */
 import LogtoClient, { UserScope } from "@logto/node";
+
 import { Storage } from "../storage";
 
 class LogtoStorageAdapter {
+  // Logto's storage contract requires instance methods; path mapping is shared by them.
+  // oxlint-disable-next-line eslint/class-methods-use-this
   private readonly getLogtoPath = (key: string) => `logto/${key}`;
 
   async getItem(key: string): Promise<string | null> {

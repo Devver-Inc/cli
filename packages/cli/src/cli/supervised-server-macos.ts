@@ -4,12 +4,14 @@ import { mkdir, open, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+
 import pkg from "../../../../package.json" with { type: "json" };
 import { instanceParent, loadInstance } from "../../../server/identity";
 import { verifyIdentity } from "./local-server";
 import { availablePort } from "./loopback";
 import { pinServer } from "./supervised-server-posix";
 
+// oxlint-disable-next-line typescript/strict-void-return -- Node's execFile overload is supported by promisify and preserves subprocess failures.
 const execute = promisify(execFile);
 const PRIVATE_DIRECTORY = 0o700;
 
@@ -94,7 +96,9 @@ export async function create(name: string) {
     await mkdir(directory, { mode: PRIVATE_DIRECTORY });
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "EEXIST") {
-      throw new Error(`Server instance '${name}' already exists`);
+      throw new Error(`Server instance '${name}' already exists`, {
+        cause: error,
+      });
     }
     throw error;
   }
@@ -105,7 +109,10 @@ export async function create(name: string) {
     const port = await availablePort();
     const pinned = await pinServer(parent);
     const data =
-      process.env.XDG_DATA_HOME || join(homedir(), ".local", "share");
+      process.env.XDG_DATA_HOME !== undefined &&
+      process.env.XDG_DATA_HOME !== ""
+        ? process.env.XDG_DATA_HOME
+        : join(homedir(), ".local", "share");
     const manifest = join(directory, "service.plist");
     const handle = await open(manifest, "wx", 0o600);
     try {
@@ -151,7 +158,9 @@ export async function create(name: string) {
       } catch {
         // The child may not yet be listening; only a verified identity is ready.
       }
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 150);
+      });
     }
     throw new Error(
       "Server did not return its expected identity while supervised"

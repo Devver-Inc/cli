@@ -1,12 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { cwd } from "node:process";
+
 import { Schema } from "effect";
-import yaml from "js-yaml";
+import { dump, load } from "js-yaml";
 
-import { detectProject, type ProjectDetection } from "./detect";
+import { detectProject } from "./detect";
+import type { ProjectDetection } from "./detect";
 
-const regex = /\r?\n/;
+const regex = /\r?\n/u;
 
 const ServiceConfigSchema = Schema.Struct({
   root: Schema.optional(Schema.String),
@@ -43,14 +45,14 @@ export function readConfigFile(root?: string): DevverConfigFile | null {
   const content = fs.readFileSync(configPath, "utf-8");
   let parsed: unknown;
   try {
-    parsed = yaml.load(content);
-  } catch (error) {
-    throw new Error(`Invalid YAML in ${configPath}`, { cause: error });
+    parsed = load(content);
+  } catch {
+    throw new Error(`Invalid YAML in ${configPath}`);
   }
   try {
     return decodeDevverConfigFile(parsed);
-  } catch (error) {
-    throw new Error(`Invalid devver config in ${configPath}`, { cause: error });
+  } catch {
+    throw new Error(`Invalid devver config in ${configPath}`);
   }
 }
 
@@ -75,38 +77,54 @@ export function writeConfigFile(
     serviceName = "api";
   }
 
-  const config: Record<string, unknown> = {
-    project: path.basename(targetDir),
-    services: {},
-  };
-  const detectedTypes = detection.results.map((r) => r.detected.name);
+  const detectedTypes = new Set(detection.results.map((r) => r.detected.name));
   const hasMongo =
-    detectedTypes.includes("mongoose") || detectedTypes.includes("mongodb");
-  if (hasMongo) {
-    config.databases = {
-      mongodb: {
-        type: "mongodb",
+    detectedTypes.has("mongoose") || detectedTypes.has("mongodb");
+  const config = {
+    project: path.basename(targetDir),
+    services: {
+      [serviceName]: {
+        root: ".",
+        build: "bun run build",
+        start: "bun run start",
+        depends: serviceName === "api" && hasMongo ? ["mongodb"] : undefined,
       },
-    };
-  }
-
-  const serviceConfig: Record<string, unknown> = {
-    root: ".",
-    build: "bun run build",
-    start: "bun run start",
+    },
+    databases: hasMongo ? { mongodb: { type: "mongodb" } } : undefined,
+    env: { NODE_ENV: "production" },
   };
-
-  if (serviceName === "api" && hasMongo) {
-    serviceConfig.depends = ["mongodb"];
-  }
-  config.services = {
-    [serviceName]: serviceConfig,
-  };
-  config.env = {
-    NODE_ENV: "production",
-  };
-  fs.writeFileSync(configPath, yaml.dump(config));
+  fs.writeFileSync(configPath, dump(config));
   console.log(`\nConfig written to ${configPath}`);
+}
+
+export function ensureGitignore(targetDir?: string): void {
+  const dir = targetDir ?? cwd();
+  const gitignorePath = path.join(dir, ".gitignore");
+
+  const ENTRY = ".devver/";
+
+  let content = "";
+  if (fs.existsSync(gitignorePath)) {
+    content = fs.readFileSync(gitignorePath, "utf-8");
+    // Already present — nothing to do
+    const lines = content.split(regex);
+    if (lines.some((line) => line.trim() === ENTRY)) {
+      return;
+    }
+    // Ensure trailing newline before appending
+    if (content !== "" && !content.endsWith("\n")) {
+      content += "\n";
+    }
+  }
+
+  const block = [
+    "",
+    "# devver local secrets (deployment-specific env vars)",
+    ENTRY,
+  ].join("\n");
+
+  fs.writeFileSync(gitignorePath, `${content}${block}\n`);
+  console.log(`  Added \`${ENTRY}\` to .gitignore`);
 }
 
 export async function checkForConfigFile() {
@@ -126,36 +144,6 @@ export async function checkForConfigFile() {
   }
 
   ensureGitignore(targetDir);
-}
-
-export function ensureGitignore(targetDir?: string): void {
-  const dir = targetDir ?? cwd();
-  const gitignorePath = path.join(dir, ".gitignore");
-
-  const ENTRY = ".devver/";
-
-  let content = "";
-  if (fs.existsSync(gitignorePath)) {
-    content = fs.readFileSync(gitignorePath, "utf-8");
-    // Already present — nothing to do
-    const lines = content.split(regex);
-    if (lines.some((line) => line.trim() === ENTRY)) {
-      return;
-    }
-    // Ensure trailing newline before appending
-    if (content && !content.endsWith("\n")) {
-      content += "\n";
-    }
-  }
-
-  const block = [
-    "",
-    "# devver local secrets (deployment-specific env vars)",
-    ENTRY,
-  ].join("\n");
-
-  fs.writeFileSync(gitignorePath, `${content}${block}\n`);
-  console.log(`  Added \`${ENTRY}\` to .gitignore`);
 }
 
 export const DevverConfig = {

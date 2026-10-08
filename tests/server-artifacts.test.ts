@@ -8,22 +8,43 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+
+import { Schema } from "effect";
+
 import pkg from "../package.json";
 
 const repo = join(import.meta.dir, "..");
 const node = Bun.which("node");
 const versioned = join("servers", pkg.version);
-const CONTROL_URL = /^http:\/\/127\.0\.0\.1:\d+\/api\/v1$/;
-const BUN_API = /\bBun\s*\.\s*(serve|spawn|file|build)\b/;
-const EXTERNAL_SERVER = /(?:from\s*["']|import\s*\(["'])@devver\/server/;
-const FORMULA = /cat > Formula\/devver-cli\.rb << EOF\n([\s\S]*?)\n {10}EOF/;
+const CONTROL_URL = /^http:\/\/127\.0\.0\.1:\d+\/api\/v1$/u;
+const BUN_API = /\bBun\s*\.\s*(?<api>serve|spawn|file|build)\b/u;
+const EXTERNAL_SERVER = /(?:from\s*["']|import\s*\(["'])@devver\/server/u;
+const FORMULA =
+  /cat > Formula\/devver-cli\.rb << EOF\n(?<body>[\s\S]*?)\n {10}EOF/u;
+const decodeIdentity = Schema.decodeUnknownSync(
+  Schema.Struct({
+    name: Schema.String,
+    serverVersion: Schema.String,
+    controlProtocolVersion: Schema.Finite,
+  })
+);
+const decodePackedManifest = Schema.decodeUnknownSync(
+  Schema.Struct({ dependencies: Schema.Record(Schema.String, Schema.String) })
+);
+const bin = Schema.Record(Schema.String, Schema.String);
+const decodeCliManifest = Schema.decodeUnknownSync(Schema.Struct({ bin }));
+const decodeLock = Schema.decodeUnknownSync(
+  Schema.Struct({
+    packages: Schema.Struct({ "packages/cli": Schema.Struct({ bin }) }),
+  })
+);
 
 test("Homebrew installs the versioned server beside its CLI", () => {
   const workflow = readFileSync(
     join(repo, ".github", "workflows", "release.yml"),
-    "utf8"
+    "utf-8"
   );
-  const formula = workflow.match(FORMULA)?.[1];
+  const formula = FORMULA.exec(workflow)?.groups?.body;
   expect(formula).toBeDefined();
   expect(formula).toContain(
     'bin.install "devver"\n              bin.install "servers"'
@@ -43,24 +64,27 @@ async function smoke(executable: string, args: string[], path: string) {
       stdout: "pipe",
       stderr: "pipe",
     });
-    const stdout = child.stdout;
-    if (!stdout || typeof stdout === "number") {
+    const { stdout } = child;
+    if (!(stdout instanceof ReadableStream)) {
       throw new Error("Server stdout unavailable");
     }
     const reader = stdout.getReader();
     const output = await Promise.race([
       reader.read(),
-      new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error("Server did not announce URL")),
-          10_000
-        )
-      ),
+      new Promise<never>((_resolve, reject) => {
+        setTimeout(() => {
+          reject(new Error("Server did not announce URL"));
+        }, 10_000);
+      }),
     ]);
     reader.releaseLock();
     const url = new TextDecoder().decode(output.value).trim();
     const response = await fetch(`${url}/identity`);
-    return { url, status: response.status, identity: await response.json() };
+    return {
+      url,
+      status: response.status,
+      identity: decodeIdentity(await response.json()),
+    };
   } finally {
     child?.kill();
     if (child) {
@@ -74,13 +98,13 @@ test("npm artifact includes a versioned Node server beside the lazy CLI", async 
   if (process.platform === "win32") {
     return;
   }
-  if (!node) {
+  if (node === null) {
     throw new Error("Node is required for npm artifact smoke");
   }
   const built = Bun.spawnSync(["bun", "run", "build:npm"], { cwd: repo });
   expect(built.exitCode).toBe(0);
   const file = join(repo, "packages/cli/dist", versioned, "server.mjs");
-  const code = readFileSync(file, "utf8");
+  const code = readFileSync(file, "utf-8");
   expect(code).toStartWith("#!/usr/bin/env node\n");
   expect(code).not.toMatch(BUN_API);
   const result = await smoke(node, [file], `${dirname(node)}:/usr/bin:/bin`);
@@ -105,7 +129,7 @@ test("npm artifact includes a versioned Node server beside the lazy CLI", async 
     );
     for (const name of bundleFiles) {
       expect(
-        readFileSync(join(repo, "packages/cli/dist", name), "utf8")
+        readFileSync(join(repo, "packages/cli/dist", name), "utf-8")
       ).not.toMatch(EXTERNAL_SERVER);
     }
     const pack = Bun.spawnSync(
@@ -141,16 +165,17 @@ test("npm artifact includes a versioned Node server beside the lazy CLI", async 
     );
     expect(packedManifest.exitCode, packedManifest.stderr.toString()).toBe(0);
     expect(
-      JSON.parse(packedManifest.stdout.toString()).dependencies
+      decodePackedManifest(JSON.parse(packedManifest.stdout.toString()))
+        .dependencies
     ).not.toHaveProperty("@devver/server");
-    const manifest = JSON.parse(
-      readFileSync(join(repo, "packages/cli/package.json"), "utf8")
+    const manifest = decodeCliManifest(
+      JSON.parse(readFileSync(join(repo, "packages/cli/package.json"), "utf-8"))
     );
     expect(manifest.bin["devver-server"]).toBe(
       `dist/servers/${pkg.version}/server.mjs`
     );
-    const lock = JSON.parse(
-      readFileSync(join(repo, "package-lock.json"), "utf8")
+    const lock = decodeLock(
+      JSON.parse(readFileSync(join(repo, "package-lock.json"), "utf-8"))
     );
     expect(lock.packages["packages/cli"].bin).toEqual(manifest.bin);
     const installed = join(packRoot, "installed");

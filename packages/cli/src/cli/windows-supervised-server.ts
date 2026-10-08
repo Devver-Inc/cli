@@ -11,8 +11,8 @@ import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { link, lstat, mkdir, open, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+
 import pkg from "../../../../package.json" with { type: "json" };
 import { instanceParent, loadInstance } from "../../../server/identity";
 import {
@@ -22,14 +22,15 @@ import {
 import { verifyIdentity } from "./local-server";
 import { availablePort } from "./loopback";
 
+// oxlint-disable-next-line typescript/strict-void-return -- Node's execFile overload is supported by promisify and preserves Task Scheduler failures.
 const execute = promisify(execFile);
 // Each owner/ACL verification spawns a PowerShell command, so a supervised
 // server needs a longer readiness budget than a POSIX one.
 const READINESS_MS = 20_000;
 // Windows command-line quoting: double any backslashes that precede a quote or
 // end the value, and escape embedded quotes.
-const QUOTED = /(\\*)"/g;
-const TRAILING_SLASHES = /\\+$/;
+const QUOTED = /(?<slashes>\\*)"/gu;
+const TRAILING_SLASHES = /\\+$/u;
 
 // Get-ScheduledTask surfaces State and MultipleInstances either as generated
 // enums or as their documented numeric CIM values depending on the host, so
@@ -109,6 +110,7 @@ async function diagnose(name: string) {
   }
 }
 
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- Node filesystem errors arrive untyped; inspect only the EEXIST code.
 function existing(error: unknown) {
   return error instanceof Error && "code" in error && error.code === "EEXIST";
 }
@@ -137,7 +139,9 @@ async function waitForIdentity(
     } catch (error) {
       lastProbe = `no identity: ${error instanceof Error ? error.message : "unknown"}`;
     }
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 150);
+    });
   }
   return lastProbe;
 }
@@ -149,9 +153,7 @@ async function pinServer(parent: string) {
   const npm = process.versions.bun === undefined;
   // The npm CLI is split into ESM chunks beside dist/servers; argv[1] may
   // be the extensionless npm bin shim rather than dist/cli.mjs.
-  const sourceRoot = npm
-    ? dirname(fileURLToPath(import.meta.url))
-    : dirname(process.execPath);
+  const sourceRoot = npm ? import.meta.dirname : dirname(process.execPath);
   const name = npm ? "server.mjs" : "devver-server.exe";
   const source = join(sourceRoot, "servers", pkg.version, name);
   if (!(await lstat(source)).isFile()) {
@@ -187,7 +189,7 @@ function quote(value: string) {
   // Task Scheduler hands the argument string to the target process, which
   // parses it with Windows command-line rules.
   const escaped = value
-    .replaceAll(QUOTED, '$1$1\\"')
+    .replaceAll(QUOTED, '$<slashes>$<slashes>\\"')
     .replace(TRAILING_SLASHES, (slashes) => slashes + slashes);
   return `"${escaped}"`;
 }
@@ -207,7 +209,9 @@ export async function create(name: string) {
     await mkdir(directory);
   } catch (error) {
     if (existing(error)) {
-      throw new Error(`Server instance '${name}' already exists`);
+      throw new Error(`Server instance '${name}' already exists`, {
+        cause: error,
+      });
     }
     throw error;
   }

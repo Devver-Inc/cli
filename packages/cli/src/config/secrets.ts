@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { cwd } from "node:process";
+
 import { Schema } from "effect";
 
 const DeploymentSecretsSchema = Schema.Struct({
@@ -55,13 +56,13 @@ export function readSecretsFile(root?: string): SecretsFile {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
-  } catch (error) {
-    throw new Error(`Invalid secrets file: ${filePath}`, { cause: error });
+  } catch {
+    throw new Error(`Invalid secrets file: ${filePath}`);
   }
   try {
     return decodeSecretsFile(parsed);
-  } catch (error) {
-    throw new Error(`Invalid secrets file: ${filePath}`, { cause: error });
+  } catch {
+    throw new Error(`Invalid secrets file: ${filePath}`);
   }
 }
 
@@ -110,6 +111,11 @@ export function setDeploymentEnv(
   );
 }
 
+export function removeDeployment(deploymentKey: string, root?: string): void {
+  const { [deploymentKey]: _removed, ...rest } = readSecretsFile(root);
+  writeSecretsFile(rest, root);
+}
+
 export function removeDeploymentEnvKey(
   deploymentKey: string,
   envKey: string,
@@ -117,7 +123,7 @@ export function removeDeploymentEnvKey(
 ): void {
   const secrets = readSecretsFile(root);
   const deployment = secrets[deploymentKey];
-  if (!deployment) {
+  if (deployment === undefined) {
     return;
   }
   const { [envKey]: _removed, ...env } = deployment.env;
@@ -131,11 +137,6 @@ export function removeDeploymentEnvKey(
   );
 }
 
-export function removeDeployment(deploymentKey: string, root?: string): void {
-  const { [deploymentKey]: _removed, ...rest } = readSecretsFile(root);
-  writeSecretsFile(rest, root);
-}
-
 export function listDeploymentSecrets(root?: string): DeploymentSecrets[] {
   const secrets = readSecretsFile(root);
   return Object.values(secrets);
@@ -144,6 +145,6 @@ export function listDeploymentSecrets(root?: string): DeploymentSecrets[] {
 export function mergeEnv(
   projectEnv: Record<string, string>,
   deploymentEnv: Record<string, string>
-): Record<string, string> {
+) {
   return { ...projectEnv, ...deploymentEnv };
 }

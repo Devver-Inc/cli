@@ -1,15 +1,16 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { Schema } from "effect";
-import yaml from "js-yaml";
 
-const TEST_TIMEOUT = /--timeout (\d+)/;
+import { Schema } from "effect";
+import { load } from "js-yaml";
+
+const TEST_TIMEOUT = /--timeout (?<timeout>\d+)/u;
 
 test("nightly skips unchanged develop and publishes the exact tested commit", () => {
   const workflow = readFileSync(
     join(import.meta.dir, "..", ".github/workflows/nightly.yml"),
-    "utf8"
+    "utf-8"
   );
   expect(workflow).toContain("git rev-parse 'FETCH_HEAD^{commit}'");
   expect(workflow).toContain("echo 'changed=false' >> \"$GITHUB_OUTPUT\"");
@@ -32,10 +33,10 @@ test("CI runs on the develop integration line, including the Windows server job"
       jobs: Schema.Record(Schema.String, Schema.Unknown),
     })
   )(
-    yaml.load(
+    load(
       readFileSync(
         join(import.meta.dir, "..", ".github/workflows/ci.yml"),
-        "utf8"
+        "utf-8"
       )
     )
   );
@@ -52,10 +53,10 @@ test("the test script carries a timeout the cross-process suite can actually mee
     Schema.Struct({ scripts: Schema.Struct({ test: Schema.String }) })
   )(
     JSON.parse(
-      readFileSync(join(import.meta.dir, "..", "package.json"), "utf8")
+      readFileSync(join(import.meta.dir, "..", "package.json"), "utf-8")
     )
   );
-  const timeout = manifest.scripts.test.match(TEST_TIMEOUT)?.[1];
+  const timeout = TEST_TIMEOUT.exec(manifest.scripts.test)?.groups?.timeout;
   expect(timeout).toBeDefined();
   expect(Number(timeout)).toBeGreaterThanOrEqual(20_000);
 });

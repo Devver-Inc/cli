@@ -8,57 +8,54 @@ const LOGO = [
 ];
 
 export const Style = {
-  TEXT_HIGHLIGHT: "\x1b[96m",
-  TEXT_HIGHLIGHT_BOLD: "\x1b[96m\x1b[1m",
-  TEXT_DIM: "\x1b[90m",
-  TEXT_DIM_BOLD: "\x1b[90m\x1b[1m",
-  TEXT_NORMAL: "\x1b[0m",
-  TEXT_NORMAL_BOLD: "\x1b[1m",
-  TEXT_WARNING: "\x1b[93m",
-  TEXT_WARNING_BOLD: "\x1b[93m\x1b[1m",
-  TEXT_DANGER: "\x1b[91m",
-  TEXT_DANGER_BOLD: "\x1b[91m\x1b[1m",
-  TEXT_SUCCESS: "\x1b[92m",
-  TEXT_SUCCESS_BOLD: "\x1b[92m\x1b[1m",
-  TEXT_INFO: "\x1b[94m",
-  TEXT_INFO_BOLD: "\x1b[94m\x1b[1m",
+  TEXT_HIGHLIGHT: "\u001B[96m",
+  TEXT_HIGHLIGHT_BOLD: "\u001B[96m\u001B[1m",
+  TEXT_DIM: "\u001B[90m",
+  TEXT_DIM_BOLD: "\u001B[90m\u001B[1m",
+  TEXT_NORMAL: "\u001B[0m",
+  TEXT_NORMAL_BOLD: "\u001B[1m",
+  TEXT_WARNING: "\u001B[93m",
+  TEXT_WARNING_BOLD: "\u001B[93m\u001B[1m",
+  TEXT_DANGER: "\u001B[91m",
+  TEXT_DANGER_BOLD: "\u001B[91m\u001B[1m",
+  TEXT_SUCCESS: "\u001B[92m",
+  TEXT_SUCCESS_BOLD: "\u001B[92m\u001B[1m",
+  TEXT_INFO: "\u001B[94m",
+  TEXT_INFO_BOLD: "\u001B[94m\u001B[1m",
 };
 
 let blank = false;
-
-export function println(...message: string[]) {
-  print(...message);
-  process.stderr.write(EOL);
-}
 
 export function print(...message: string[]) {
   blank = false;
   process.stderr.write(message.join(" "));
 }
 
+export function println(...message: string[]) {
+  print(...message);
+  process.stderr.write(EOL);
+}
+
 export function empty() {
   if (blank) {
     return;
   }
-  println(`${Style.TEXT_NORMAL}`);
+  println(Style.TEXT_NORMAL);
   blank = true;
 }
 
 export function logo(pad?: string) {
   const result: (string | null)[] = [];
   for (const row of LOGO) {
-    if (pad) {
+    if (pad !== undefined && pad !== "") {
       result.push(pad);
     }
-    result.push(Style.TEXT_DIM);
-    result.push(row);
-    result.push("\x1b[0m");
-    result.push(EOL);
+    result.push(Style.TEXT_DIM, row, Style.TEXT_NORMAL, EOL);
   }
   return result.join("").trimEnd();
 }
 
-export function input(prompt: string): Promise<string> {
+export async function input(prompt: string): Promise<string> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,

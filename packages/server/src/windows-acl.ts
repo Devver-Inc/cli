@@ -15,6 +15,7 @@ import { lstat, mkdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 
+// oxlint-disable-next-line typescript/strict-void-return -- Node's execFile overload is supported by promisify and retains its rejection semantics.
 const execute = promisify(execFile);
 const ROOT = "devver";
 
@@ -152,6 +153,7 @@ function requireWindows() {
   }
 }
 
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- Node filesystem errors arrive untyped; inspect only the EEXIST code.
 function existing(error: unknown) {
   return error instanceof Error && "code" in error && error.code === "EEXIST";
 }
@@ -185,6 +187,26 @@ export async function verifyWindowsPrivate(
   }
 }
 
+/**
+ * Creates directories that inherit the verified root's single owner-only rule,
+ * then verifies them together.
+ */
+export async function windowsPrivateDirectories(...paths: string[]) {
+  requireWindows();
+  for (const path of paths) {
+    try {
+      await mkdir(path);
+    } catch (error) {
+      if (!existing(error)) {
+        throw error;
+      }
+    }
+  }
+  await verifyWindowsPrivate(
+    ...paths.map((path) => ({ path, kind: "directory" }) as const)
+  );
+}
+
 // Verifying the protected root once per process keeps the PowerShell cost of a
 // single command bounded; every path below it is still verified on each use.
 let servers: Promise<string> | undefined;
@@ -193,7 +215,10 @@ async function resolveServers() {
   // LOCALAPPDATA is per-user and resolved from the OS known folder, never from
   // an overridable variable. An XDG override would place instance state in a
   // directory whose trust cannot be established here, so it fails closed.
-  if (process.env.XDG_DATA_HOME) {
+  if (
+    process.env.XDG_DATA_HOME !== undefined &&
+    process.env.XDG_DATA_HOME !== ""
+  ) {
     throw new Error(
       "Windows server state does not accept XDG_DATA_HOME overrides"
     );
@@ -226,15 +251,20 @@ export async function windowsServersDirectory() {
 }
 
 /** Resolve existing state without creating the user root or servers directory. */
-export async function existingWindowsServersDirectory() {
+export async function existingWindowsServersDirectory(): Promise<
+  string | undefined
+> {
   requireWindows();
-  if (process.env.XDG_DATA_HOME) {
+  if (
+    process.env.XDG_DATA_HOME !== undefined &&
+    process.env.XDG_DATA_HOME !== ""
+  ) {
     throw new Error(
       "Windows server state does not accept XDG_DATA_HOME overrides"
     );
   }
   const root = await powershell(FIND_ROOT, { DEVVER_ACL_ROOT: ROOT });
-  if (!root) {
+  if (root === "") {
     return undefined;
   }
   if (basename(root) !== ROOT) {
@@ -251,24 +281,4 @@ export async function existingWindowsServersDirectory() {
   }
   await verifyWindowsPrivate({ path: directory, kind: "directory" });
   return directory;
-}
-
-/**
- * Creates directories that inherit the verified root's single owner-only rule,
- * then verifies them together.
- */
-export async function windowsPrivateDirectories(...paths: string[]) {
-  requireWindows();
-  for (const path of paths) {
-    try {
-      await mkdir(path);
-    } catch (error) {
-      if (!existing(error)) {
-        throw error;
-      }
-    }
-  }
-  await verifyWindowsPrivate(
-    ...paths.map((path) => ({ path, kind: "directory" }) as const)
-  );
 }

@@ -1,15 +1,16 @@
 import { Console, Effect, Schema } from "effect";
 import { Argument, Command } from "effect/cli";
+
 import pkg from "../../../../package.json" with { type: "json" };
 import { listInstances, readInstanceService } from "../../../server/identity";
 import {
-  type CliConfig,
   InstanceNameSchema,
   LocalTargetSchema,
   readConfig,
   validateControlUrl,
   writeConfig,
 } from "../config/api";
+import type { CliConfig } from "../config/api";
 
 const IdentitySchema = Schema.Struct({
   instanceId: Schema.String.check(Schema.isUUID(4)),
@@ -50,7 +51,11 @@ async function probe(url: string) {
       chunks.push(value);
     }
   } finally {
-    await reader.cancel().catch(() => undefined);
+    try {
+      await reader.cancel();
+    } catch {
+      // The peer may have already closed the response stream.
+    }
   }
   const bytes = new Uint8Array(size);
   let offset = 0;

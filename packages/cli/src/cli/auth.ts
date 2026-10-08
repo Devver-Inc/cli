@@ -1,5 +1,6 @@
 import { Console, Effect } from "effect";
 import { Command } from "effect/cli";
+
 import { getProjectById } from "../api/projects.requests";
 import { openBrowser } from "../auth/browser";
 import { getOrganizationDetails } from "../auth/client";
@@ -17,7 +18,7 @@ const login = Command.make("login", {}, () =>
   Effect.gen(function* () {
     const { authUrl, completed } = yield* startLogin;
     yield* Console.log("Opening browser for login...");
-    const opened = yield* Effect.promise(() => openBrowser(authUrl));
+    const opened = yield* Effect.promise(async () => openBrowser(authUrl));
     if (!opened) {
       yield* Console.log(`Open this URL to continue:\n  ${authUrl}`);
     }
@@ -29,9 +30,9 @@ const login = Command.make("login", {}, () =>
 const logout = Command.make("logout", {}, () =>
   Effect.gen(function* () {
     const url = yield* Effect.tryPromise(endSession);
-    if (url) {
+    if (url !== undefined && url !== "") {
       yield* Console.log("Opening browser to complete logout...");
-      const opened = yield* Effect.promise(() => openBrowser(url));
+      const opened = yield* Effect.promise(async () => openBrowser(url));
       if (!opened) {
         yield* Console.log(`Open this URL to finish signing out:\n  ${url}`);
       }
@@ -65,7 +66,7 @@ const status = Command.make("status", {}, () =>
       );
     }
     const projectId = yield* Effect.tryPromise(getCurrentProjectId);
-    if (projectId) {
+    if (projectId !== null && projectId !== "") {
       const name = yield* withApi(getProjectById(projectId)).pipe(
         Effect.map((project) => project.name),
         Effect.orElseSucceed(() => `${projectId} (details unavailable)`)

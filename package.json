@@ -4,19 +4,23 @@
   "private": true,
   "description": "Deploy and try your app in seconds",
   "keywords": [
-    "utility",
-    "helper"
+    "helper",
+    "utility"
   ],
   "homepage": "https://github.com/Devver-Inc/cli#readme",
   "bugs": {
     "url": "https://github.com/Devver-Inc/cli/issues"
   },
+  "license": "MIT",
+  "author": "Your Name",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Devver-Inc/cli.git"
   },
-  "license": "MIT",
-  "author": "Your Name",
+  "workspaces": [
+    "packages/cli",
+    "packages/server"
+  ],
   "type": "module",
   "scripts": {
     "dev": "bun --watch run packages/cli/src/cli/index.ts",
@@ -24,24 +28,25 @@
     "cmd": "bun run packages/cli/src/cli/index.ts",
     "build": "bun run scripts/build.ts",
     "build:npm": "bun run scripts/build-npm.ts",
-    "check": "ultracite check && bun run lint:boundaries && bun run typecheck",
+    "check": "ultracite check --disable-nested-config && bun run lint:boundaries && bun run typecheck",
     "lint:boundaries": "depcruise packages tests scripts",
     "typecheck": "tsc --noEmit",
     "test": "bun test --timeout 30000",
     "fix": "ultracite fix",
     "sync:version": "bun run scripts/sync-version.ts",
-    "check:version": "bun run scripts/sync-version.ts --check"
+    "check:version": "bun run scripts/sync-version.ts --check",
+    "prepare": "effect-tsgo patch --typescript --oxlint"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.3.13",
+    "@effect/tsgo": "^0.51.1",
     "@types/bun": "^1.3.6",
     "@types/js-yaml": "^4.0.9",
     "@types/react": "^19.2.9",
     "dependency-cruiser": "^18.5.0",
-    "ultracite": "^7.1.5"
-  },
-  "workspaces": [
-    "packages/cli",
-    "packages/server"
-  ]
+    "oxfmt": "^0.72.0",
+    "oxlint": "^1.87.0",
+    "oxlint-tsgolint": "^7.0.2003",
+    "typescript": "7.0.2",
+    "ultracite": "^7.12.4"
+  }
 }

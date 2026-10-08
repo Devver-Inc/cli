@@ -1,17 +1,16 @@
+// One deep HTTP module owns its transport error and three Effect service tags.
+// oxlint-disable eslint/max-classes-per-file
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import {
   FetchHttpClient,
-  type HttpBody,
   HttpClient,
-  type HttpClientError,
   HttpClientRequest,
   HttpClientResponse,
 } from "effect/http";
-import {
-  type BackendErrorBody,
-  BackendErrorBodySchema,
-  formatBackendError,
-} from "./errors";
+import type { HttpBody, HttpClientError } from "effect/http";
+
+import { BackendErrorBodySchema, formatBackendError } from "./errors";
+import type { BackendErrorBody } from "./errors";
 
 /**
  * Effect-based HTTP client built on top of Effect's HTTP modules.
@@ -27,8 +26,6 @@ export class ApiError extends Data.TaggedError("ApiError")<{
   readonly message: string;
   /** Machine-readable error code from the backend (e.g. "PROJECT_NOT_FOUND"). */
   readonly code?: string;
-  /** Decoded error body from the backend, if it returned one we understand. */
-  readonly body?: BackendErrorBody;
 }> {}
 
 export class AuthToken extends Context.Service<
@@ -53,12 +50,15 @@ interface ApiClientService {
     schema: Schema.Codec<A, unknown, never, unknown>
   ) => Effect.Effect<A, ApiRequestError>;
 
+  // Preserve the concrete request DTO type at the transport seam.
+  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters
   readonly post: <A, B>(
     path: string,
     body: B,
     schema: Schema.Codec<A, unknown, never, unknown>
   ) => Effect.Effect<A, ApiRequestError>;
 
+  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters
   readonly put: <A, B>(
     path: string,
     body: B,
@@ -89,20 +89,26 @@ const checkStatus = (
     : Effect.gen(function* () {
         const body: BackendErrorBody | undefined = yield* response.json.pipe(
           Effect.flatMap(Schema.decodeUnknownEffect(BackendErrorBodySchema)),
+          // No backend error body is different from a malformed one; both use the status.
+          // oxlint-disable-next-line unicorn/no-useless-undefined
           Effect.orElseSucceed(() => undefined)
         );
 
+        // The decoded backend schema permits a string or string array here.
         const code =
+          // oxlint-disable-next-line anti-slop/no-runtime-typeof
           typeof body?.message === "string" ? body.message : undefined;
-        const detail = body ? formatBackendError(body) : undefined;
+        const detail =
+          body === undefined ? undefined : formatBackendError(body);
 
+        const options = {
+          status: response.status,
+          message: detail ?? `Request failed with status ${response.status}`,
+        };
         return yield* Effect.fail(
-          new ApiError({
-            status: response.status,
-            message: detail ?? `Request failed with status ${response.status}`,
-            code,
-            body,
-          })
+          code === undefined
+            ? new ApiError(options)
+            : new ApiError({ ...options, code })
         );
       });
 
@@ -114,7 +120,7 @@ export const ApiClientLive = Layer.effect(
     const { url: baseUrl } = yield* ApiBaseUrl;
 
     const addAuth = (request: HttpClientRequest.HttpClientRequest) =>
-      token
+      token !== null && token !== ""
         ? HttpClientRequest.setHeader(
             request,
             "Authorization",

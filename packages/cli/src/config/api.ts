@@ -7,13 +7,14 @@
  */
 
 import { Schema } from "effect";
+
 import { Storage } from "../storage";
 
-const CONTROL_URL = /^http:\/\/127\.0\.0\.1:([1-9]\d{0,4})\/api\/v1$/;
+const CONTROL_URL = /^http:\/\/127\.0\.0\.1:(?<port>[1-9]\d{0,4})\/api\/v1$/u;
 
 export function validateControlUrl(input: string): string {
   const match = CONTROL_URL.exec(input);
-  if (!match || Number(match[1]) > 65_535) {
+  if (match === null || Number(match.groups?.port) > 65_535) {
     throw new Error(
       "Control URL must be http://127.0.0.1:<port>/api/v1 (no credentials, query or fragment)"
     );
@@ -22,7 +23,7 @@ export function validateControlUrl(input: string): string {
 }
 
 export const InstanceNameSchema = Schema.String.check(
-  Schema.isPattern(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/)
+  Schema.isPattern(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/u)
 );
 
 export const LocalTargetSchema = Schema.Struct({
@@ -71,16 +72,14 @@ export async function writeConfig(config: CliConfig): Promise<void> {
   await Storage.write(CONFIG_KEY, JSON.stringify(config, null, 2));
 }
 
-export async function getConfigValue<K extends keyof CliConfig>(
-  key: K
-): Promise<CliConfig[K] | undefined> {
+export async function getConfigValue(
+  key: "api-url"
+): Promise<string | undefined> {
   const config = await readConfig();
   return config[key];
 }
 
-export async function unsetConfigValue<K extends keyof CliConfig>(
-  key: K
-): Promise<void> {
+export async function unsetConfigValue(key: keyof CliConfig): Promise<void> {
   const { [key]: _removed, ...rest } = await readConfig();
   await writeConfig(rest);
 }

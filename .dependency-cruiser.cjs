@@ -32,7 +32,8 @@ module.exports = {
       comment:
         "App/root code may import a package's entry points (its root files), but nothing inside its subfolders.",
       severity: "error",
-      from: { pathNot: `^${R}/` }, // importer is NOT inside any package
+      // importer is NOT inside any package
+      from: { pathNot: `^${R}/` },
       to: { path: PACKAGE_INTERNALS },
     },
     {
@@ -44,7 +45,8 @@ module.exports = {
       from: { path: `^${R}/([^/]+)/`, pathNot: `^${R}/[^/]+/tests/` },
       to: {
         path: PACKAGE_INTERNALS,
-        pathNot: `^${R}/$1/`, // same package → intra-package freedom
+        // same package → intra-package freedom
+        pathNot: `^${R}/$1/`,
       },
     },
     {
@@ -52,10 +54,12 @@ module.exports = {
       comment:
         "A package's tests exercise it through its entry points like everyone else: they may import any package's entry points and their own tests/ fixtures, but never any package's internals, not even their own.",
       severity: "error",
-      from: { path: `^${R}/([^/]+)/tests/` }, // a test file, in package $1
+      // a test file, in package $1
+      from: { path: `^${R}/([^/]+)/tests/` },
       to: {
         path: PACKAGE_INTERNALS,
-        pathNot: `^${R}/$1/tests/`, // own tests/ fixtures → allowed
+        // own tests/ fixtures → allowed
+        pathNot: `^${R}/$1/tests/`,
       },
     },
     {
@@ -63,7 +67,8 @@ module.exports = {
       comment:
         "A package's tests/ folder is reachable only from tests: nothing else may import fixtures.",
       severity: "error",
-      from: { pathNot: `^${R}/[^/]+/tests/` }, // importer is not itself a test
+      // importer is not itself a test
+      from: { pathNot: `^${R}/[^/]+/tests/` },
       to: { path: `^${R}/[^/]+/tests/` },
     },
     {

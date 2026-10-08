@@ -2,6 +2,9 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { Schema } from "effect";
+
 import pkg from "../package.json";
 
 const repo = join(import.meta.dir, "..");
@@ -11,7 +14,17 @@ const packaged = join(repo, "servers", pkg.version, "devver-server");
 // runs with a PATH that holds neither Node nor Bun. /bin keeps launchctl
 // reachable for the supervised creation path.
 const NO_RUNTIME = "/usr/bin:/bin";
-const CONTROL_URL = /http:\/\/127\.0\.0\.1:\d+\/api\/v1/;
+const CONTROL_URL = /http:\/\/127\.0\.0\.1:\d+\/api\/v1/u;
+const decodeService = Schema.decodeUnknownSync(
+  Schema.Struct({ label: Schema.String })
+);
+const decodeIdentity = Schema.decodeUnknownSync(
+  Schema.Struct({
+    name: Schema.String,
+    serverVersion: Schema.String,
+    instanceId: Schema.String,
+  })
+);
 
 if (process.platform !== "win32") {
   const built = Bun.spawnSync(["bun", "run", "build"], {
@@ -59,9 +72,11 @@ async function launch(env: Record<string, string | undefined>, name: string) {
     const reader = child.stdout.getReader();
     const announced = await Promise.race([
       reader.read(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Server did not start")), 10_000)
-      ),
+      new Promise<never>((_resolve, reject) => {
+        setTimeout(() => {
+          reject(new Error("Server did not start"));
+        }, 10_000);
+      }),
     ]);
     reader.releaseLock();
     const url = new TextDecoder().decode(announced.value).trim();
@@ -84,16 +99,16 @@ const stop = async (child: ReturnType<typeof Bun.spawn>) => {
 // Supervision needs a reachable per-user launchd domain; headless CI may lack one.
 function supervisableDomain() {
   if (process.platform !== "darwin") {
-    return;
+    return null;
   }
   const uid = process.getuid?.();
   if (uid === undefined) {
-    return;
+    return null;
   }
   const domain = `gui/${uid}`;
   return Bun.spawnSync(["launchctl", "print", domain]).exitCode === 0
     ? domain
-    : undefined;
+    : null;
 }
 
 test("the standalone CLI switches between its packaged servers with no runtime installed", async () => {
@@ -142,7 +157,7 @@ test("the standalone CLI switches between its packaged servers with no runtime i
 
 test("the standalone CLI supervises the server copy it packages, without attaching", async () => {
   const domain = supervisableDomain();
-  if (!domain) {
+  if (domain === null) {
     return;
   }
   expect(Bun.which("node", { PATH: NO_RUNTIME })).toBeNull();
@@ -154,14 +169,16 @@ test("the standalone CLI supervises the server copy it packages, without attachi
     const instance = join(ws.root, "data", "devver", "servers", "packaged");
     try {
       labels.push(
-        JSON.parse(readFileSync(join(instance, "service.json"), "utf8")).label
+        decodeService(
+          JSON.parse(readFileSync(join(instance, "service.json"), "utf-8"))
+        ).label
       );
     } catch {
       /* no registration */
     }
     expect(created.status, created.output).toBe(0);
-    const url = created.output.match(CONTROL_URL)?.[0];
-    if (!url) {
+    const url = CONTROL_URL.exec(created.output)?.[0];
+    if (url === undefined) {
       throw new Error("No control URL");
     }
     expect(created.output).toContain(`devver attach ${url}`);
@@ -178,11 +195,13 @@ test("the standalone CLI supervises the server copy it packages, without attachi
     );
     expect(statSync(pinned).mode % 0o1000).toBe(0o700);
     expect(statSync(pinned).size).toBe(statSync(packaged).size);
-    expect(readFileSync(join(instance, "service.plist"), "utf8")).toContain(
+    expect(readFileSync(join(instance, "service.plist"), "utf-8")).toContain(
       `<string>${pinned}</string>`
     );
 
-    const identity = await (await fetch(`${url}/identity`)).json();
+    const identity = decodeIdentity(
+      await (await fetch(`${url}/identity`)).json()
+    );
     expect(identity.name).toBe("packaged");
     expect(identity.serverVersion).toBe(pkg.version);
     expect(ws.run("server", "status").output).toContain("No server attached");
@@ -190,9 +209,9 @@ test("the standalone CLI supervises the server copy it packages, without attachi
     const duplicate = ws.run("new", "server", "packaged");
     expect(duplicate.status).not.toBe(0);
     expect(duplicate.output).toContain("already exists");
-    expect((await (await fetch(`${url}/identity`)).json()).instanceId).toBe(
-      identity.instanceId
-    );
+    expect(
+      decodeIdentity(await (await fetch(`${url}/identity`)).json()).instanceId
+    ).toBe(identity.instanceId);
   } finally {
     for (const label of labels) {
       Bun.spawnSync(["launchctl", "bootout", `${domain}/${label}`]);

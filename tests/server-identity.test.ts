@@ -13,6 +13,9 @@ import {
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { Schema } from "effect";
+
 import pkg from "../package.json";
 
 const entry = join(
@@ -23,7 +26,16 @@ const entry = join(
   "src",
   "index.ts"
 );
-const CONTROL_URL = /^http:\/\/127\.0\.0\.1:\d+\/api\/v1$/;
+const CONTROL_URL = /^http:\/\/127\.0\.0\.1:\d+\/api\/v1$/u;
+const decodeIdentity = Schema.decodeUnknownSync(
+  Schema.Struct({
+    instanceId: Schema.String,
+    name: Schema.String,
+    serverVersion: Schema.String,
+    controlProtocolVersion: Schema.Finite,
+  }),
+  { onExcessProperty: "error" }
+);
 
 function dataEnvironment(root: string) {
   return { ...process.env, XDG_DATA_HOME: root };
@@ -51,12 +63,11 @@ async function launch(root: string, name: string) {
   try {
     const output = await Promise.race([
       reader.read(),
-      new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error("Server did not announce its URL")),
-          5000
-        )
-      ),
+      new Promise<never>((_resolve, reject) => {
+        setTimeout(() => {
+          reject(new Error("Server did not announce its URL"));
+        }, 5000);
+      }),
     ]);
     const url = new TextDecoder().decode(output.value).trim();
     reader.releaseLock();
@@ -76,7 +87,7 @@ test("a foreground server serves identity on loopback and rejects browser cross-
   let child: ReturnType<typeof Bun.spawn> | undefined;
   try {
     const running = await launch(root, "demo");
-    child = running.child;
+    ({ child } = running);
     expect(running.url).toMatch(CONTROL_URL);
     const publicListener = await new Promise<boolean>((resolve) => {
       const socket = createConnection({
@@ -87,7 +98,9 @@ test("a foreground server serves identity on loopback and rejects browser cross-
         socket.destroy();
         resolve(true);
       });
-      socket.once("error", () => resolve(false));
+      socket.once("error", () => {
+        resolve(false);
+      });
       socket.setTimeout(500, () => {
         socket.destroy();
         resolve(false);
@@ -96,12 +109,11 @@ test("a foreground server serves identity on loopback and rejects browser cross-
     expect(publicListener).toBe(false);
     const identity = await fetch(`${running.url}/identity`);
     expect(identity.status).toBe(200);
-    expect(await identity.json()).toEqual({
-      instanceId: expect.any(String),
-      name: "demo",
-      serverVersion: pkg.version,
-      controlProtocolVersion: 1,
-    });
+    const details = decodeIdentity(await identity.json());
+    expect(details.instanceId).toBeString();
+    expect(details.name).toBe("demo");
+    expect(details.serverVersion).toBe(pkg.version);
+    expect(details.controlProtocolVersion).toBe(1);
     expect(
       (
         await fetch(`${running.url}/identity`, {
@@ -143,6 +155,9 @@ test("a foreground server serves identity on loopback and rejects browser cross-
   }
 });
 
+const id = async (url: string) =>
+  decodeIdentity(await (await fetch(`${url}/identity`)).json()).instanceId;
+
 test("named server identities survive restarts without sharing or replacing corrupt state", async () => {
   if (process.platform === "win32") {
     return;
@@ -150,22 +165,10 @@ test("named server identities survive restarts without sharing or replacing corr
   const root = mkdtempSync(join(tmpdir(), "devver-server-state-"));
   const file = (name: string) =>
     join(root, "devver", "servers", name, "identity.json");
-  const id = async (url: string) => {
-    const result: unknown = await (await fetch(`${url}/identity`)).json();
-    if (
-      typeof result !== "object" ||
-      result === null ||
-      !("instanceId" in result) ||
-      typeof result.instanceId !== "string"
-    ) {
-      throw new Error("Invalid identity response");
-    }
-    return result.instanceId;
-  };
   let child: ReturnType<typeof Bun.spawn> | undefined;
   try {
     const first = await launch(root, "first");
-    child = first.child;
+    ({ child } = first);
     expect(first.url).toMatch(CONTROL_URL);
     const firstId = await id(first.url);
     child.kill();
@@ -173,14 +176,14 @@ test("named server identities survive restarts without sharing or replacing corr
     child = undefined;
 
     const restarted = await launch(root, "first");
-    child = restarted.child;
+    ({ child } = restarted);
     expect(await id(restarted.url)).toBe(firstId);
     child.kill();
     await child.exited;
     child = undefined;
 
     const second = await launch(root, "second");
-    child = second.child;
+    ({ child } = second);
     expect(await id(second.url)).not.toBe(firstId);
     expect(statSync(join(root, "devver")).mode % 0o1000).toBe(0o700);
     expect(statSync(join(root, "devver", "servers")).mode % 0o1000).toBe(0o700);
@@ -196,7 +199,7 @@ test("named server identities survive restarts without sharing or replacing corr
     const corrupted = run(root, "first");
     expect(corrupted.status).not.toBe(0);
     expect(corrupted.output).toContain("invalid state");
-    expect(readFileSync(file("first"), "utf8")).toBe("invalid JSON");
+    expect(readFileSync(file("first"), "utf-8")).toBe("invalid JSON");
     writeFileSync(
       file("first"),
       JSON.stringify({ instanceId: firstId, name: "first" })
@@ -241,7 +244,7 @@ test("legacy read-only data roots work; writable or symlinked roots cannot repla
     const file = putState(dataRoot);
     chmodSync(dataRoot, 0o755);
     const legacy = await launch(data, "demo");
-    child = legacy.child;
+    ({ child } = legacy);
     expect(await (await fetch(`${legacy.url}/identity`)).json()).toMatchObject({
       instanceId: "031fdbdf-3c42-4d19-8909-9a2cf4690cb0",
       name: "demo",
@@ -250,14 +253,14 @@ test("legacy read-only data roots work; writable or symlinked roots cannot repla
     await child.exited;
     child = undefined;
     expect(statSync(dataRoot).mode % 0o1000).toBe(0o755);
-    expect(readFileSync(file, "utf8")).toBe(state);
+    expect(readFileSync(file, "utf-8")).toBe(state);
 
     chmodSync(dataRoot, 0o777);
     const writable = run(data, "demo");
     expect(writable.status).not.toBe(0);
     expect(writable.output).toContain("not group/other writable");
     expect(statSync(dataRoot).mode % 0o1000).toBe(0o777);
-    expect(readFileSync(file, "utf8")).toBe(state);
+    expect(readFileSync(file, "utf-8")).toBe(state);
 
     rmSync(dataRoot, { recursive: true });
     mkdirSync(real, { mode: 0o700 });
@@ -267,7 +270,7 @@ test("legacy read-only data roots work; writable or symlinked roots cannot repla
     expect(linked.status).not.toBe(0);
     expect(linked.output).toContain("not a symlink");
     expect(lstatSync(dataRoot).isSymbolicLink()).toBe(true);
-    expect(readFileSync(linkedFile, "utf8")).toBe(state);
+    expect(readFileSync(linkedFile, "utf-8")).toBe(state);
   } finally {
     child?.kill();
     if (child) {

@@ -4,15 +4,18 @@ import { mkdir, open, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+
 import pkg from "../../../../package.json" with { type: "json" };
 import { instanceParent, loadInstance } from "../../../server/identity";
 import { verifyIdentity } from "./local-server";
 import { availablePort } from "./loopback";
 import { pinServer } from "./supervised-server-posix";
 
+// oxlint-disable-next-line typescript/strict-void-return -- Node's execFile overload is supported by promisify and preserves subprocess failures.
 const execute = promisify(execFile);
 const DIRECTORY_MODE = 0o700;
 
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- Node filesystem errors arrive untyped; inspect only the EEXIST code.
 function existing(error: unknown) {
   return error instanceof Error && "code" in error && error.code === "EEXIST";
 }
@@ -53,7 +56,9 @@ export async function create(name: string) {
     await mkdir(directory, { mode: DIRECTORY_MODE });
   } catch (error) {
     if (existing(error)) {
-      throw new Error(`Server instance '${name}' already exists`);
+      throw new Error(`Server instance '${name}' already exists`, {
+        cause: error,
+      });
     }
     throw error;
   }
@@ -64,7 +69,10 @@ export async function create(name: string) {
     const port = await availablePort();
     const pinned = await pinServer(parent);
     const data =
-      process.env.XDG_DATA_HOME || join(homedir(), ".local", "share");
+      process.env.XDG_DATA_HOME !== undefined &&
+      process.env.XDG_DATA_HOME !== ""
+        ? process.env.XDG_DATA_HOME
+        : join(homedir(), ".local", "share");
     const handle = await open(join(directory, "service.json"), "wx", 0o600);
     try {
       await handle.writeFile(
@@ -103,7 +111,9 @@ export async function create(name: string) {
       } catch {
         // A starting server can refuse connections; readiness remains bounded.
       }
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 150);
+      });
     }
     throw new Error(
       "Server did not return its expected identity while supervised"

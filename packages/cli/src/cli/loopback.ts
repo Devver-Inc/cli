@@ -8,11 +8,17 @@ export async function availablePort() {
       server.listen(0, "127.0.0.1", resolve);
     });
     const address = server.address();
-    if (!address || typeof address === "string") {
+    // node:net returns an AddressInfo, a pipe name, or null.
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof
+    if (address === null || typeof address === "string") {
       throw new Error("Could not allocate a loopback port");
     }
     return address.port;
   } finally {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) => {
+      server.close(() => {
+        resolve();
+      });
+    });
   }
 }

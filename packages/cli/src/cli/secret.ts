@@ -1,8 +1,18 @@
-import { Effect } from "effect";
+import { Data, Effect } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
 
+class UnsupportedSecretError extends Data.TaggedError(
+  "UnsupportedSecretError"
+)<{
+  message: string;
+}> {}
+
 const unsupported = (name: string) =>
-  Effect.fail(new Error(`devver secret ${name} is not supported yet`));
+  Effect.fail(
+    new UnsupportedSecretError({
+      message: `devver secret ${name} is not supported yet`,
+    })
+  );
 
 const set = Command.make(
   "set",

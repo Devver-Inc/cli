@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import {
   readConfigFile,
   readSecretsFile,
@@ -18,9 +19,9 @@ const cliEntry = join(
   "cli",
   "index.ts"
 );
-const INVALID_YAML = /Invalid YAML/;
-const INVALID_CONFIG = /Invalid devver config/;
-const INVALID_SECRETS = /Invalid secrets file/;
+const INVALID_YAML = /Invalid YAML/u;
+const INVALID_CONFIG = /Invalid devver config/u;
+const INVALID_SECRETS = /Invalid secrets file/u;
 
 function workspace() {
   return mkdtempSync(join(tmpdir(), "devver-trust-"));
@@ -44,6 +45,11 @@ test("devver.yaml is decoded, and malformed YAML is rejected instead of trusted"
 
     writeFileSync(configPath, "project: demo\n  services: [oops\n");
     expect(() => readConfigFile(root)).toThrow(INVALID_YAML);
+    try {
+      readConfigFile(root);
+    } catch (error) {
+      expect(error instanceof Error ? error.cause : error).toBeUndefined();
+    }
 
     writeFileSync(
       configPath,
@@ -73,9 +79,9 @@ test("secrets with a wrong shape are rejected and never overwritten", () => {
     const secretsPath = join(root, ".devver", ".secrets");
     writeFileSync(secretsPath, "{not json");
     expect(() => readSecretsFile(root)).toThrow(INVALID_SECRETS);
-    expect(() => setDeploymentEnv("demo", { A: "b" }, root)).toThrow(
-      INVALID_SECRETS
-    );
+    expect(() => {
+      setDeploymentEnv("demo", { A: "b" }, root);
+    }).toThrow(INVALID_SECRETS);
     expect(Bun.file(secretsPath).size).toBe("{not json".length);
 
     writeFileSync(secretsPath, JSON.stringify({ demo: { name: "demo" } }));
@@ -91,12 +97,12 @@ test("secrets with a wrong shape are rejected and never overwritten", () => {
   }
 });
 
-function credentials(root: string, accessToken: string, idToken: string) {
+function credentials(root: string, accessToken: string, jwt: string) {
   const data = join(root, "data", "devver");
   mkdirSync(join(data, "logto"), { recursive: true });
   mkdirSync(join(data, "auth"), { recursive: true });
   writeFileSync(join(data, "logto", "accessToken"), accessToken);
-  writeFileSync(join(data, "logto", "idToken"), idToken);
+  writeFileSync(join(data, "logto", "idToken"), jwt);
   writeFileSync(join(data, "auth", "currentOrganization"), "org-1");
 }
 
@@ -172,7 +178,7 @@ test("a non-JSON error body reports the status instead of crashing", async () =>
     expect(result.output).not.toContain("local-only-token");
     expect(result.output).not.toContain("Defect");
   } finally {
-    server.stop();
+    await server.stop();
     rmSync(root, { recursive: true, force: true });
   }
 });

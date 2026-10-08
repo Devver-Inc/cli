@@ -1,5 +1,6 @@
-import { Console, Effect } from "effect";
+import { Console, Data, Effect } from "effect";
 import { Command } from "effect/cli";
+
 import { getOrganizationDetails, refreshAccessToken } from "../auth/client";
 import {
   clearCurrentOrganization,
@@ -8,24 +9,30 @@ import {
 } from "../auth/organization";
 import { Prompt } from "../util/prompts";
 
+class OrganizationSwitchError extends Data.TaggedError(
+  "OrganizationSwitchError"
+)<{ message: string }> {}
+
 export const switchOrganization = (
   current: string | null,
   choice: string,
   refresh: () => Promise<string | null> = refreshAccessToken
 ) =>
-  Effect.tryPromise(() => setCurrentOrganization(choice)).pipe(
+  Effect.tryPromise(async () => setCurrentOrganization(choice)).pipe(
     Effect.flatMap(() =>
       Effect.tryPromise(refresh).pipe(
         Effect.flatMap((token) =>
-          token
+          token !== null && token !== ""
             ? Effect.void
             : Effect.fail(
-                new Error("Failed to refresh organization credentials")
+                new OrganizationSwitchError({
+                  message: "Failed to refresh organization credentials",
+                })
               )
         ),
         Effect.tapError(() =>
-          Effect.tryPromise(() =>
-            current
+          Effect.tryPromise(async () =>
+            current !== null && current !== ""
               ? setCurrentOrganization(current)
               : clearCurrentOrganization()
           )

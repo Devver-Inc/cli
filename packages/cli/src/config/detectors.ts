@@ -30,9 +30,9 @@ registerDetector(
 
 registerDetector(
   createEnvDetector("mongodb-env", "MongoDB (env)", [
-    /MONGODB_URI/i,
-    /MONGO_URI/i,
-    /MONGO_URL/i,
+    /MONGODB_URI/iu,
+    /MONGO_URI/iu,
+    /MONGO_URL/iu,
   ])
 );
 
@@ -53,8 +53,8 @@ registerDetector(
 
 registerDetector(
   createEnvDetector("postgres-env", "PostgreSQL (env)", [
-    /POSTGRES_URI/i,
-    /POSTGRES_URL/i,
-    /DATABASE_URL.*postgres/i,
+    /POSTGRES_URI/iu,
+    /POSTGRES_URL/iu,
+    /DATABASE_URL.*postgres/iu,
   ])
 );

@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 import { lstat, mkdir, open, readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+
 import { Schema } from "effect";
 import { xdgData } from "xdg-basedir";
+
 import {
   existingWindowsServersDirectory,
   verifyWindowsPrivate,
@@ -21,35 +23,39 @@ const PORT = Schema.Int.check(
   Schema.isBetween({ minimum: 1, maximum: 65_535 })
 );
 const VERSION = Schema.String.check(
-  Schema.isPattern(/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)*$/)
+  Schema.isPattern(/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)*$/u)
 );
 const UUID =
   "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}";
 const SERVICE = {
   darwin: Schema.Struct({
     label: Schema.String.check(
-      Schema.isPattern(new RegExp(`^com\\.devver\\.server\\.${UUID}$`))
+      Schema.isPattern(new RegExp(`^com\\.devver\\.server\\.${UUID}$`, "u"))
     ),
     port: PORT,
     serverVersion: VERSION,
   }),
   linux: Schema.Struct({
     unit: Schema.String.check(
-      Schema.isPattern(new RegExp(`^devver-${UUID}\\.service$`))
+      Schema.isPattern(new RegExp(`^devver-${UUID}\\.service$`, "u"))
     ),
     port: PORT,
     serverVersion: VERSION,
   }),
   win32: Schema.Struct({
-    task: Schema.String.check(Schema.isPattern(new RegExp(`^devver-${UUID}$`))),
+    task: Schema.String.check(
+      Schema.isPattern(new RegExp(`^devver-${UUID}$`, "u"))
+    ),
     port: PORT,
     serverVersion: VERSION,
   }),
 };
-const NAME = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
+const NAME = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/u;
 const PRIVATE_DIRECTORY = 0o700;
 const PRIVATE_FILE = 0o600;
 
+// Node filesystem errors enter as unknown; only the error code is inspected.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 function isExisting(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "EEXIST";
 }
@@ -61,6 +67,8 @@ function checkDataRoot(
   if (
     stat.uid !== process.getuid?.() ||
     !stat.isDirectory() ||
+    // Node's stat mode may be bigint; permission arithmetic needs a number.
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof
     typeof stat.mode !== "number"
   ) {
     throw new Error(
@@ -88,6 +96,7 @@ function checkOwner(
 ) {
   if (
     stat.uid !== process.getuid?.() ||
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof
     typeof stat.mode !== "number" ||
     stat.mode % 0o1000 !== mode ||
     (kind === "directory" ? !stat.isDirectory() : !stat.isFile())
@@ -143,6 +152,8 @@ async function existingStat(path: string) {
     return await lstat(path);
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      // Explicit undefined keeps the async helper's return branches consistent.
+      // oxlint-disable-next-line unicorn/no-useless-undefined
       return undefined;
     }
     throw error;
@@ -161,13 +172,15 @@ async function existingParent() {
   const data = xdgData ?? join(homedir(), ".local", "share");
   const root = join(data, "devver");
   const rootStat = await existingStat(root);
-  if (!rootStat) {
+  if (rootStat === undefined) {
+    // oxlint-disable-next-line unicorn/no-useless-undefined
     return undefined;
   }
   checkDataRoot(rootStat, false);
   const servers = join(root, "servers");
   const serversStat = await existingStat(servers);
-  if (!serversStat) {
+  if (serversStat === undefined) {
+    // oxlint-disable-next-line unicorn/no-useless-undefined
     return undefined;
   }
   checkOwner(serversStat, PRIVATE_DIRECTORY, "directory");
@@ -177,11 +190,11 @@ async function existingParent() {
 /** Read only this user's persisted instance identities; never initialize state. */
 export async function listInstances() {
   const parent = await existingParent();
-  if (!parent) {
+  if (parent === undefined) {
     return [];
   }
   const instances: (typeof InstanceSchema.Type)[] = [];
-  for (const name of (await readdir(parent)).sort()) {
+  for (const name of (await readdir(parent)).toSorted()) {
     if (!NAME.test(name)) {
       throw new Error("Server instance state contains an invalid entry name");
     }
@@ -197,7 +210,9 @@ export async function listInstances() {
         checkOwner(await lstat(directory), PRIVATE_DIRECTORY, "directory");
         checkOwner(await lstat(file), PRIVATE_FILE, "file");
       }
-      const instance = decodeInstance(JSON.parse(await readFile(file, "utf8")));
+      const instance = decodeInstance(
+        JSON.parse(await readFile(file, "utf-8"))
+      );
       if (instance.name !== name) {
         throw new Error("Instance name mismatch");
       }
@@ -217,7 +232,7 @@ export async function readInstanceService(name: string) {
     throw new Error("Invalid server instance name");
   }
   const parent = await existingParent();
-  if (!parent) {
+  if (parent === undefined) {
     throw new Error(`Server instance '${name}' has missing state`);
   }
   const directory = join(parent, name);
@@ -232,7 +247,7 @@ export async function readInstanceService(name: string) {
       checkOwner(await lstat(directory), PRIVATE_DIRECTORY, "directory");
       checkOwner(await lstat(file), PRIVATE_FILE, "file");
     }
-    const value: unknown = JSON.parse(await readFile(file, "utf8"));
+    const value: unknown = JSON.parse(await readFile(file, "utf-8"));
     if (process.platform === "win32") {
       return Schema.decodeUnknownSync(SERVICE.win32)(value);
     }
@@ -290,7 +305,7 @@ export async function loadInstance(name: string) {
     checkOwner(await lstat(file), PRIVATE_FILE, "file");
   }
   try {
-    const instance = decodeInstance(JSON.parse(await readFile(file, "utf8")));
+    const instance = decodeInstance(JSON.parse(await readFile(file, "utf-8")));
     if (instance.name !== name) {
       throw new Error("Instance name mismatch");
     }

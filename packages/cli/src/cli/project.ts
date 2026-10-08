@@ -1,12 +1,12 @@
-import { Console, Effect, Option, Schema } from "effect";
+import { Console, Data, Effect, Option, Schema } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
+
 import {
   createProject,
-  DatabaseType,
   getProjectById,
   getProjects,
-  OverlayCommentPermission,
 } from "../api/projects.requests";
+import { DatabaseType, OverlayCommentPermission } from "../domain/project";
 import {
   getCurrentProjectId,
   setCurrentProjectId,
@@ -14,10 +14,18 @@ import {
 import { Prompt } from "../util/prompts";
 import { withApi } from "./api";
 
+class ProjectCommandError extends Data.TaggedError("ProjectCommandError")<{
+  message: string;
+}> {}
+
+const projectCreationCancelled = Effect.fail(
+  new ProjectCommandError({ message: "Project creation cancelled." })
+);
+
 const status = Command.make("status", {}, () =>
   Effect.gen(function* () {
     const id = yield* Effect.tryPromise(getCurrentProjectId);
-    if (!id) {
+    if (id === null || id === "") {
       yield* Console.log("✗ No project selected");
       yield* Console.log("Use 'devver project list' to select a project");
       return;
@@ -38,7 +46,7 @@ const list = Command.make("list", {}, () =>
     const only = projects.length === 1 ? projects[0] : undefined;
     if (only) {
       yield* Console.log("You only have one project:", only.name);
-      yield* Effect.tryPromise(() => setCurrentProjectId(only.id));
+      yield* Effect.tryPromise(async () => setCurrentProjectId(only.id));
       return;
     }
     const displayed =
@@ -58,7 +66,7 @@ const list = Command.make("list", {}, () =>
       yield* Prompt.outro("Project selection canceled");
       return;
     }
-    yield* Effect.tryPromise(() => setCurrentProjectId(choice));
+    yield* Effect.tryPromise(async () => setCurrentProjectId(choice));
     yield* Prompt.outro(
       `Now using project: ${projects.find((project) => project.id === choice)?.name ?? choice}`
     );
@@ -83,52 +91,70 @@ const defaultDb = {
   storage: 5,
 } as const;
 
+const databaseNumber = (input: string, fallback: number) =>
+  input === "" ? fallback : Number(input);
+
 const databaseConfiguration = Effect.gen(function* () {
   const wantDb = yield* Prompt.select({
     message: "Attach a database to this project?",
     options: Prompt.Questions.YNOpts,
   });
+  if (wantDb === "Canceled") {
+    return yield* projectCreationCancelled;
+  }
   if (wantDb !== "Yes") {
+    // An omitted database is a successful optional result, not cancellation.
+    // oxlint-disable-next-line unicorn/no-useless-undefined
     return undefined;
   }
   const rootUsername = yield* Prompt.input("Mongo root username");
-  if (!rootUsername || rootUsername === "Canceled") {
-    return undefined;
+  if (rootUsername === "Canceled") {
+    return yield* projectCreationCancelled;
+  }
+  if (rootUsername === "") {
+    return yield* Effect.fail(
+      new ProjectCommandError({ message: "Mongo root username is required." })
+    );
   }
   const rootPassword = yield* Prompt.secretInput("Mongo root password");
-  if (!rootPassword || rootPassword === "Canceled") {
-    return undefined;
+  if (rootPassword === "Canceled") {
+    return yield* projectCreationCancelled;
+  }
+  if (rootPassword === "") {
+    return yield* Effect.fail(
+      new ProjectCommandError({ message: "Mongo root password is required." })
+    );
   }
   const replicas = yield* Prompt.input(
     `Replicas (1-3) [${defaultDb.replicaCount}]`
   );
   if (replicas === "Canceled") {
-    return undefined;
+    return yield* projectCreationCancelled;
   }
   const ramInput = yield* Prompt.input(`RAM (Gi, >=0.5) [${defaultDb.ram}]`);
   if (ramInput === "Canceled") {
-    return undefined;
+    return yield* projectCreationCancelled;
   }
   const cpuInput = yield* Prompt.input(
     `CPU cores (>=0.1) [${defaultDb.cpuCores}]`
   );
   if (cpuInput === "Canceled") {
-    return undefined;
+    return yield* projectCreationCancelled;
   }
   const storageInput = yield* Prompt.input(
     `Storage (Gi, 5-500) [${defaultDb.storage}]`
   );
   if (storageInput === "Canceled") {
-    return undefined;
+    return yield* projectCreationCancelled;
   }
   return {
     type: DatabaseType.MONGO,
     rootUsername,
     rootPassword,
-    replicaCount: Number(replicas) || defaultDb.replicaCount,
-    ram: Number(ramInput) || defaultDb.ram,
-    cpuCores: Number(cpuInput) || defaultDb.cpuCores,
-    storage: Number(storageInput) || defaultDb.storage,
+    replicaCount: databaseNumber(replicas, defaultDb.replicaCount),
+    ram: databaseNumber(ramInput, defaultDb.ram),
+    cpuCores: databaseNumber(cpuInput, defaultDb.cpuCores),
+    storage: databaseNumber(storageInput, defaultDb.storage),
   };
 });
 
@@ -171,9 +197,7 @@ const create = Command.make(
           teamMemberIds: [...team],
           overlayAccessControl: { commentPermission: comments },
           databaseConfiguration: db,
-          ...(Option.isSome(description)
-            ? { description: description.value }
-            : {}),
+          description: Option.getOrUndefined(description),
         })
       );
       yield* Console.log(
@@ -185,7 +209,7 @@ const create = Command.make(
           "    Run 'devver deploy' to link it to a deployment."
         );
       }
-      yield* Effect.tryPromise(() => setCurrentProjectId(project.id));
+      yield* Effect.tryPromise(async () => setCurrentProjectId(project.id));
     })
 );
 
@@ -196,7 +220,12 @@ const link = Command.make(
     name: Flag.String("name").pipe(Flag.withAlias("n"), Flag.optional),
     id: Flag.String("id").pipe(Flag.withAlias("i"), Flag.optional),
   },
-  () => Effect.fail(new Error("devver project link is not supported yet"))
+  () =>
+    Effect.fail(
+      new ProjectCommandError({
+        message: "devver project link is not supported yet",
+      })
+    )
 );
 
 export const project = Command.make("project").pipe(

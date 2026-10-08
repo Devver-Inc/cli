@@ -1,27 +1,45 @@
-import { useRenderer } from "@opentui/react";
-import { useCallback } from "react";
+import { createContext, useCallback, useContext, useRef } from "react";
+import type { ReactNode } from "react";
+
 import { FormatError } from "../../error";
-import { createSimpleContext } from "./helper";
 
-export const { use: useExit, Provider: ExitProvider } = createSimpleContext({
-  name: "Exit",
-  useInit: (props: { onExit?: () => Promise<void> }) => {
-    const renderer = useRenderer();
+type Exit = (reason?: Error) => Promise<void>;
+const ExitContext = createContext<Exit | undefined>(undefined);
 
-    return useCallback(
-      async (reason?: unknown) => {
-        renderer.setTerminalTitle("");
-        renderer.destroy();
-        await props.onExit?.();
-        if (reason) {
-          const formatted = FormatError(reason);
-          if (formatted) {
-            process.stderr.write(`${formatted}\n`);
-          }
+export function ExitProvider({
+  children,
+  onExit,
+}: {
+  children: ReactNode;
+  onExit?: () => Promise<void>;
+}): ReactNode {
+  const exiting = useRef(false);
+  const exit = useCallback(
+    async (reason?: Error) => {
+      if (exiting.current) {
+        return;
+      }
+      exiting.current = true;
+      await onExit?.();
+      if (reason !== undefined) {
+        // FormatError is a formatter, not an Error constructor.
+        // oxlint-disable-next-line unicorn/throw-new-error
+        const formatted = FormatError(reason);
+        if (formatted !== undefined && formatted !== "") {
+          process.stderr.write(`${formatted}\n`);
         }
-        process.exit(0);
-      },
-      [renderer, props.onExit]
-    );
-  },
-});
+        process.exitCode = 1;
+      }
+    },
+    [onExit]
+  );
+  return <ExitContext.Provider value={exit}>{children}</ExitContext.Provider>;
+}
+
+export function useExit() {
+  const exit = useContext(ExitContext);
+  if (exit === undefined) {
+    throw new Error("Exit context must be used within an ExitProvider");
+  }
+  return exit;
+}

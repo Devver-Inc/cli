@@ -11,24 +11,34 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+
+import { Schema } from "effect";
+
 import pkg from "../package.json";
 
 const repo = join(import.meta.dir, "..");
 const cli = join(repo, "packages/cli/dist", "cli.mjs");
 const node = Bun.which("node");
-const CONTROL_URL = /http:\/\/127\.0\.0\.1:\d+\/api\/v1/;
+const CONTROL_URL = /http:\/\/127\.0\.0\.1:\d+\/api\/v1/u;
+const decodeIdentity = Schema.decodeUnknownSync(
+  Schema.Struct({ name: Schema.String, instanceId: Schema.String })
+);
+const decodeService = Schema.decodeUnknownSync(
+  Schema.Struct({ unit: Schema.String })
+);
 
 function workspace() {
   const root = mkdtempSync(join(tmpdir(), "devver-create-"));
-  const env: Record<string, string | undefined> = {
+  const env = {
     ...process.env,
+    PATH: process.env.PATH ?? "",
     XDG_DATA_HOME: join(root, "data"),
     XDG_CONFIG_HOME: join(root, "config"),
     XDG_STATE_HOME: join(root, "state"),
     XDG_CACHE_HOME: join(root, "cache"),
   };
   const invoke = (preload: string[], args: string[]) => {
-    if (!node) {
+    if (node === null) {
       throw new Error("Node required for CLI process test");
     }
     const result = Bun.spawnSync([node, ...preload, cli, ...args], {
@@ -95,7 +105,7 @@ test("new server routes every supported platform to its own creator and fails cl
       '#!/bin/sh\ncase "$*" in *show*) echo not-found; exit 0;; esac\nexit 1\n',
       { mode: 0o700 }
     );
-    ws.env.PATH = `${fake}:${process.env.PATH}`;
+    ws.env.PATH = `${fake}:${process.env.PATH ?? ""}`;
     const creators = {
       darwin: "macOS launchd user supervision",
       linux: "Linux systemd user supervision",
@@ -140,7 +150,7 @@ test("failed user manager registration does not report readiness or leave a name
     writeFileSync(join(fake, "systemctl"), "#!/bin/sh\nexit 0\n", {
       mode: 0o700,
     });
-    ws.env.PATH = `${fake}:${process.env.PATH}`;
+    ws.env.PATH = `${fake}:${process.env.PATH ?? ""}`;
     const result = ws.run("new", "server", "failed");
     expect(result.status).not.toBe(0);
     expect(result.output).not.toContain("devver attach ");
@@ -171,7 +181,7 @@ test("failed registration with no unit cleans only the new instance", () => {
       '#!/bin/sh\ncase "$*" in *show*) echo not-found; exit 0;; esac\nexit 1\n',
       { mode: 0o700 }
     );
-    ws.env.PATH = `${fake}:${process.env.PATH}`;
+    ws.env.PATH = `${fake}:${process.env.PATH ?? ""}`;
     const result = ws.run("new", "server", "absent");
     expect(result.status).not.toBe(0);
     expect(result.output).toContain("state removed");
@@ -186,7 +196,7 @@ test("failed registration with no unit cleans only the new instance", () => {
 });
 
 test("installed npm bin pins and starts its server after the CLI exits", async () => {
-  if (process.platform !== "linux" || !node) {
+  if (process.platform !== "linux" || node === null) {
     return;
   }
   const ws = workspace();
@@ -234,7 +244,7 @@ test("installed npm bin pins and starts its server after the CLI exits", async (
       '#!/bin/sh\ncase "$2" in is-active) kill -0 "$(cat "$XDG_DATA_HOME/server.pid")";; stop) kill "$(cat "$XDG_DATA_HOME/server.pid")";; esac\n',
       { mode: 0o700 }
     );
-    ws.env.PATH = `${fake}:${dirname(node)}:${process.env.PATH}`;
+    ws.env.PATH = `${fake}:${dirname(node)}:${process.env.PATH ?? ""}`;
     const runInstalled = (...args: string[]) => {
       const result = Bun.spawnSync([node, bin, ...args], {
         env: ws.env,
@@ -249,10 +259,12 @@ test("installed npm bin pins and starts its server after the CLI exits", async (
     };
     const created = runInstalled("new", "server", "installed");
     expect(created.status, created.output).toBe(0);
-    const url = created.output.match(CONTROL_URL)?.[0];
+    const url = CONTROL_URL.exec(created.output)?.[0];
     expect(url).toBeDefined();
     expect(created.output).toContain(`devver attach ${url}`);
-    const identity = await (await fetch(`${url}/identity`)).json();
+    const identity = decodeIdentity(
+      await (await fetch(`${url}/identity`)).json()
+    );
     expect(identity.name).toBe("installed");
     const pinned = join(
       ws.root,
@@ -285,7 +297,7 @@ test("installed npm bin pins and starts its server after the CLI exits", async (
   } finally {
     const pidFile = join(ws.root, "data", "server.pid");
     try {
-      const pid = Number(readFileSync(pidFile, "utf8"));
+      const pid = Number(readFileSync(pidFile, "utf-8"));
       if (Number.isSafeInteger(pid) && pid > 0) {
         process.kill(pid);
       }
@@ -297,7 +309,11 @@ test("installed npm bin pins and starts its server after the CLI exits", async (
 }, 30_000);
 
 test("a native user manager keeps distinct named servers reachable after creation exits", async () => {
-  if (process.platform !== "linux" || !node || !Bun.which("systemctl")) {
+  if (
+    process.platform !== "linux" ||
+    node === null ||
+    Bun.which("systemctl") === null
+  ) {
     return;
   }
   const manager = Bun.spawnSync(["systemctl", "--user", "show-environment"], {
@@ -325,24 +341,30 @@ test("a native user manager keeps distinct named servers reachable after creatio
         "service.json"
       );
       if (created.status === 0) {
-        units.push(JSON.parse(readFileSync(serviceFile, "utf8")).unit);
+        units.push(
+          decodeService(JSON.parse(readFileSync(serviceFile, "utf-8"))).unit
+        );
       }
       expect(created.status, created.output).toBe(0);
-      const url = created.output.match(CONTROL_URL)?.[0];
+      const url = CONTROL_URL.exec(created.output)?.[0];
       expect(url).toBeDefined();
       expect(created.output).toContain(`devver attach ${url}`);
-      if (url) {
+      if (url !== undefined) {
         urls.push(url);
       }
-      const identity = await (await fetch(`${url}/identity`)).json();
+      const identity = decodeIdentity(
+        await (await fetch(`${url}/identity`)).json()
+      );
       expect(identity.name).toBe(name);
-      const state = JSON.parse(
-        readFileSync(
-          join(ws.root, "data", "devver", "servers", name, "service.json"),
-          "utf8"
+      const state = decodeService(
+        JSON.parse(
+          readFileSync(
+            join(ws.root, "data", "devver", "servers", name, "service.json"),
+            "utf-8"
+          )
         )
       );
-      expect(state.unit).toBe(units.at(-1));
+      expect(units.at(-1)).toBe(state.unit);
       expect(
         statSync(join(ws.root, "data", "devver", "servers", name)).mode % 0o1000
       ).toBe(0o700);
@@ -365,9 +387,9 @@ test("a native user manager keeps distinct named servers reachable after creatio
       ).toBe(0o700);
       const duplicate = ws.run("new", "server", name);
       expect(duplicate.status).not.toBe(0);
-      expect((await (await fetch(`${url}/identity`)).json()).instanceId).toBe(
-        identity.instanceId
-      );
+      expect(
+        decodeIdentity(await (await fetch(`${url}/identity`)).json()).instanceId
+      ).toBe(identity.instanceId);
     }
     expect(urls[0]).not.toBe(urls[1]);
     expect(ws.run("server", "status").output).toContain("No server attached");

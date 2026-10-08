@@ -1,49 +1,24 @@
 import { createCliRenderer, TextAttributes } from "@opentui/core";
 import { createRoot, useKeyboard } from "@opentui/react";
+import type { ReactNode } from "react";
+
 import { ExitProvider, useExit } from "./exit";
 
-export type Args = Record<string, unknown>;
+export type Args = Record<string, string>;
 
-export async function tui(input: {
-  url: string;
-  args: Args;
-  directory?: string;
-  version: string;
-  onExit?: () => Promise<void>;
-}) {
-  const renderer = await createCliRenderer({
-    exitOnCtrlC: false,
-  });
-
-  const root = createRoot(renderer);
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const onExit = async () => {
-        try {
-          await input.onExit?.();
-          resolve();
-        } catch (error) {
-          reject(error);
-        }
-      };
-      root.render(
-        <ExitProvider onExit={onExit}>
-          <App version={input.version} />
-        </ExitProvider>
-      );
-    });
-  } finally {
-    root.unmount();
-    renderer.destroy();
-  }
-}
-
-function App({ version }: { version: string }) {
+function App({ version }: { version: string }): ReactNode {
   const exit = useExit();
 
   useKeyboard((key) => {
     if (key.ctrl && key.name === "c") {
-      exit();
+      void (async () => {
+        try {
+          await exit();
+        } catch {
+          // onExit has already rejected tui()'s promise; avoid a second rejection.
+          process.exitCode = 1;
+        }
+      })();
     }
   });
 
@@ -57,4 +32,39 @@ function App({ version }: { version: string }) {
       </box>
     </box>
   );
+}
+
+export async function tui(input: {
+  url: string;
+  args: Args;
+  directory?: string;
+  version: string;
+  onExit?: () => Promise<void>;
+}) {
+  const renderer = await createCliRenderer({ exitOnCtrlC: false });
+  const root = createRoot(renderer);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const onExit = async () => {
+        try {
+          await input.onExit?.();
+          resolve();
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error("TUI exit failed"));
+        }
+      };
+      root.render(
+        <ExitProvider onExit={onExit}>
+          <App version={input.version} />
+        </ExitProvider>
+      );
+    });
+  } finally {
+    try {
+      renderer.setTerminalTitle("");
+      root.unmount();
+    } finally {
+      renderer.destroy();
+    }
+  }
 }

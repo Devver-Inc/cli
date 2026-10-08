@@ -2,7 +2,18 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { Schema } from "effect";
+
 import { idToken } from "./jwt";
+
+const decodeProbe = Schema.decodeUnknownSync(
+  Schema.Struct({
+    token: Schema.optional(Schema.String),
+    message: Schema.optional(Schema.NullOr(Schema.String)),
+    refreshes: Schema.Finite,
+  })
+);
 
 const repo = join(import.meta.dir, "..");
 
@@ -72,7 +83,7 @@ function probe(root: string, body: string) {
     throw new Error(`probe failed: ${result.stderr.toString()}`);
   }
   const lines = result.stdout.toString().trim().split("\n");
-  return JSON.parse(lines.at(-1) ?? "null");
+  return decodeProbe(JSON.parse(lines.at(-1) ?? "null"));
 }
 
 test("a valid stored token is used without contacting the provider", () => {

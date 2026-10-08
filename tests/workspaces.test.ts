@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   cpSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -9,15 +10,54 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { Schema } from "effect";
+
 const root = join(import.meta.dir, "..");
-const read = (file: string) =>
-  JSON.parse(readFileSync(join(root, file), "utf8"));
+const decodeDocument = Schema.decodeUnknownSync(
+  Schema.Record(Schema.String, Schema.Unknown)
+);
+const readDocument = (file: string) =>
+  decodeDocument(JSON.parse(readFileSync(join(root, file), "utf-8")));
+const decodeWorkspace = Schema.decodeUnknownSync(
+  Schema.Struct({
+    version: Schema.String,
+    private: Schema.Boolean,
+    workspaces: Schema.Array(Schema.String),
+  })
+);
+const decodeCli = Schema.decodeUnknownSync(
+  Schema.Struct({
+    version: Schema.String,
+    bin: Schema.Struct({
+      devver: Schema.String,
+      "devver-server": Schema.String,
+    }),
+    dependencies: Schema.Record(Schema.String, Schema.String),
+  })
+);
+const decodeVersion = Schema.decodeUnknownSync(
+  Schema.Struct({ version: Schema.String })
+);
+const decodeLock = Schema.decodeUnknownSync(
+  Schema.Struct({
+    packages: Schema.Struct({
+      "packages/cli": Schema.Struct({
+        version: Schema.String,
+        bin: Schema.Struct({
+          devver: Schema.String,
+          "devver-server": Schema.String,
+        }),
+      }),
+      "packages/server": Schema.Struct({ version: Schema.String }),
+    }),
+  })
+);
 
 test("one release version synchronizes the publishable CLI and offline server", () => {
-  const workspace = read("package.json");
-  const cli = read("packages/cli/package.json");
-  const server = read("packages/server/package.json");
-  const lock = read("package-lock.json");
+  const workspace = decodeWorkspace(readDocument("package.json"));
+  const cli = decodeCli(readDocument("packages/cli/package.json"));
+  const server = decodeVersion(readDocument("packages/server/package.json"));
+  const lock = decodeLock(readDocument("package-lock.json"));
   expect(workspace.private).toBe(true);
   expect(workspace.workspaces).toEqual(["packages/cli", "packages/server"]);
   expect(cli.version).toBe(workspace.version);
@@ -33,8 +73,8 @@ test("one release version synchronizes the publishable CLI and offline server", 
 });
 
 test("release version check rejects Bun workspace version and server bin drift", () => {
-  const original = readFileSync(join(root, "bun.lock"), "utf8");
-  const version = read("package.json").version;
+  const original = readFileSync(join(root, "bun.lock"), "utf-8");
+  const { version } = decodeVersion(readDocument("package.json"));
   const temp = mkdtempSync(join(tmpdir(), "devver-bun-lock-check-"));
   try {
     for (const file of [
@@ -79,11 +119,35 @@ test("release version check rejects Bun workspace version and server bin drift",
   }
 });
 
+test("version check rejects malformed manifests without rewriting them", () => {
+  const temp = mkdtempSync(join(tmpdir(), "devver-invalid-manifest-"));
+  try {
+    cpSync(join(root, "package.json"), join(temp, "package.json"));
+    cpSync(
+      join(root, "packages/server/package.json"),
+      join(temp, "packages/server/package.json"),
+      { recursive: true }
+    );
+    const cliPath = join(temp, "packages/cli/package.json");
+    mkdirSync(join(temp, "packages/cli"), { recursive: true });
+    const invalid = '{"version":"not-a-version","bin":"not-an-object"}';
+    writeFileSync(cliPath, invalid);
+    const result = Bun.spawnSync(
+      ["bun", "run", join(root, "scripts/sync-version.ts"), "--check"],
+      { cwd: temp, stdout: "pipe", stderr: "pipe" }
+    );
+    expect(result.exitCode).not.toBe(0);
+    expect(readFileSync(cliPath, "utf-8")).toBe(invalid);
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
 test("stable and nightly publish the CLI workspace, not the private root", () => {
   for (const channel of ["release", "nightly"]) {
     const workflow = readFileSync(
       join(root, `.github/workflows/${channel}.yml`),
-      "utf8"
+      "utf-8"
     );
     expect(workflow).toContain("bun run sync:version");
     expect(workflow).toContain("npm publish --workspace @devver/cli");
@@ -112,11 +176,14 @@ test("release version check detects drift without rewriting tracked manifests", 
     ]) {
       cpSync(join(root, file), join(temp, file), { recursive: true });
     }
-    const cli = JSON.parse(
-      readFileSync(join(temp, "packages/cli/package.json"), "utf8")
+    const cliPath = join(temp, "packages/cli/package.json");
+    const original = readFileSync(cliPath, "utf-8");
+    const expectedBin = `dist/servers/${decodeVersion(readDocument("package.json")).version}/server.mjs`;
+    expect(original).toContain(expectedBin);
+    writeFileSync(
+      cliPath,
+      original.replace(expectedBin, "dist/servers/outdated/server.mjs")
     );
-    cli.bin["devver-server"] = "dist/servers/outdated/server.mjs";
-    writeFileSync(join(temp, "packages/cli/package.json"), JSON.stringify(cli));
     const drift = Bun.spawnSync(
       ["bun", "run", join(root, "scripts/sync-version.ts"), "--check"],
       { cwd: temp, stdout: "pipe", stderr: "pipe" }

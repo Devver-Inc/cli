@@ -1,28 +1,18 @@
 import { Effect, Schema } from "effect";
-import { ApiClient, type ApiRequestError } from "./client";
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+import {
+  DatabaseType,
+  MachineConfigurationBase,
+  OverlayAccessControlBase,
+  ProjectDescriptionField,
+  ProjectNameField,
+  validateCreateProject,
+} from "../domain/project";
+import type { CreateProjectDto, InvalidProjectInput } from "../domain/project";
+import { ApiClient } from "./client";
+import type { ApiRequestError } from "./client";
 
-export const OverlayCommentPermission = {
-  TEAM_ONLY: "team_only",
-  EMAIL_REQUIRED: "email_required",
-} as const;
-
-export type OverlayCommentPermission =
-  (typeof OverlayCommentPermission)[keyof typeof OverlayCommentPermission];
-
-export const DatabaseType = {
-  MONGO: "mongo",
-} as const;
-
-export type DatabaseType = (typeof DatabaseType)[keyof typeof DatabaseType];
-
-// ---------------------------------------------------------------------------
-// Schemas -- *Base objects are shared between input and response schemas
-// to avoid duplication while keeping validation constraints separate.
-// ---------------------------------------------------------------------------
+// Response schemas share domain constraints with outgoing project settings.
 
 const GetUserLightSchema = Schema.Struct({
   id: Schema.String,
@@ -31,41 +21,8 @@ const GetUserLightSchema = Schema.Struct({
   avatarUrl: Schema.NullOr(Schema.String),
 });
 
-const MachineConfigurationBase = {
-  cpuCores: Schema.Number.check(Schema.isBetween({ minimum: 0.5, maximum: 2 })),
-  ram: Schema.Number.check(Schema.isBetween({ minimum: 0.5, maximum: 2 })),
-};
-
-const OverlayAccessControlBase = {
-  commentPermission: Schema.Literals([
-    OverlayCommentPermission.TEAM_ONLY,
-    OverlayCommentPermission.EMAIL_REQUIRED,
-  ]),
-};
-
 const MachineConfigurationResponse = Schema.Struct(MachineConfigurationBase);
 const OverlayAccessControlResponse = Schema.Struct(OverlayAccessControlBase);
-
-const MachineConfigurationInput = Schema.Struct({
-  cpuCores: Schema.optional(MachineConfigurationBase.cpuCores),
-  ram: Schema.optional(MachineConfigurationBase.ram),
-});
-
-const OverlayAccessControlInput = Schema.Struct({
-  commentPermission: OverlayAccessControlBase.commentPermission,
-});
-
-// -- Database configuration ------------------------------------------------
-
-const DatabaseConfigurationInput = Schema.Struct({
-  type: Schema.Literal(DatabaseType.MONGO),
-  rootUsername: Schema.String.check(Schema.isMinLength(1)),
-  rootPassword: Schema.String.check(Schema.isMinLength(1)),
-  replicaCount: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 3 })),
-  ram: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0.5)),
-  cpuCores: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0.1)),
-  storage: Schema.Int.check(Schema.isBetween({ minimum: 5, maximum: 500 })),
-});
 
 export const DatabaseConfigurationResponseSchema = Schema.Struct({
   type: Schema.Literal(DatabaseType.MONGO),
@@ -80,29 +37,10 @@ export const DatabaseConfigurationResponseSchema = Schema.Struct({
 
 // -- Project ---------------------------------------------------------------
 
-const ProjectNameField = Schema.String.check(
-  Schema.isMinLength(1),
-  Schema.isMaxLength(128),
-  Schema.isNonEmpty()
-);
-
-const ProjectDescriptionField = Schema.NullishOr(
-  Schema.NonEmptyString.check(Schema.isMaxLength(256))
-);
-
 const ProjectBase = {
   name: ProjectNameField,
   description: ProjectDescriptionField,
 };
-
-export const CreateProjectSchema = Schema.Struct({
-  name: ProjectNameField,
-  description: Schema.optional(ProjectDescriptionField),
-  machineConfiguration: MachineConfigurationInput,
-  teamMemberIds: Schema.Array(Schema.NonEmptyString),
-  overlayAccessControl: OverlayAccessControlInput,
-  databaseConfiguration: Schema.optional(DatabaseConfigurationInput),
-});
 
 export const CreateProjectResponseSchema = Schema.Struct({
   id: Schema.NonEmptyString,
@@ -146,11 +84,7 @@ export const PaginatedProjectsSchema = Schema.Struct({
   }),
 });
 
-type CreateProjectDto = Schema.Schema.Type<typeof CreateProjectSchema>;
-
-// ---------------------------------------------------------------------------
 // Request functions
-// ---------------------------------------------------------------------------
 
 export const getProjects = Effect.gen(function* () {
   const api = yield* ApiClient;
@@ -166,10 +100,15 @@ export const getProjectById = (id: string) =>
 
 export const createProject = (
   dto: CreateProjectDto
-): Effect.Effect<CreateProjectResponse, ApiRequestError, ApiClient> =>
+): Effect.Effect<
+  CreateProjectResponse,
+  ApiRequestError | InvalidProjectInput,
+  ApiClient
+> =>
   Effect.gen(function* () {
+    const input = yield* validateCreateProject(dto);
     const api = yield* ApiClient;
-    return yield* api.post("/projects", dto, CreateProjectResponseSchema);
+    return yield* api.post("/projects", input, CreateProjectResponseSchema);
   });
 
 export const deleteProjectById = (id: string) =>

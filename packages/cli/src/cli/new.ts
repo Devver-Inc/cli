@@ -8,15 +8,15 @@ const createServer = Command.make(
     Effect.tryPromise(async () => {
       if (process.platform === "darwin") {
         const { create } = await import("./supervised-server-macos");
-        return create(name);
+        return await create(name);
       }
       if (process.platform === "linux") {
         const { create } = await import("./supervised-server-linux");
-        return create(name);
+        return await create(name);
       }
       if (process.platform === "win32") {
         const { create } = await import("./windows-supervised-server");
-        return create(name);
+        return await create(name);
       }
       throw new Error(
         `Creating a supervised server is currently unsupported on ${process.platform}`

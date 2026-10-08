@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 
-function opener(url: string): { command: string; args: string[] } {
+function opener(url: string) {
   if (process.platform === "darwin") {
     return { command: "open", args: [url] };
   }
@@ -10,11 +10,15 @@ function opener(url: string): { command: string; args: string[] } {
   return { command: "xdg-open", args: [url] };
 }
 
-export function openBrowser(url: string): Promise<boolean> {
+export async function openBrowser(url: string): Promise<boolean> {
   const { command, args } = opener(url);
   return new Promise((resolve) => {
     const child = spawn(command, args, { stdio: "ignore" });
-    child.once("error", () => resolve(false));
-    child.once("close", (code) => resolve(code === 0));
+    child.once("error", () => {
+      resolve(false);
+    });
+    child.once("close", (code) => {
+      resolve(code === 0);
+    });
   });
 }

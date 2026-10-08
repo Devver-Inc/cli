@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+
 import { Storage } from "../../storage";
 
 const REPOSITORY_LINKS_KEY = "repository/links";
@@ -65,11 +66,11 @@ export async function unlinkRepo(folderPath: string): Promise<void> {
   await writeLinksMap(rest);
 }
 
-export function getLinkedRepoForCwd(): Promise<RepoLink | null> {
+export async function getLinkedRepoForCwd(): Promise<RepoLink | null> {
   return getLinkedRepo(process.cwd());
 }
 
-export function linkRepoForCwd(
+export async function linkRepoForCwd(
   repoName: string,
   repoUrl: string
 ): Promise<void> {

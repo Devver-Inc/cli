@@ -1,11 +1,12 @@
 import { spawn } from "node:child_process";
+
 import { DeployAbortError } from "../../error";
 import { Prompt } from "../prompts";
 
-const commitHash = /^[a-f0-9]{40,64}$/i;
-const aheadBehind = /^(\d+)\s+(\d+)$/;
+const commitHash = /^[a-f0-9]{40,64}$/iu;
+const aheadBehind = /^(?<ahead>\d+)\s+(?<behind>\d+)$/u;
 
-function git(...args: string[]): Promise<{
+async function git(...args: string[]): Promise<{
   code: number | null;
   stdout: string;
   stderr: string;
@@ -14,16 +15,20 @@ function git(...args: string[]): Promise<{
     const child = spawn("git", args, { cwd: process.cwd() });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
-    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
-    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout.push(chunk);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr.push(chunk);
+    });
     child.once("error", reject);
-    child.once("close", (code) =>
+    child.once("close", (code) => {
       resolve({
         code,
-        stdout: Buffer.concat(stdout).toString("utf8").trim(),
-        stderr: Buffer.concat(stderr).toString("utf8").trim(),
-      })
-    );
+        stdout: Buffer.concat(stdout).toString("utf-8").trim(),
+        stderr: Buffer.concat(stderr).toString("utf-8").trim(),
+      });
+    });
   });
 }
 
@@ -159,16 +164,18 @@ export async function checkForConflicts(
   }
   requireSuccess(await git("fetch", pushUrl, `refs/heads/${branch}`), "fetch");
   requireSuccess(await git("merge-base", "HEAD", "FETCH_HEAD"), "merge-base");
-  const counts = requireSuccess(
-    await git("rev-list", "--left-right", "--count", "HEAD...FETCH_HEAD"),
-    "rev-list"
-  ).match(aheadBehind);
+  const counts = aheadBehind.exec(
+    requireSuccess(
+      await git("rev-list", "--left-right", "--count", "HEAD...FETCH_HEAD"),
+      "rev-list"
+    )
+  );
   if (!counts) {
     throw new DeployAbortError(
       "Git rev-list returned invalid ahead/behind counts"
     );
   }
-  const behind = Number(counts[2]);
+  const behind = Number(counts.groups?.behind);
   if (!Number.isSafeInteger(behind)) {
     throw new DeployAbortError("Git rev-list returned invalid behind count");
   }

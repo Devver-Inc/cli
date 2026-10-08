@@ -2,7 +2,14 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { Schema } from "effect";
+
 import { idToken } from "./jwt";
+
+const decodeOrganizations = Schema.decodeUnknownSync(
+  Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String }))
+);
 
 const repo = join(import.meta.dir, "..");
 
@@ -46,7 +53,7 @@ function probe(accessTokenClaims: string) {
       throw new Error(`probe failed: ${result.stderr.toString()}`);
     }
     const lines = result.stdout.toString().trim().split("\n");
-    return JSON.parse(lines.at(-1) ?? "null");
+    return decodeOrganizations(JSON.parse(lines.at(-1) ?? "null"));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

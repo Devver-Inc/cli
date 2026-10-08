@@ -8,9 +8,13 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { createServer, type Server } from "node:http";
+import { createServer } from "node:http";
+import type { Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { Schema } from "effect";
+
 import pkg from "../package.json" with { type: "json" };
 
 const cli = join(
@@ -30,7 +34,10 @@ const server = join(
   "src",
   "index.ts"
 );
-const CONTROL_URL = /^http:\/\/127\.0\.0\.1:\d+\/api\/v1$/;
+const CONTROL_URL = /^http:\/\/127\.0\.0\.1:\d+\/api\/v1$/u;
+const decodeAddress = Schema.decodeUnknownSync(
+  Schema.Struct({ port: Schema.Finite })
+);
 
 function workspace() {
   const root = mkdtempSync(join(tmpdir(), "devver-attach-"));
@@ -69,9 +76,11 @@ async function foreground(
     const reader = child.stdout.getReader();
     const output = await Promise.race([
       reader.read(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Server did not start")), 5000)
-      ),
+      new Promise<never>((_resolve, reject) => {
+        setTimeout(() => {
+          reject(new Error("Server did not start"));
+        }, 5000);
+      }),
     ]);
     reader.releaseLock();
     const url = new TextDecoder().decode(output.value).trim();
@@ -91,14 +100,13 @@ async function responder(
   body: string,
   headers: Record<string, string> = {}
 ) {
-  const service = createServer((_request, response) =>
-    response.writeHead(status, headers).end(body)
-  );
-  await new Promise<void>((resolve) => service.listen(0, "127.0.0.1", resolve));
-  const address = service.address();
-  if (!address || typeof address === "string") {
-    throw new Error("Not listening");
-  }
+  const service = createServer((_request, response) => {
+    response.writeHead(status, headers).end(body);
+  });
+  await new Promise<void>((resolve) => {
+    service.listen(0, "127.0.0.1", resolve);
+  });
+  const address = decodeAddress(service.address());
   return { service, url: `http://127.0.0.1:${address.port}/api/v1` };
 }
 
@@ -124,10 +132,9 @@ test("storing api-url fails instead of reporting a routing change it cannot make
     expect(stored.output).toContain("devver attach");
     expect(stored.output).not.toContain("✓");
     // Nothing was persisted, so no later command can read it back as a target.
-    expect(await ws.run("config", "get", "api-url")).toMatchObject({
-      status: 0,
-      output: expect.stringContaining("is not set"),
-    });
+    const read = await ws.run("config", "get", "api-url");
+    expect(read.status).toBe(0);
+    expect(read.output).toContain("is not set");
   } finally {
     rmSync(ws.root, { recursive: true, force: true });
   }
@@ -179,10 +186,9 @@ test("server list reads sorted instances, verifies responders and preserves sele
   const children: ReturnType<typeof Bun.spawn>[] = [];
   const services: Server[] = [];
   try {
-    expect(await ws.run("server", "list")).toMatchObject({
-      status: 0,
-      output: expect.stringContaining("No server instances found"),
-    });
+    const empty = await ws.run("server", "list");
+    expect(empty.status).toBe(0);
+    expect(empty.output).toContain("No server instances found");
     expect(existsSync(join(ws.root, "devver", "servers"))).toBe(false);
     const second = await foreground(ws.env, "zeta");
     children.push(second.child);
@@ -209,7 +215,7 @@ test("server list reads sorted instances, verifies responders and preserves sele
     save("alpha", first.url);
     expect((await ws.run("attach", first.url)).status).toBe(0);
     const configFile = join(ws.root, "devver", "config", "cli");
-    const selectedConfig = readFileSync(configFile, "utf8");
+    const selectedConfig = readFileSync(configFile, "utf-8");
     const listed = await ws.run("server", "list");
     expect(listed.status).toBe(0);
     expect(listed.output.indexOf("alpha (")).toBeLessThan(
@@ -226,7 +232,7 @@ test("server list reads sorted instances, verifies responders and preserves sele
       `${first.url} — version 0.1.0: mismatched version [selected]`
     );
     save("alpha", first.url);
-    expect(readFileSync(configFile, "utf8")).toBe(selectedConfig);
+    expect(readFileSync(configFile, "utf-8")).toBe(selectedConfig);
 
     await stop(second.child);
     children.pop();
@@ -271,7 +277,7 @@ test("server list reads sorted instances, verifies responders and preserves sele
     expect(unsafe.status).not.toBe(0);
     expect(unsafe.output).toContain("zeta");
     expect(unsafe.output).not.toContain("private invalid JSON");
-    expect(readFileSync(serviceFile("zeta"), "utf8")).toBe(
+    expect(readFileSync(serviceFile("zeta"), "utf-8")).toBe(
       "private invalid JSON"
     );
     save("zeta", redirect.url, pkg.version, 99_999);
@@ -282,19 +288,22 @@ test("server list reads sorted instances, verifies responders and preserves sele
     expect(exposed.status).not.toBe(0);
     expect(exposed.output).toContain("zeta");
     chmodSync(serviceFile("zeta"), 0o600);
-    expect(readFileSync(configFile, "utf8")).toBe(selectedConfig);
+    expect(readFileSync(configFile, "utf-8")).toBe(selectedConfig);
     writeFileSync(configFile, '{"local-target":{"url":"broken"}}');
     expect((await ws.run("server", "list")).status).not.toBe(0);
-    expect(readFileSync(configFile, "utf8")).toBe(
+    expect(readFileSync(configFile, "utf-8")).toBe(
       '{"local-target":{"url":"broken"}}'
     );
   } finally {
     await Promise.all(children.map(stop));
     await Promise.all(
-      services.map(
-        (service) =>
-          new Promise<void>((resolve) => service.close(() => resolve()))
-      )
+      services.map(async (service) => {
+        await new Promise<void>((resolve) => {
+          service.close(() => {
+            resolve();
+          });
+        });
+      })
     );
     rmSync(ws.root, { recursive: true, force: true });
   }
@@ -416,15 +425,12 @@ test("invalid and incompatible attachments fail without replacing a selected ser
     expect(
       (await ws.run("attach", "http://127.0.0.1:1/api/v1")).status
     ).not.toBe(0);
-    const stalled = createServer(() => undefined);
+    const stalled = createServer(() => {});
     services.push(stalled);
-    await new Promise<void>((resolve) =>
-      stalled.listen(0, "127.0.0.1", resolve)
-    );
-    const stalledAddress = stalled.address();
-    if (!stalledAddress || typeof stalledAddress === "string") {
-      throw new Error("Not listening");
-    }
+    await new Promise<void>((resolve) => {
+      stalled.listen(0, "127.0.0.1", resolve);
+    });
+    const stalledAddress = decodeAddress(stalled.address());
     const started = Date.now();
     expect(
       (await ws.run("attach", `http://127.0.0.1:${stalledAddress.port}/api/v1`))
@@ -436,12 +442,12 @@ test("invalid and incompatible attachments fail without replacing a selected ser
     expect(selected.output).toContain(first.url);
 
     const configFile = join(ws.root, "devver", "config", "cli");
-    const saved = readFileSync(configFile, "utf8");
+    const saved = readFileSync(configFile, "utf-8");
     writeFileSync(configFile, '{"local-target":{"url":"broken"}}');
     expect((await ws.run("server", "status")).status).not.toBe(0);
     expect((await ws.run("attach", first.url)).status).not.toBe(0);
     expect((await ws.run("detach")).status).not.toBe(0);
-    expect(readFileSync(configFile, "utf8")).toBe(
+    expect(readFileSync(configFile, "utf-8")).toBe(
       '{"local-target":{"url":"broken"}}'
     );
     writeFileSync(
@@ -455,9 +461,13 @@ test("invalid and incompatible attachments fail without replacing a selected ser
   } finally {
     await stop(first.child);
     await Promise.all(
-      services.map((service) => {
+      services.map(async (service) => {
         service.closeAllConnections();
-        return new Promise<void>((resolve) => service.close(() => resolve()));
+        return new Promise<void>((resolve) => {
+          service.close(() => {
+            resolve();
+          });
+        });
       })
     );
     rmSync(ws.root, { recursive: true, force: true });

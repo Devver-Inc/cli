@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+
 import { ApiClient } from "./client";
 
 // ---------------------------------------------------------------------------
@@ -151,8 +152,6 @@ export const createRepository = (
 ) =>
   Effect.gen(function* () {
     const api = yield* ApiClient;
-    console.log(projectId);
-    console.log(body);
     return yield* api.post(`/projects/${projectId}/repos`, body, GetRepoSchema);
   });
 

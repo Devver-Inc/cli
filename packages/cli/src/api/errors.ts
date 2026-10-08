@@ -35,6 +35,8 @@ export const BackendErrorBodySchema = Schema.Struct({
 
 export type BackendErrorBody = typeof BackendErrorBodySchema.Type;
 
+// Indexed by arbitrary backend codes; retain the dictionary contract for unknown codes.
+// oxlint-disable-next-line anti-slop/no-known-value-widening
 const ERROR_MESSAGES: Record<string, string> = {
   // ── Deploy Agent ────────────────────────────────────────────────────
   REPO_NOT_FOUND:
@@ -151,32 +153,42 @@ export function getErrorMessage(code: string, fallback?: string): string {
  * a single-line message suitable for CLI output.
  */
 export function formatBackendError(body: BackendErrorBody): string {
+  // This value has already been decoded as string | readonly string[].
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof
   const code = typeof body.message === "string" ? body.message : undefined;
-  const statusLabel = body.statusCode ? `(${body.statusCode})` : "";
+  const statusLabel =
+    body.statusCode === undefined ? "" : `(${body.statusCode})`;
 
   // Validation errors with field details
-  if (body.errors && Array.isArray(body.errors) && body.errors.length > 0) {
+  if (body.errors !== undefined && body.errors.length > 0) {
     const details = body.errors
-      .map((e) => `${e.field}: ${e.message}`)
+      .map(
+        (e: NonNullable<BackendErrorBody["errors"]>[number]) =>
+          `${e.field}: ${e.message}`
+      )
       .join("; ");
     return `Validation failed — ${details} ${statusLabel}`.trim();
   }
 
   // Unique constraint violation with field info
-  if (code === "UNIQUE_CONSTRAINT_VIOLATION" && body.field) {
+  if (
+    code === "UNIQUE_CONSTRAINT_VIOLATION" &&
+    body.field !== undefined &&
+    body.field !== ""
+  ) {
     const friendly = getErrorMessage("UNIQUE_CONSTRAINT");
-    return `${friendly} (field: "${body.field}", value: "${body.value ?? ""}") ${statusLabel}`.trim();
+    return `${friendly} (field: "${body.field}") ${statusLabel}`.trim();
   }
 
   // Known error code with a friendly message
-  if (code) {
+  if (code !== undefined && code !== "") {
     const friendly = getErrorMessage(code);
     // If we got a friendly message that differs from the raw code, include both
     if (friendly !== code) {
       return `${friendly} ${statusLabel}`.trim();
     }
     // No friendly mapping — use the raw code with the HTTP error category
-    if (body.error) {
+    if (body.error !== undefined && body.error !== "") {
       return `${code} — ${body.error} ${statusLabel}`.trim();
     }
     return `${code} ${statusLabel}`.trim();
@@ -188,7 +200,7 @@ export function formatBackendError(body: BackendErrorBody): string {
   }
 
   // Fallback: whatever we have
-  if (body.error) {
+  if (body.error !== undefined && body.error !== "") {
     return `${body.error} ${statusLabel}`.trim();
   }
 

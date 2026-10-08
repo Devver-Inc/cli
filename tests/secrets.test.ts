@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { readSecretsFile, setDeploymentEnv } from "../packages/cli/config";
 
 test("secrets are private and corrupt files are not overwritten", () => {
@@ -21,7 +22,14 @@ test("secrets are private and corrupt files are not overwritten", () => {
     }
     writeFileSync(file, "broken JSON");
     expect(() => readSecretsFile(root)).toThrow("Invalid secrets file");
-    expect(() => setDeploymentEnv("app", { PASSWORD: "new" }, root)).toThrow();
+    try {
+      readSecretsFile(root);
+    } catch (error) {
+      expect(error instanceof Error ? error.cause : error).toBeUndefined();
+    }
+    expect(() => {
+      setDeploymentEnv("app", { PASSWORD: "new" }, root);
+    }).toThrow();
     expect(readFileSync(file, "utf-8")).toBe("broken JSON");
   } finally {
     rmSync(root, { recursive: true, force: true });

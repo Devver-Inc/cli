@@ -9,12 +9,14 @@
 import { randomUUID } from "node:crypto";
 import { link, lstat, mkdir, open, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+
 import pkg from "../../../../package.json" with { type: "json" };
 
 const DIRECTORY_MODE = 0o700;
 const FILE_MODE = 0o700;
 
+// Filesystem errors are unknown until the Node EEXIST code is checked.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 function existing(error: unknown) {
   return error instanceof Error && "code" in error && error.code === "EEXIST";
 }
@@ -47,9 +49,7 @@ export async function pinServer(parent: string) {
   const npm = process.versions.bun === undefined;
   // The npm CLI is split into ESM chunks beside dist/servers; argv[1] may
   // be the extensionless npm bin symlink rather than dist/cli.mjs.
-  const sourceRoot = npm
-    ? dirname(fileURLToPath(import.meta.url))
-    : dirname(process.execPath);
+  const sourceRoot = npm ? import.meta.dirname : dirname(process.execPath);
   const source = join(
     sourceRoot,
     "servers",

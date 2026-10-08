@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
+
 import pkg from "../package.json";
 
 function cli(...args: string[]) {

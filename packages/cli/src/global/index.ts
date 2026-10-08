@@ -5,6 +5,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+
 import { xdgCache, xdgConfig, xdgData, xdgState } from "xdg-basedir";
 
 const app = "devver";
@@ -16,7 +17,8 @@ const state = path.join(xdgState ?? os.homedir(), app);
 
 const Path = {
   get home() {
-    return process.env.DEVVER_TEST_HOME || os.homedir();
+    const testHome = process.env.DEVVER_TEST_HOME;
+    return testHome === undefined || testHome === "" ? os.homedir() : testHome;
   },
   data,
   bin: path.join(data, "bin"),

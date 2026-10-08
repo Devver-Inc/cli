@@ -17,7 +17,7 @@ const driver = join(import.meta.dir, "list-driver.ts");
 
 function run(data: string, command: "create" | "list", name?: string) {
   const result = Bun.spawnSync(
-    ["bun", "run", driver, command, ...(name ? [name] : [])],
+    ["bun", "run", driver, command, ...(name === undefined ? [] : [name])],
     {
       env: { ...process.env, XDG_DATA_HOME: data },
       stdout: "pipe",
@@ -120,7 +120,7 @@ test("listing fails closed for corrupt, symlinked or exposed instance state", ()
       }
       expect(listed.error).not.toContain("private broken JSON");
       if (damage === "corrupt") {
-        expect(readFileSync(file, "utf8")).toBe("private broken JSON");
+        expect(readFileSync(file, "utf-8")).toBe("private broken JSON");
       }
     } finally {
       rmSync(root, { recursive: true, force: true });

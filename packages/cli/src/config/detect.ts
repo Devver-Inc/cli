@@ -9,12 +9,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { cwd } from "node:process";
+
 import { Schema } from "effect";
 
 export interface ProjectDetector {
   readonly name: string;
   readonly displayName: string;
-  detect(ctx: DetectionContext): Promise<boolean>;
+  detect: (ctx: DetectionContext) => Promise<boolean>;
 }
 
 export interface DetectionContext {
@@ -155,15 +156,15 @@ export function createDependencyDetector(
   return {
     name,
     displayName,
-    detect(ctx) {
+    async detect(ctx) {
       if (!ctx.pkg) {
-        return Promise.resolve(false);
+        return false;
       }
       const allDeps = {
         ...ctx.pkg.dependencies,
         ...ctx.pkg.devDependencies,
       };
-      return Promise.resolve(deps.some((dep) => allDeps[dep] !== undefined));
+      return deps.some((dep) => allDeps[dep] !== undefined);
     },
   };
 }
@@ -176,8 +177,8 @@ export function createFileDetector(
   return {
     name,
     displayName,
-    detect(ctx) {
-      return Promise.resolve(files.some((file) => ctx.hasFile(file)));
+    async detect(ctx) {
+      return files.some((file) => ctx.hasFile(file));
     },
   };
 }
@@ -190,10 +191,8 @@ export function createEnvDetector(
   return {
     name,
     displayName,
-    detect(ctx) {
-      return Promise.resolve(
-        patterns.some((pattern) => ctx.hasEnvVar(pattern))
-      );
+    async detect(ctx) {
+      return patterns.some((pattern) => ctx.hasEnvVar(pattern));
     },
   };
 }

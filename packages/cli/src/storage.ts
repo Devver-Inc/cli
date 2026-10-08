@@ -1,7 +1,10 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { type DirectoryListing, FileStorage } from "@flystorage/file-storage";
+
+import { FileStorage } from "@flystorage/file-storage";
+import type { DirectoryListing } from "@flystorage/file-storage";
 import { LocalStorageAdapter } from "@flystorage/local-fs";
+
 import { Global } from "./global";
 
 /**
@@ -19,7 +22,7 @@ async function write(filePath: string, contents: string): Promise<void> {
   await storage.write(filePath, contents);
 }
 
-function readToString(filePath: string): Promise<string> {
+async function readToString(filePath: string): Promise<string> {
   return storage.readToString(filePath);
 }
 
@@ -27,11 +30,11 @@ async function deleteFile(filePath: string): Promise<void> {
   await storage.deleteFile(filePath);
 }
 
-function fileExists(filePath: string): Promise<boolean> {
+async function fileExists(filePath: string): Promise<boolean> {
   return storage.fileExists(filePath);
 }
 
-function folderExists(folderPath: string): Promise<boolean> {
+async function folderExists(folderPath: string): Promise<boolean> {
   return storage.directoryExists(folderPath);
 }
 

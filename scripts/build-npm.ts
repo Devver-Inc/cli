@@ -10,6 +10,7 @@
  */
 
 import { chmodSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+
 import pkg from "../package.json";
 import cli from "../packages/cli/package.json";
 import { buildDefines } from "./stamp";
