@@ -1,7 +1,17 @@
 import { spawn } from "node:child_process";
 
-import { DeployAbortError } from "../../error";
 import { Prompt } from "../prompts";
+
+/**
+ * Raised when the repository state cannot support a deployment, including when
+ * a subprocess result is unknown. Every check here fails closed with one.
+ */
+export class DeployAbortError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DeployAbortError";
+  }
+}
 
 const commitHash = /^[a-f0-9]{40,64}$/iu;
 const aheadBehind = /^(?<ahead>\d+)\s+(?<behind>\d+)$/u;
