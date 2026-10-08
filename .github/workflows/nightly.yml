@@ -48,7 +48,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.changes.outputs.changed == 'true'
         with:
-          node-version: '26.5.0'
+          node-version: "26.5.0"
       - run: bun run sync:version && bun install --frozen-lockfile && bun run check:version
         if: steps.changes.outputs.changed == 'true'
       - run: bun run check && bun run typecheck && bun test
@@ -90,7 +90,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v4
         with:
-          node-version: '26.5.0'
+          node-version: "26.5.0"
       - run: bun run sync:version && bun install --frozen-lockfile
       - name: Stamp nightly version
         run: npm version '${{ needs.prepare.outputs.version }}' --no-git-tag-version && bun run sync:version

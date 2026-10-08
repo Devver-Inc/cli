@@ -22,15 +22,20 @@ description: Scroll and cull child content in a bounded viewport
 ### Renderable API
 
 ```typescript
-import { ScrollBoxRenderable, TextRenderable, BoxRenderable, createCliRenderer } from "@opentui/core"
+import {
+  ScrollBoxRenderable,
+  TextRenderable,
+  BoxRenderable,
+  createCliRenderer,
+} from "@opentui/core";
 
-const renderer = await createCliRenderer()
+const renderer = await createCliRenderer();
 
 const scrollbox = new ScrollBoxRenderable(renderer, {
   id: "scrollbox",
   width: 40,
   height: 20,
-})
+});
 
 // Add content to the scrollbox
 for (let i = 0; i < 100; i++) {
@@ -40,11 +45,11 @@ for (let i = 0; i < 100; i++) {
       width: "100%",
       height: 2,
       backgroundColor: i % 2 === 0 ? "#292e42" : "#2f3449",
-    }),
-  )
+    })
+  );
 }
 
-renderer.root.add(scrollbox)
+renderer.root.add(scrollbox);
 ```
 
 A bordered list of source files initially shows its first five rows:
@@ -71,7 +76,7 @@ const scrollbox = new ScrollBoxRenderable(renderer, {
   height: 20,
   stickyScroll: true,
   stickyStart: "bottom", // New content will keep the view scrolled to bottom
-})
+});
 ```
 
 ### Sticky positions
@@ -94,7 +99,7 @@ const scrollbox = new ScrollBoxRenderable(renderer, {
   height: 30,
   scrollX: true,
   scrollY: true,
-})
+});
 ```
 
 By default, `scrollY` is `true` and `scrollX` is `false`.
@@ -109,7 +114,7 @@ const scrollbox = new ScrollBoxRenderable(renderer, {
   width: 40,
   height: 20,
   viewportCulling: true, // Only render visible items
-})
+});
 ```
 
 Viewport culling skips render calls for offscreen children, so their `renderBefore` and `renderAfter` hooks do not run. Do not make layout or state depend on render hooks. Disable `viewportCulling` if every child must run a render hook.
@@ -137,7 +142,7 @@ const scrollbox = new ScrollBoxRenderable(renderer, {
   horizontalScrollbarOptions: {
     trackOptions: { backgroundColor: "#333" },
   },
-})
+});
 ```
 
 ## Customizing sub-components
@@ -161,7 +166,7 @@ const scrollbox = new ScrollBoxRenderable(renderer, {
   contentOptions: {
     backgroundColor: "#16161e",
   },
-})
+});
 ```
 
 ## Scroll methods
@@ -172,13 +177,13 @@ Scroll by a relative amount:
 
 ```typescript
 // Scroll down 5 lines
-scrollbox.scrollBy(5)
+scrollbox.scrollBy(5);
 
 // Scroll with both x and y
-scrollbox.scrollBy({ x: 10, y: 5 })
+scrollbox.scrollBy({ x: 10, y: 5 });
 
 // Scroll by viewport (page)
-scrollbox.scrollBy(1, "viewport")
+scrollbox.scrollBy(1, "viewport");
 ```
 
 ### scrollTo
@@ -187,10 +192,10 @@ Scroll to an absolute position:
 
 ```typescript
 // Scroll to top
-scrollbox.scrollTo(0)
+scrollbox.scrollTo(0);
 
 // Scroll to specific position
-scrollbox.scrollTo({ x: 0, y: 100 })
+scrollbox.scrollTo({ x: 0, y: 100 });
 ```
 
 The same list after `scrollTo(5)`:
@@ -208,16 +213,13 @@ offset: 5 / 7
 
 ### scrollChildIntoView
 
-Scroll the minimum distance needed to show a nested child in the viewport. The method uses DOM-style "nearest"
-behavior. If the child already fits, the call is a no-op. An oversized child also stays in place when it extends beyond
-both edges of an axis. Otherwise, the method scrolls to reveal the nearest edge.
+Scroll the minimum distance needed to show a nested child in the viewport. The method uses DOM-style "nearest" behavior. If the child already fits, the call is a no-op. An oversized child also stays in place when it extends beyond both edges of an axis. Otherwise, the method scrolls to reveal the nearest edge.
 
 ```typescript
-scrollbox.scrollChildIntoView("table-row-42")
+scrollbox.scrollChildIntoView("table-row-42");
 ```
 
-Use it when you focus an offscreen element, such as a search result or a new form field. The method moves the scroll
-position only as much as necessary.
+Use it when you focus an offscreen element, such as a search result or a new form field. The method moves the scroll position only as much as necessary.
 
 ## Keyboard navigation
 
@@ -229,21 +231,21 @@ When focused, ScrollBox responds to keyboard input:
 
 ## Properties
 
-| Property                     | Type                                     | Default | Description                            |
-| ---------------------------- | ---------------------------------------- | ------- | -------------------------------------- |
-| `scrollX`                    | `boolean`                                | `false` | Enable horizontal scrolling            |
-| `scrollY`                    | `boolean`                                | `true`  | Enable vertical scrolling              |
-| `stickyScroll`               | `boolean`                                | `false` | Keep scroll position pinned to an edge |
-| `stickyStart`                | `"top" \| "bottom" \| "left" \| "right"` | -       | Which edge to stick to                 |
-| `viewportCulling`            | `boolean`                                | `true`  | Only render visible children           |
-| `scrollAcceleration`         | `ScrollAcceleration`                     | -       | Custom scroll acceleration algorithm   |
-| `rootOptions`                | `BoxOptions`                             | -       | Style options for root container       |
-| `wrapperOptions`             | `BoxOptions`                             | -       | Style options for wrapper              |
-| `viewportOptions`            | `BoxOptions`                             | -       | Style options for viewport             |
-| `contentOptions`             | `BoxOptions`                             | -       | Style options for content container    |
-| `scrollbarOptions`           | `ScrollBarOptions`                       | -       | Options for both scrollbars            |
-| `verticalScrollbarOptions`   | `ScrollBarOptions`                       | -       | Options for vertical scrollbar only    |
-| `horizontalScrollbarOptions` | `ScrollBarOptions`                       | -       | Options for horizontal scrollbar only  |
+| Property | Type | Default | Description |
+| --- | --- | --- | --- |
+| `scrollX` | `boolean` | `false` | Enable horizontal scrolling |
+| `scrollY` | `boolean` | `true` | Enable vertical scrolling |
+| `stickyScroll` | `boolean` | `false` | Keep scroll position pinned to an edge |
+| `stickyStart` | `"top" \| "bottom" \| "left" \| "right"` | - | Which edge to stick to |
+| `viewportCulling` | `boolean` | `true` | Only render visible children |
+| `scrollAcceleration` | `ScrollAcceleration` | - | Custom scroll acceleration algorithm |
+| `rootOptions` | `BoxOptions` | - | Style options for root container |
+| `wrapperOptions` | `BoxOptions` | - | Style options for wrapper |
+| `viewportOptions` | `BoxOptions` | - | Style options for viewport |
+| `contentOptions` | `BoxOptions` | - | Style options for content container |
+| `scrollbarOptions` | `ScrollBarOptions` | - | Options for both scrollbars |
+| `verticalScrollbarOptions` | `ScrollBarOptions` | - | Options for vertical scrollbar only |
+| `horizontalScrollbarOptions` | `ScrollBarOptions` | - | Options for horizontal scrollbar only |
 
 ## Additional properties
 
@@ -259,11 +261,11 @@ When focused, ScrollBox responds to keyboard input:
 ScrollBox exposes its internal components for advanced use:
 
 ```typescript
-scrollbox.wrapper // BoxRenderable - outer wrapper
-scrollbox.viewport // BoxRenderable - visible area
-scrollbox.content // ContentRenderable - holds children
-scrollbox.horizontalScrollBar // ScrollBarRenderable
-scrollbox.verticalScrollBar // ScrollBarRenderable
+scrollbox.wrapper; // BoxRenderable - outer wrapper
+scrollbox.viewport; // BoxRenderable - visible area
+scrollbox.content; // ContentRenderable - holds children
+scrollbox.horizontalScrollBar; // ScrollBarRenderable
+scrollbox.verticalScrollBar; // ScrollBarRenderable
 ```
 
 ## Related concepts

@@ -15,11 +15,16 @@ A horizontal size is a count of terminal columns. A vertical size is a count of 
 ## Spacing and growth
 
 ```typescript
-import { BoxRenderable, RGBA, TextRenderable, createCliRenderer } from "@opentui/core"
+import {
+  BoxRenderable,
+  RGBA,
+  TextRenderable,
+  createCliRenderer,
+} from "@opentui/core";
 
-const renderer = await createCliRenderer()
-const foreground = RGBA.defaultForeground()
-const fill = RGBA.fromIndex(238)
+const renderer = await createCliRenderer();
+const foreground = RGBA.defaultForeground();
+const fill = RGBA.fromIndex(238);
 
 const row = new BoxRenderable(renderer, {
   width: 34,
@@ -29,22 +34,28 @@ const row = new BoxRenderable(renderer, {
   padding: 1,
   flexDirection: "row",
   gap: 2,
-})
+});
 
-const fixed = new BoxRenderable(renderer, { width: 8, height: 1, backgroundColor: fill })
-fixed.add(new TextRenderable(renderer, { content: "fixed 8", fg: foreground }))
+const fixed = new BoxRenderable(renderer, {
+  width: 8,
+  height: 1,
+  backgroundColor: fill,
+});
+fixed.add(new TextRenderable(renderer, { content: "fixed 8", fg: foreground }));
 
 const growing = new BoxRenderable(renderer, {
   flexGrow: 1,
   flexBasis: 0,
   height: 1,
   backgroundColor: fill,
-})
-growing.add(new TextRenderable(renderer, { content: "grow 20", fg: foreground }))
+});
+growing.add(
+  new TextRenderable(renderer, { content: "grow 20", fg: foreground })
+);
 
-row.add(fixed)
-row.add(growing)
-renderer.root.add(row)
+row.add(fixed);
+row.add(growing);
+renderer.root.add(row);
 ```
 
 The shaded children occupy 8 and 20 columns. The border and padding consume four columns; the gap consumes two more.
@@ -63,24 +74,24 @@ The same layout properties work across the built-in renderable classes.
 
 `RenderableOptions` supplies the shared renderable layout values. `BoxOptions` adds the three gap values.
 
-| Group         | Options                                                                                         | Accepted values                                             | Default                                             |
-| ------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------- |
-| Position      | `position`                                                                                      | `"relative"` or `"absolute"`                                | `"relative"`                                        |
-| Edges         | `top`, `right`, `bottom`, `left`                                                                | number, `"auto"`, or percentage                             | unset                                               |
-| Dimensions    | `width`, `height`                                                                               | number, `"auto"`, or percentage                             | `"auto"`                                            |
-| Limits        | `minWidth`, `minHeight`, `maxWidth`, `maxHeight`                                                | number or percentage                                        | unset                                               |
-| Margin        | `margin`, `marginX`, `marginY`, `marginTop`, `marginRight`, `marginBottom`, `marginLeft`        | number, `"auto"`, or percentage                             | `0`                                                 |
-| Padding       | `padding`, `paddingX`, `paddingY`, `paddingTop`, `paddingRight`, `paddingBottom`, `paddingLeft` | number or percentage                                        | `0`                                                 |
-| Flex size     | `flexGrow`                                                                                      | number                                                      | `0`                                                 |
-| Flex size     | `flexShrink`                                                                                    | number                                                      | `0` for an initial numeric dimension, otherwise `1` |
-| Flex size     | `flexBasis`                                                                                     | number or `"auto"`                                          | `"auto"`                                            |
-| Flow          | `flexDirection`                                                                                 | `"column"`, `"column-reverse"`, `"row"`, or `"row-reverse"` | `"column"`                                          |
-| Flow          | `flexWrap`                                                                                      | `"no-wrap"`, `"wrap"`, or `"wrap-reverse"`                  | `"no-wrap"`                                         |
-| Alignment     | `alignItems`                                                                                    | Yoga align value                                            | `"stretch"`                                         |
-| Alignment     | `alignSelf`                                                                                     | Yoga align value                                            | `"auto"`                                            |
-| Alignment     | `justifyContent`                                                                                | start, end, center, or space distribution                   | `"flex-start"`                                      |
-| Gaps on `Box` | `gap`, `rowGap`, `columnGap`                                                                    | number or percentage                                        | `0`                                                 |
-| Clipping      | `overflow`                                                                                      | `"visible"`, `"hidden"`, or `"scroll"`                      | `"visible"`                                         |
+| Group | Options | Accepted values | Default |
+| --- | --- | --- | --- |
+| Position | `position` | `"relative"` or `"absolute"` | `"relative"` |
+| Edges | `top`, `right`, `bottom`, `left` | number, `"auto"`, or percentage | unset |
+| Dimensions | `width`, `height` | number, `"auto"`, or percentage | `"auto"` |
+| Limits | `minWidth`, `minHeight`, `maxWidth`, `maxHeight` | number or percentage | unset |
+| Margin | `margin`, `marginX`, `marginY`, `marginTop`, `marginRight`, `marginBottom`, `marginLeft` | number, `"auto"`, or percentage | `0` |
+| Padding | `padding`, `paddingX`, `paddingY`, `paddingTop`, `paddingRight`, `paddingBottom`, `paddingLeft` | number or percentage | `0` |
+| Flex size | `flexGrow` | number | `0` |
+| Flex size | `flexShrink` | number | `0` for an initial numeric dimension, otherwise `1` |
+| Flex size | `flexBasis` | number or `"auto"` | `"auto"` |
+| Flow | `flexDirection` | `"column"`, `"column-reverse"`, `"row"`, or `"row-reverse"` | `"column"` |
+| Flow | `flexWrap` | `"no-wrap"`, `"wrap"`, or `"wrap-reverse"` | `"no-wrap"` |
+| Alignment | `alignItems` | Yoga align value | `"stretch"` |
+| Alignment | `alignSelf` | Yoga align value | `"auto"` |
+| Alignment | `justifyContent` | start, end, center, or space distribution | `"flex-start"` |
+| Gaps on `Box` | `gap`, `rowGap`, `columnGap` | number or percentage | `0` |
+| Clipping | `overflow` | `"visible"`, `"hidden"`, or `"scroll"` | `"visible"` |
 
 Yoga align values are `"auto"`, `"flex-start"`, `"center"`, `"flex-end"`, `"stretch"`, `"baseline"`, `"space-between"`, `"space-around"`, and `"space-evenly"`.
 
@@ -104,7 +115,7 @@ const row = new BoxRenderable(renderer, {
   flexDirection: "row",
   justifyContent: "space-between",
   alignItems: "center",
-})
+});
 
 for (const [label, height] of [
   ["A", 1],
@@ -116,11 +127,11 @@ for (const [label, height] of [
     height,
     alignSelf: label === "C" ? "flex-end" : "auto",
     backgroundColor: fill,
-  })
-  child.add(new TextRenderable(renderer, { content: label, fg: foreground }))
-  row.add(child)
+  });
+  child.add(new TextRenderable(renderer, { content: label, fg: foreground }));
+  row.add(child);
 }
-renderer.root.add(row)
+renderer.root.add(row);
 ```
 
 A and B share a vertical center despite their different heights. C sits at the bottom.
@@ -174,7 +185,7 @@ const child = new BoxRenderable(renderer, {
   flexGrow: 1,
   flexBasis: 0,
   minWidth: 0,
-})
+});
 ```
 
 A 32-column bordered row leaves 30 inner columns. Adding one column gives the middle child an extra cell, without gaps or overlaps:
@@ -209,7 +220,7 @@ const row = new BoxRenderable(renderer, {
   alignItems: "flex-start",
   columnGap: 2,
   rowGap: 1,
-})
+});
 
 for (const content of ["A", "B", "C"]) {
   const child = new BoxRenderable(renderer, {
@@ -217,11 +228,11 @@ for (const content of ["A", "B", "C"]) {
     height: 1,
     flexShrink: 0,
     backgroundColor: fill,
-  })
-  child.add(new TextRenderable(renderer, { content, fg: foreground }))
-  row.add(child)
+  });
+  child.add(new TextRenderable(renderer, { content, fg: foreground }));
+  row.add(child);
 }
-renderer.root.add(row)
+renderer.root.add(row);
 ```
 
 The same children before and after narrowing the terminal:

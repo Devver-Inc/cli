@@ -66,6 +66,7 @@ All commits must follow the [Conventional Commits](https://www.conventionalcommi
 ```
 
 **Types:**
+
 - `feat`: New feature (triggers minor version bump)
 - `fix`: Bug fix (triggers patch version bump)
 - `refactor`: Code refactoring
@@ -77,10 +78,12 @@ All commits must follow the [Conventional Commits](https://www.conventionalcommi
 - `ci`: CI/CD changes
 
 **Breaking Changes:**
+
 - Add `!` after type: `feat!: breaking change`
 - Or include `BREAKING CHANGE:` in commit footer (triggers major version bump)
 
 **Examples:**
+
 ```bash
 feat(auth): add OAuth2 support
 fix(api): resolve timeout issue in production
@@ -167,6 +170,7 @@ Following [Semantic Versioning](https://semver.org/):
 - **Patch (0.0.1)**: Bug fixes
 
 Pre-1.0.0 versions:
+
 - Breaking changes bump minor version
 - Features and fixes bump patch version
 

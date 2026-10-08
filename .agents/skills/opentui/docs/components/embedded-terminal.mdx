@@ -59,18 +59,18 @@ Write both `onData` sources to the child's stdin. Use `source` only when you log
 ## Draw VT output
 
 ```typescript
-import { EmbeddedTerminalRenderable, createCliRenderer } from "@opentui/core"
+import { EmbeddedTerminalRenderable, createCliRenderer } from "@opentui/core";
 
-const renderer = await createCliRenderer()
+const renderer = await createCliRenderer();
 const terminal = new EmbeddedTerminalRenderable(renderer, {
   id: "session",
   width: 80,
   height: 24,
-})
+});
 
-terminal.write("hello \x1b[1;32mworld\x1b[0m\r\n")
-renderer.root.add(terminal)
-terminal.focus()
+terminal.write("hello \x1b[1;32mworld\x1b[0m\r\n");
+renderer.root.add(terminal);
+terminal.focus();
 ```
 
 `write()` accepts a string or `Uint8Array`. The parser keeps incomplete escape sequences across calls. After `write()` or a resize, the renderable drains generated replies. Nonempty reply bytes go to `onData` with source `"response"`.
@@ -91,21 +91,21 @@ $ bun test
 Give every child output chunk to `write()`. Give every `onData` payload to the child. Resize the child from `onTerminalResize`.
 
 ```typescript
-import { EmbeddedTerminalRenderable } from "@opentui/core"
+import { EmbeddedTerminalRenderable } from "@opentui/core";
 
 function attachChild(
   terminal: EmbeddedTerminalRenderable,
   child: {
-    write(data: Uint8Array): void
-    resize(cols: number, rows: number): void
-  },
+    write(data: Uint8Array): void;
+    resize(cols: number, rows: number): void;
+  }
 ): void {
   terminal.onData = (data) => {
-    child.write(data)
-  }
+    child.write(data);
+  };
   terminal.onTerminalResize = (cols, rows) => {
-    child.resize(cols, rows)
-  }
+    child.resize(cols, rows);
+  };
 }
 ```
 
@@ -119,13 +119,13 @@ Destroy the renderable and close the child together. `destroy()` releases the na
 
 ## Size and scrollback
 
-| Option          | Default                          | Meaning                                                                                           |
-| --------------- | -------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `cols`          | numeric `width`, otherwise `80`  | Initial emulator columns. Must be an integer from 1 through 65535.                                |
-| `rows`          | numeric `height`, otherwise `24` | Initial emulator rows. Must be an integer from 1 through 65535.                                   |
-| `width`         | `cols`                           | Layout width. A later size change resizes the emulator.                                           |
-| `height`        | `rows`                           | Layout height. A later size change resizes the emulator.                                          |
-| `maxScrollback` | `10000`                          | Scrollback budget in bytes, not lines. `0` stores no history. The value must fit in a native u32. |
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `cols` | numeric `width`, otherwise `80` | Initial emulator columns. Must be an integer from 1 through 65535. |
+| `rows` | numeric `height`, otherwise `24` | Initial emulator rows. Must be an integer from 1 through 65535. |
+| `width` | `cols` | Layout width. A later size change resizes the emulator. |
+| `height` | `rows` | Layout height. A later size change resizes the emulator. |
+| `maxScrollback` | `10000` | Scrollback budget in bytes, not lines. `0` stores no history. The value must fit in a native u32. |
 
 `maxScrollback` is constructor-only. A visible size change floors the computed width and height and caps the native grid at 65535. It then invalidates the next paint, drains replies, and calls `onTerminalResize`. The cap does not apply to layout size or `screen()` dimensions. The renderable ignores non-finite and non-positive sizes. Hidden size changes update layout only.
 
@@ -180,21 +180,24 @@ If framebuffer allocation fails, the renderable does not compose into the parent
 ## Test
 
 ```typescript
-import { EmbeddedTerminalRenderable } from "@opentui/core"
-import { createTestRenderer } from "@opentui/core/testing"
+import { EmbeddedTerminalRenderable } from "@opentui/core";
+import { createTestRenderer } from "@opentui/core/testing";
 
-const setup = await createTestRenderer({ width: 40, height: 8 })
+const setup = await createTestRenderer({ width: 40, height: 8 });
 
 try {
-  const terminal = new EmbeddedTerminalRenderable(setup.renderer, { width: 20, height: 4 })
-  setup.renderer.root.add(terminal)
-  terminal.write("hello \x1b[1;32mworld\x1b[0m\r\n")
-  await setup.renderOnce()
+  const terminal = new EmbeddedTerminalRenderable(setup.renderer, {
+    width: 20,
+    height: 4,
+  });
+  setup.renderer.root.add(terminal);
+  terminal.write("hello \x1b[1;32mworld\x1b[0m\r\n");
+  await setup.renderOnce();
 
-  console.log(setup.captureCharFrame())
-  console.log(terminal.screen().text)
+  console.log(setup.captureCharFrame());
+  console.log(terminal.screen().text);
 } finally {
-  setup.renderer.destroy()
+  setup.renderer.destroy();
 }
 ```
 
@@ -202,25 +205,25 @@ Use `encodeKey()` and `encodePaste()` to assert mode-aware sequences without a c
 
 ## Options and state
 
-| Member                | Type                                                             | Description                                                               |
-| --------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `cols`                | `number`                                                         | Constructor option. Initial emulator columns. Not an instance field.      |
-| `rows`                | `number`                                                         | Constructor option. Initial emulator rows. Not an instance field.         |
-| `maxScrollback`       | `number`                                                         | Constructor option. Scrollback budget in bytes. Default `10000`.          |
-| `selectable`          | `boolean`                                                        | Whether the renderable joins renderer selection. Default `true`.          |
-| `onData`              | `(data: Uint8Array, source: EmbeddedTerminalDataSource) => void` | Called with encoded input or drained replies.                             |
-| `onTerminalResize`    | `(cols: number, rows: number) => void`                           | Called after a visible layout size change resizes the emulator.           |
-| `onScreenChange`      | `() => void`                                                     | Called after a successful compose while the renderable is visible.        |
-| `write(data)`         | `(data: string \| Uint8Array) => void`                           | Parse VT bytes and request a render.                                      |
-| `encodeKey(key)`      | `(key: KeyEvent) => Uint8Array`                                  | Encode a key with the current keyboard mode.                              |
-| `encodePaste(bytes)`  | `(bytes: Uint8Array) => Uint8Array`                              | Encode a paste with the current paste mode.                               |
-| `handleKeyPress(key)` | `(key: KeyEvent) => boolean`                                     | Encode a key and send nonempty bytes as `"input"`.                        |
-| `handlePaste(event)`  | `(event: PasteEvent) => void`                                    | Encode a paste and send nonempty bytes as `"input"`.                      |
-| `focus()` / `blur()`  | `() => void`                                                     | Move focus and send focus sequences when the child enabled them.          |
-| `screen()`            | `() => EmbeddedTerminalScreen`                                   | Painted text and native cursor. `columns` and `rows` are the layout size. |
-| `hasSelection()`      | `() => boolean`                                                  | Whether this renderable currently has an active selection.                |
-| `getSelectedText()`   | `() => string`                                                   | Selected emulator text, or `""`.                                          |
-| `invalidate()`        | `() => void`                                                     | Force a full redraw on the next compose.                                  |
+| Member | Type | Description |
+| --- | --- | --- |
+| `cols` | `number` | Constructor option. Initial emulator columns. Not an instance field. |
+| `rows` | `number` | Constructor option. Initial emulator rows. Not an instance field. |
+| `maxScrollback` | `number` | Constructor option. Scrollback budget in bytes. Default `10000`. |
+| `selectable` | `boolean` | Whether the renderable joins renderer selection. Default `true`. |
+| `onData` | `(data: Uint8Array, source: EmbeddedTerminalDataSource) => void` | Called with encoded input or drained replies. |
+| `onTerminalResize` | `(cols: number, rows: number) => void` | Called after a visible layout size change resizes the emulator. |
+| `onScreenChange` | `() => void` | Called after a successful compose while the renderable is visible. |
+| `write(data)` | `(data: string \| Uint8Array) => void` | Parse VT bytes and request a render. |
+| `encodeKey(key)` | `(key: KeyEvent) => Uint8Array` | Encode a key with the current keyboard mode. |
+| `encodePaste(bytes)` | `(bytes: Uint8Array) => Uint8Array` | Encode a paste with the current paste mode. |
+| `handleKeyPress(key)` | `(key: KeyEvent) => boolean` | Encode a key and send nonempty bytes as `"input"`. |
+| `handlePaste(event)` | `(event: PasteEvent) => void` | Encode a paste and send nonempty bytes as `"input"`. |
+| `focus()` / `blur()` | `() => void` | Move focus and send focus sequences when the child enabled them. |
+| `screen()` | `() => EmbeddedTerminalScreen` | Painted text and native cursor. `columns` and `rows` are the layout size. |
+| `hasSelection()` | `() => boolean` | Whether this renderable currently has an active selection. |
+| `getSelectedText()` | `() => string` | Selected emulator text, or `""`. |
+| `invalidate()` | `() => void` | Force a full redraw on the next compose. |
 
 You can assign `onData`, `onTerminalResize`, and `onScreenChange` after construction.
 

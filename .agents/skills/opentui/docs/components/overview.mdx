@@ -3,7 +3,15 @@ title: Components
 description: Choose a component and compare Core, React, and Solid availability
 skill:
   entry: true
-  intents: [components, component, component-support, support-matrix, react-components, solid-components]
+  intents:
+    [
+      components,
+      component,
+      component-support,
+      support-matrix,
+      react-components,
+      solid-components,
+    ]
 ---
 
 # Components
@@ -17,22 +25,20 @@ An automatic framework element needs no component-specific registration. Separat
 - [Text](/docs/components/text) displays labels, prose, and styled text. Choose Code for parsed source or Markdown for documents.
 - [Box](/docs/components/box) lays out children and can draw a background, border, and title. Choose ScrollBox when the children must scroll.
 
-| Component | Package         | Core renderable  | React                | Solid                | Status   |
-| --------- | --------------- | ---------------- | -------------------- | -------------------- | -------- |
-| Text      | `@opentui/core` | `TextRenderable` | `<text>` (automatic) | `<text>` (automatic) | Built in |
-| Box       | `@opentui/core` | `BoxRenderable`  | `<box>` (automatic)  | `<box>` (automatic)  | Built in |
+| Component | Package | Core renderable | React | Solid | Status |
+| --- | --- | --- | --- | --- | --- |
+| Text | `@opentui/core` | `TextRenderable` | `<text>` (automatic) | `<text>` (automatic) | Built in |
+| Box | `@opentui/core` | `BoxRenderable` | `<box>` (automatic) | `<box>` (automatic) | Built in |
 
 ### Inline text elements
 
-React and Solid also register `<span>`, `<b>`, `<strong>`, `<i>`, `<em>`, `<u>`, `<br>`, and `<a>`. These elements are
-built-in text children, not standalone layout components. Use them only inside `<text>`. The `<a>` element accepts
-`href` and creates terminal hyperlink metadata.
+React and Solid also register `<span>`, `<b>`, `<strong>`, `<i>`, `<em>`, `<u>`, `<br>`, and `<a>`. These elements are built-in text children, not standalone layout components. Use them only inside `<text>`. The `<a>` element accepts `href` and creates terminal hyperlink metadata.
 
-| Surface        | Package                            | Core renderable      | React                                             | Solid                                             | Status                        |
-| -------------- | ---------------------------------- | -------------------- | ------------------------------------------------- | ------------------------------------------------- | ----------------------------- |
+| Surface | Package | Core renderable | React | Solid | Status |
+| --- | --- | --- | --- | --- | --- |
 | Inline styling | `@opentui/react`, `@opentui/solid` | `TextNodeRenderable` | `<span>`, `<b>`, `<strong>`, `<i>`, `<em>`, `<u>` | `<span>`, `<b>`, `<strong>`, `<i>`, `<em>`, `<u>` | Built-in framework text nodes |
-| Line break     | `@opentui/react`, `@opentui/solid` | `TextNodeRenderable` | `<br>`                                            | `<br>`                                            | Built-in framework text node  |
-| Hyperlink      | `@opentui/react`, `@opentui/solid` | `TextNodeRenderable` | `<a href>`                                        | `<a href>`                                        | Built-in framework text node  |
+| Line break | `@opentui/react`, `@opentui/solid` | `TextNodeRenderable` | `<br>` | `<br>` | Built-in framework text node |
+| Hyperlink | `@opentui/react`, `@opentui/solid` | `TextNodeRenderable` | `<a href>` | `<a href>` | Built-in framework text node |
 
 ## Input and selection
 
@@ -42,23 +48,23 @@ built-in text children, not standalone layout components. Use them only inside `
 - [TabSelect](/docs/components/tab-select) shows peer choices in a horizontal tab strip. Choose Select for a vertical list.
 - [Slider](/docs/components/slider) selects a continuous value with a draggable thumb. Choose Select for discrete choices.
 
-| Component | Package         | Core renderable       | React                      | Solid                      | Status                   |
-| --------- | --------------- | --------------------- | -------------------------- | -------------------------- | ------------------------ |
-| Input     | `@opentui/core` | `InputRenderable`     | `<input>` (automatic)      | `<input>` (automatic)      | Built in                 |
-| Textarea  | `@opentui/core` | `TextareaRenderable`  | `<textarea>` (automatic)   | `<textarea>` (automatic)   | Built in                 |
-| Select    | `@opentui/core` | `SelectRenderable`    | `<select>` (automatic)     | `<select>` (automatic)     | Built in                 |
-| TabSelect | `@opentui/core` | `TabSelectRenderable` | `<tab-select>` (automatic) | `<tab_select>` (automatic) | Built in                 |
-| Slider    | `@opentui/core` | `SliderRenderable`    | Unavailable                | Unavailable                | Built-in Core renderable |
+| Component | Package | Core renderable | React | Solid | Status |
+| --- | --- | --- | --- | --- | --- |
+| Input | `@opentui/core` | `InputRenderable` | `<input>` (automatic) | `<input>` (automatic) | Built in |
+| Textarea | `@opentui/core` | `TextareaRenderable` | `<textarea>` (automatic) | `<textarea>` (automatic) | Built in |
+| Select | `@opentui/core` | `SelectRenderable` | `<select>` (automatic) | `<select>` (automatic) | Built in |
+| TabSelect | `@opentui/core` | `TabSelectRenderable` | `<tab-select>` (automatic) | `<tab_select>` (automatic) | Built in |
+| Slider | `@opentui/core` | `SliderRenderable` | Unavailable | Unavailable | Built-in Core renderable |
 
 ## Scrolling
 
 - [ScrollBox](/docs/components/scrollbox) owns scrollable children, clipping, and scrollbars. Use it for normal scrolling containers.
 - [ScrollBar](/docs/components/scrollbar) controls an external scroll position. Use it when another model owns the scroll state.
 
-| Component | Package         | Core renderable       | React                     | Solid                     | Status                   |
-| --------- | --------------- | --------------------- | ------------------------- | ------------------------- | ------------------------ |
-| ScrollBox | `@opentui/core` | `ScrollBoxRenderable` | `<scrollbox>` (automatic) | `<scrollbox>` (automatic) | Built in                 |
-| ScrollBar | `@opentui/core` | `ScrollBarRenderable` | Unavailable               | Unavailable               | Built-in Core renderable |
+| Component | Package | Core renderable | React | Solid | Status |
+| --- | --- | --- | --- | --- | --- |
+| ScrollBox | `@opentui/core` | `ScrollBoxRenderable` | `<scrollbox>` (automatic) | `<scrollbox>` (automatic) | Built in |
+| ScrollBar | `@opentui/core` | `ScrollBarRenderable` | Unavailable | Unavailable | Built-in Core renderable |
 
 ## Rich content
 
@@ -68,13 +74,13 @@ built-in text children, not standalone layout components. Use them only inside `
 - [Diff](/docs/components/diff) displays the first file patch in unified or split form. Create one instance for each file patch.
 - [TextTable](/docs/components/text-table) lays out styled cell data. Choose Markdown when the table starts as Markdown source.
 
-| Component          | Package         | Core renderable        | React                       | Solid                                                                                    | Status                                  |
-| ------------------ | --------------- | ---------------------- | --------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------- |
-| Code               | `@opentui/core` | `CodeRenderable`       | `<code>` (automatic)        | `<code>` (automatic)                                                                     | Built in                                |
-| Markdown           | `@opentui/core` | `MarkdownRenderable`   | `<markdown>` (automatic)    | `<markdown>` (automatic)                                                                 | Built in                                |
+| Component | Package | Core renderable | React | Solid | Status |
+| --- | --- | --- | --- | --- | --- |
+| Code | `@opentui/core` | `CodeRenderable` | `<code>` (automatic) | `<code>` (automatic) | Built in |
+| Markdown | `@opentui/core` | `MarkdownRenderable` | `<markdown>` (automatic) | `<markdown>` (automatic) | Built in |
 | Line number gutter | `@opentui/core` | `LineNumberRenderable` | `<line-number>` (automatic) | `<line_number>` is runtime built in. The Solid binding lacks an exact props declaration. | Built in with a Solid typing limitation |
-| Diff               | `@opentui/core` | `DiffRenderable`       | `<diff>` (automatic)        | `<diff>` is runtime built in. The Solid binding lacks an exact props declaration.        | Built in with a Solid typing limitation |
-| TextTable          | `@opentui/core` | `TextTableRenderable`  | Unavailable                 | Unavailable                                                                              | Built-in Core renderable                |
+| Diff | `@opentui/core` | `DiffRenderable` | `<diff>` (automatic) | `<diff>` is runtime built in. The Solid binding lacks an exact props declaration. | Built in with a Solid typing limitation |
+| TextTable | `@opentui/core` | `TextTableRenderable` | Unavailable | Unavailable | Built-in Core renderable |
 
 OpenTUI bundles parsers for JavaScript and JSX, TypeScript and TSX, Markdown and Markdown inline, and Zig. Other grammars require [Tree-sitter configuration](/docs/reference/tree-sitter).
 
@@ -86,13 +92,13 @@ OpenTUI bundles parsers for JavaScript and JSX, TypeScript and TSX, Markdown and
 - [QR code](/docs/components/qr-code) displays text as a scannable symbol. Use the [QR encoder](/docs/reference/qr-encoder) for matrices and serialized output.
 - [Embedded terminal](/docs/components/embedded-terminal) parses VT output and draws a child terminal. It does not start a process.
 
-| Component         | Package           | Core renderable              | React                                                  | Solid                                                  | Status                   |
-| ----------------- | ----------------- | ---------------------------- | ------------------------------------------------------ | ------------------------------------------------------ | ------------------------ |
-| ASCIIFont         | `@opentui/core`   | `ASCIIFontRenderable`        | `<ascii-font>` (automatic)                             | `<ascii_font>` (automatic)                             | Built in                 |
-| FrameBuffer       | `@opentui/core`   | `FrameBufferRenderable`      | Unavailable                                            | Unavailable                                            | Advanced                 |
-| Image             | `@opentui/core`   | `ImageRenderable`            | `<image>` (automatic)                                  | `<image>` (automatic)                                  | Built in                 |
-| QR code           | `@opentui/qrcode` | `QRCodeRenderable`           | Register `@opentui/qrcode/react`, then use `<qr-code>` | Register `@opentui/qrcode/solid`, then use `<qr_code>` | Separately registered    |
-| Embedded terminal | `@opentui/core`   | `EmbeddedTerminalRenderable` | Unavailable                                            | Unavailable                                            | Built-in Core renderable |
+| Component | Package | Core renderable | React | Solid | Status |
+| --- | --- | --- | --- | --- | --- |
+| ASCIIFont | `@opentui/core` | `ASCIIFontRenderable` | `<ascii-font>` (automatic) | `<ascii_font>` (automatic) | Built in |
+| FrameBuffer | `@opentui/core` | `FrameBufferRenderable` | Unavailable | Unavailable | Advanced |
+| Image | `@opentui/core` | `ImageRenderable` | `<image>` (automatic) | `<image>` (automatic) | Built in |
+| QR code | `@opentui/qrcode` | `QRCodeRenderable` | Register `@opentui/qrcode/react`, then use `<qr-code>` | Register `@opentui/qrcode/solid`, then use `<qr_code>` | Separately registered |
+| Embedded terminal | `@opentui/core` | `EmbeddedTerminalRenderable` | Unavailable | Unavailable | Built-in Core renderable |
 
 Use the [Buffer API](/docs/reference/buffer-api) for low-level `OptimizedBuffer` ownership and drawing operations.
 

@@ -12,15 +12,15 @@ The code that creates a resource owns its release until it transfers that owners
 Call `renderer.destroy()` on normal shutdown and on application failure:
 
 ```typescript
-import { TextRenderable, createCliRenderer } from "@opentui/core"
+import { TextRenderable, createCliRenderer } from "@opentui/core";
 
-const renderer = await createCliRenderer()
+const renderer = await createCliRenderer();
 
 try {
-  renderer.root.add(new TextRenderable(renderer, { content: "Ready" }))
-  await renderer.idle()
+  renderer.root.add(new TextRenderable(renderer, { content: "Ready" }));
+  await renderer.idle();
 } finally {
-  renderer.destroy()
+  renderer.destroy();
 }
 ```
 
@@ -39,28 +39,28 @@ import {
   createRendererClipboardAdapter,
   type ClipboardService,
   type HostClipboardService,
-} from "@opentui/core"
+} from "@opentui/core";
 
-const renderer = await createCliRenderer()
-let host: HostClipboardService | undefined
-let clipboard: ClipboardService | undefined
+const renderer = await createCliRenderer();
+let host: HostClipboardService | undefined;
+let clipboard: ClipboardService | undefined;
 
 try {
-  host = createHostClipboard()
+  host = createHostClipboard();
   clipboard = createClipboard({
     host,
     terminal: createRendererClipboardAdapter(renderer),
-  })
-  host = undefined // createClipboard() now owns the host service
+  });
+  host = undefined; // createClipboard() now owns the host service
 
-  renderer.root.add(new TextRenderable(renderer, { content: "Ready" }))
-  await renderer.idle()
+  renderer.root.add(new TextRenderable(renderer, { content: "Ready" }));
+  await renderer.idle();
 } finally {
   try {
-    if (clipboard) await clipboard.dispose()
-    else if (host) await host.dispose()
+    if (clipboard) await clipboard.dispose();
+    else if (host) await host.dispose();
   } finally {
-    renderer.destroy()
+    renderer.destroy();
   }
 }
 ```
@@ -108,12 +108,12 @@ Set `exitSignals` to replace this list. Use an empty list when the application o
 ```typescript
 const renderer = await createCliRenderer({
   exitSignals: ["SIGINT", "SIGTERM"],
-})
+});
 
 const managedRenderer = await createCliRenderer({
   exitOnCtrlC: false,
   exitSignals: [],
-})
+});
 ```
 
 The built-in signal handlers call `renderer.destroy()`. With `OTUI_DUMP_CAPTURES=true`, they also schedule a capture dump. They cannot await an application-owned clipboard service, SSH server, or other asynchronous cleanup. Disable them and install application handlers when shutdown must await those resources.
@@ -133,17 +133,17 @@ The renderer's `uncaughtException` and `unhandledRejection` listeners report err
 `renderer.destroy()` emits the event that unmounts every React root created for that renderer. You can call `root.unmount()` first when React effects must stop before other application resources:
 
 ```tsx
-const renderer = await createCliRenderer()
-const root = createRoot(renderer)
+const renderer = await createCliRenderer();
+const root = createRoot(renderer);
 
 try {
-  root.render(<App />)
-  await waitUntilShutdown()
+  root.render(<App />);
+  await waitUntilShutdown();
 } finally {
   try {
-    root.unmount()
+    root.unmount();
   } finally {
-    renderer.destroy()
+    renderer.destroy();
   }
 }
 ```
@@ -157,13 +157,13 @@ The high-level Solid `render(node, rendererOrConfig?)` function resolves after m
 Create the renderer yourself when startup and failure cleanup need one visible owner:
 
 ```tsx
-const renderer = await createCliRenderer()
+const renderer = await createCliRenderer();
 
 try {
-  await render(() => <App />, renderer)
-  await waitUntilShutdown()
+  await render(() => <App />, renderer);
+  await waitUntilShutdown();
 } finally {
-  renderer.destroy()
+  renderer.destroy();
 }
 ```
 
@@ -213,10 +213,7 @@ If native close cannot finish, `feed.close()` leaves the feed alive and returns 
 
 `@opentui/ssh` owns each renderer that it creates. A disconnect or `session.end()` destroys the session renderer before `session.onClose` callbacks run. Use `onClose` for application timers, listeners, and other session resources. Do not add another renderer owner.
 
-Await `server.close()` during process shutdown. It stops acceptance, destroys live session renderers, performs bounded
-transport teardown, and closes the listener. It does not await application promises returned from `onClose` or
-middleware cleanup. Await those owners separately. See
-[SSH cleanup and shutdown](/docs/reference/ssh#cleanup-errors-and-shutdown).
+Await `server.close()` during process shutdown. It stops acceptance, destroys live session renderers, performs bounded transport teardown, and closes the listener. It does not await application promises returned from `onClose` or middleware cleanup. Await those owners separately. See [SSH cleanup and shutdown](/docs/reference/ssh#cleanup-errors-and-shutdown).
 
 ## Custom renderables
 

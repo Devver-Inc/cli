@@ -17,30 +17,30 @@ This page covers the engine and loaded-sound playback. See [Streaming audio](/do
 Create one engine and keep it alive while its sounds can play.
 
 ```typescript
-import { Audio, type AudioSound } from "@opentui/core"
+import { Audio, type AudioSound } from "@opentui/core";
 
-const audio = Audio.create({ autoStart: false })
-const click = "click.wav"
+const audio = Audio.create({ autoStart: false });
+const click = "click.wav";
 
 audio.on("error", (error, context) => {
-  console.error(`${context.action}: ${error.message}`)
-})
+  console.error(`${context.action}: ${error.message}`);
+});
 
-let sound: AudioSound | null = null
+let sound: AudioSound | null = null;
 
 try {
-  sound = await audio.loadSoundFile(click)
-  if (sound == null) throw new Error(`Could not load ${click}`)
-  if (!audio.start()) throw new Error("No playback device is available")
+  sound = await audio.loadSoundFile(click);
+  if (sound == null) throw new Error(`Could not load ${click}`);
+  if (!audio.start()) throw new Error("No playback device is available");
 
-  const voice = audio.play(sound, { volume: 0.8 })
-  if (voice == null) throw new Error("Could not start the sound")
+  const voice = audio.play(sound, { volume: 0.8 });
+  if (voice == null) throw new Error("Could not start the sound");
 
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await new Promise((resolve) => setTimeout(resolve, 1000));
 } finally {
-  if (sound != null) audio.unloadSound(sound)
-  audio.stop()
-  audio.dispose()
+  if (sound != null) audio.unloadSound(sound);
+  audio.stop();
+  audio.dispose();
 }
 ```
 
@@ -54,22 +54,22 @@ Construction is different because no `Audio` object exists for a listener yet. C
 
 The public construction APIs are `Audio.create(options?)` and its wrapper, `setupAudio(options?)`. The `Audio` constructor is private.
 
-| `AudioSetupOptions` field | Default         | Effect                                                      |
-| ------------------------- | --------------- | ----------------------------------------------------------- |
-| `autoStart`               | `false`         | Opens and starts the playback device during construction    |
-| `sampleRate`              | `48000`         | Sets the engine and capture sample rate                     |
-| `playbackChannels`        | `2`             | Requests the playback device channel count                  |
-| `startOptions`            | Native defaults | Supplies defaults for `autoStart` and later `start()` calls |
+| `AudioSetupOptions` field | Default | Effect |
+| --- | --- | --- |
+| `autoStart` | `false` | Opens and starts the playback device during construction |
+| `sampleRate` | `48000` | Sets the engine and capture sample rate |
+| `playbackChannels` | `2` | Requests the playback device channel count |
+| `startOptions` | Native defaults | Supplies defaults for `autoStart` and later `start()` calls |
 
 Create another engine to change `sampleRate` or `playbackChannels`. Both values become fixed during construction.
 
 `Audio.create()` and `setupAudio()` initialize synchronously. They throw `AudioInitializationError` with one of these `action` values:
 
-| Action              | Failed step                                                  |
-| ------------------- | ------------------------------------------------------------ |
-| `resolveRenderLib`  | Resolve and load the native OpenTUI library                  |
-| `createAudioEngine` | Create the native audio engine                               |
-| `start`             | Apply `startOptions` and complete automatic playback startup |
+| Action | Failed step |
+| --- | --- |
+| `resolveRenderLib` | Resolve and load the native OpenTUI library |
+| `createAudioEngine` | Create the native audio engine |
+| `start` | Apply `startOptions` and complete automatic playback startup |
 
 A failed automatic start destroys the partial native engine. Successful automatic startup emits no `started` event because listeners cannot exist during construction.
 
@@ -101,51 +101,51 @@ Embedded asset bytes can go directly to `loadSound()`. See [Standalone executabl
 
 ### Output lifecycle
 
-| Method             | Result and behavior                                                 |
-| ------------------ | ------------------------------------------------------------------- |
-| `start(options?)`  | Starts the mixer and a playback device. Returns `boolean`           |
-| `startMixer()`     | Starts headless mixing without a playback device. Returns `boolean` |
-| `stop()`           | Stops the mixer and closes the playback device. Returns `boolean`   |
-| `isStarted()`      | Reports the cached playback-device state                            |
-| `isMixerStarted()` | Reports whether playback or headless mixing started the mixer       |
-| `dispose()`        | Disposes child operations and the native engine                     |
+| Method | Result and behavior |
+| --- | --- |
+| `start(options?)` | Starts the mixer and a playback device. Returns `boolean` |
+| `startMixer()` | Starts headless mixing without a playback device. Returns `boolean` |
+| `stop()` | Stops the mixer and closes the playback device. Returns `boolean` |
+| `isStarted()` | Reports the cached playback-device state |
+| `isMixerStarted()` | Reports whether playback or headless mixing started the mixer |
+| `dispose()` | Disposes child operations and the native engine |
 
 ### Sounds
 
-| Method                    | Result and behavior                                               |
-| ------------------------- | ----------------------------------------------------------------- |
-| `loadSound(data)`         | Decodes bytes and returns `AudioSound \| null`                    |
-| `loadSoundFile(filePath)` | Reads and decodes a file. Returns `Promise<AudioSound \| null>`   |
-| `unloadSound(sound)`      | Stops its active voices, frees its samples, and returns `boolean` |
+| Method | Result and behavior |
+| --- | --- |
+| `loadSound(data)` | Decodes bytes and returns `AudioSound \| null` |
+| `loadSoundFile(filePath)` | Reads and decodes a file. Returns `Promise<AudioSound \| null>` |
+| `unloadSound(sound)` | Stops its active voices, frees its samples, and returns `boolean` |
 
 ### Voices and groups
 
-| Method                          | Result and behavior                                              |
-| ------------------------------- | ---------------------------------------------------------------- |
-| `play(sound, options?)`         | Starts one voice and returns `AudioVoice \| null`                |
-| `stopVoice(voice)`              | Stops one active loaded-sound voice and returns `boolean`        |
-| `group(name)`                   | Creates or reuses a named group and returns `AudioGroup \| null` |
-| `setVoiceGroup(voice, group)`   | Moves an active loaded-sound voice and returns `boolean`         |
-| `setGroupVolume(group, volume)` | Sets one group volume and returns `boolean`                      |
-| `setMasterVolume(volume)`       | Sets the master volume and returns `boolean`                     |
+| Method | Result and behavior |
+| --- | --- |
+| `play(sound, options?)` | Starts one voice and returns `AudioVoice \| null` |
+| `stopVoice(voice)` | Stops one active loaded-sound voice and returns `boolean` |
+| `group(name)` | Creates or reuses a named group and returns `AudioGroup \| null` |
+| `setVoiceGroup(voice, group)` | Moves an active loaded-sound voice and returns `boolean` |
+| `setGroupVolume(group, volume)` | Sets one group volume and returns `boolean` |
+| `setMasterVolume(volume)` | Sets the master volume and returns `boolean` |
 
 ### Playback devices
 
-| Method                           | Result and behavior                                              |
-| -------------------------------- | ---------------------------------------------------------------- |
-| `listPlaybackDevices()`          | Refreshes devices and returns `AudioPlaybackDevice[] \| null`    |
-| `selectPlaybackDevice(index)`    | Refreshes devices, selects one index, and returns `boolean`      |
+| Method | Result and behavior |
+| --- | --- |
+| `listPlaybackDevices()` | Refreshes devices and returns `AudioPlaybackDevice[] \| null` |
+| `selectPlaybackDevice(index)` | Refreshes devices, selects one index, and returns `boolean` |
 | `clearPlaybackDeviceSelection()` | Clears the explicit selection. The backend then uses its default |
 
 ### Mixing, tap, and statistics
 
-| Method                                    | Result and behavior                                      |
-| ----------------------------------------- | -------------------------------------------------------- |
-| `mixFrames(frameCount, channels = 2)`     | Mixes PCM and returns `Float32Array \| null`             |
-| `enableTap(capacityFrames = 8192)`        | Creates or replaces the master tap and returns `boolean` |
-| `disableTap()`                            | Frees the master tap and returns `boolean`               |
-| `readTapFrames(frameCount, channels = 2)` | Returns `{ frames, framesRead } \| null`                 |
-| `getStats()`                              | Returns engine statistics or `null`                      |
+| Method | Result and behavior |
+| --- | --- |
+| `mixFrames(frameCount, channels = 2)` | Mixes PCM and returns `Float32Array \| null` |
+| `enableTap(capacityFrames = 8192)` | Creates or replaces the master tap and returns `boolean` |
+| `disableTap()` | Frees the master tap and returns `boolean` |
+| `readTapFrames(frameCount, channels = 2)` | Returns `{ frames, framesRead } \| null` |
+| `getStats()` | Returns engine statistics or `null` |
 
 The return type of `getStats()` is available through method inference. Do not import the non-root `AudioStats` type.
 
@@ -168,11 +168,11 @@ Loaded voices and streams also need this consumption to advance. A finite stream
 Select the device before either output mode starts.
 
 ```typescript
-const devices = audio.listPlaybackDevices() ?? []
-const selected = devices.find((device) => device.isDefault) ?? devices[0]
+const devices = audio.listPlaybackDevices() ?? [];
+const selected = devices.find((device) => device.isDefault) ?? devices[0];
 
 if (selected != null && !audio.selectPlaybackDevice(selected.index)) {
-  throw new Error(`Could not select ${selected.name}`)
+  throw new Error(`Could not select ${selected.name}`);
 }
 ```
 
@@ -186,12 +186,12 @@ Selection fails while normal playback or the headless mixer runs. Call `stop()` 
 
 `play()` accepts these options:
 
-| `AudioPlayOptions` field | Default | Native behavior                            |
-| ------------------------ | ------- | ------------------------------------------ |
-| `volume`                 | `1`     | Clamped to `0..4`                          |
-| `pan`                    | `0`     | Clamped to `-1..1`                         |
-| `loop`                   | `false` | Restarts the loaded sound at its end       |
-| `groupId`                | `0`     | Routes the voice through the default group |
+| `AudioPlayOptions` field | Default | Native behavior |
+| --- | --- | --- |
+| `volume` | `1` | Clamped to `0..4` |
+| `pan` | `0` | Clamped to `-1..1` |
+| `loop` | `false` | Restarts the loaded sound at its end |
+| `groupId` | `0` | Routes the voice through the default group |
 
 Group and master volumes also clamp to `0..4`. `group(name)` returns the existing group when the same name appears again.
 
@@ -223,14 +223,14 @@ OpenTUI does not calculate a fast Fourier transform (FFT). Run an FFT on tap sam
 
 `getStats()` returns these fields:
 
-| Field          | Meaning                                                                 |
-| -------------- | ----------------------------------------------------------------------- |
-| `soundsLoaded` | Loaded sounds that are not unloaded                                     |
-| `voicesActive` | Active loaded voices plus encoded and PCM streams                       |
-| `framesMixed`  | Frames mixed through device or manual output                            |
-| `lockMisses`   | Device callbacks that returned silence because the engine lock was busy |
-| `lastPeak`     | Peak absolute sample in the last mixed buffer                           |
-| `lastRms`      | Root mean square value for the last mixed buffer                        |
+| Field | Meaning |
+| --- | --- |
+| `soundsLoaded` | Loaded sounds that are not unloaded |
+| `voicesActive` | Active loaded voices plus encoded and PCM streams |
+| `framesMixed` | Frames mixed through device or manual output |
+| `lockMisses` | Device callbacks that returned silence because the engine lock was busy |
+| `lastPeak` | Peak absolute sample in the last mixed buffer |
+| `lastRms` | Root mean square value for the last mixed buffer |
 
 ## Low-level start options
 
@@ -264,30 +264,29 @@ An explicit `start(options)` replaces the construction-time `startOptions` for t
 
 `Audio` emits these events:
 
-| Event            | Meaning                                                            |
-| ---------------- | ------------------------------------------------------------------ |
-| `started`        | An explicit `start()` started playback                             |
-| `mixerStarted`   | An explicit `startMixer()` changed the mixer to started            |
-| `captureStarted` | Capture input started                                              |
-| `captureStopped` | Capture input stopped, or OpenTUI observed it as stopped           |
-| `stopped`        | `stop()` stopped the mixer                                         |
-| `disposed`       | Native engine destruction completed                                |
-| `error`          | An operation failed. The payload is `(error, { action, status? })` |
+| Event | Meaning |
+| --- | --- |
+| `started` | An explicit `start()` started playback |
+| `mixerStarted` | An explicit `startMixer()` changed the mixer to started |
+| `captureStarted` | Capture input started |
+| `captureStopped` | Capture input stopped, or OpenTUI observed it as stopped |
+| `stopped` | `stop()` stopped the mixer |
+| `disposed` | Native engine destruction completed |
+| `error` | An operation failed. The payload is `(error, { action, status? })` |
 
-An idempotent `start()` or `startMixer()` call returns `true` without another event. Automatic start emits neither
-event. `start()` starts playback and the mixer, but it emits only `started`.
+An idempotent `start()` or `startMixer()` call returns `true` without another event. Automatic start emits neither event. `start()` starts playback and the mixer, but it emits only `started`.
 
 The exact `AudioAction` values are:
 
-| Area              | Actions                                                                            |
-| ----------------- | ---------------------------------------------------------------------------------- |
-| Engine            | `createAudioEngine`, `start`, `startMixer`, `stop`, `getStats`                     |
-| Sounds            | `loadSound`, `loadSoundFile`, `unloadSound`                                        |
+| Area | Actions |
+| --- | --- |
+| Engine | `createAudioEngine`, `start`, `startMixer`, `stop`, `getStats` |
+| Sounds | `loadSound`, `loadSoundFile`, `unloadSound` |
 | Voices and groups | `group`, `play`, `stopVoice`, `setVoiceGroup`, `setGroupVolume`, `setMasterVolume` |
-| Mixing and tap    | `mixFrames`, `enableTap`, `readTapFrames`                                          |
-| Playback devices  | `listPlaybackDevices`, `selectPlaybackDevice`, `clearPlaybackDeviceSelection`      |
-| Capture devices   | `listCaptureDevices`, `selectCaptureDevice`, `clearCaptureDeviceSelection`         |
-| Capture           | `startCapture`, `readCaptureFrames`, `getCaptureStats`, `stopCapture`              |
+| Mixing and tap | `mixFrames`, `enableTap`, `readTapFrames` |
+| Playback devices | `listPlaybackDevices`, `selectPlaybackDevice`, `clearPlaybackDeviceSelection` |
+| Capture devices | `listCaptureDevices`, `selectCaptureDevice`, `clearCaptureDeviceSelection` |
+| Capture | `startCapture`, `readCaptureFrames`, `getCaptureStats`, `stopCapture` |
 
 `disableTap()` currently reports failures with the `enableTap` action. `AudioAction` has no `disableTap` value.
 

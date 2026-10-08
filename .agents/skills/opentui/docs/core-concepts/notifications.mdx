@@ -10,7 +10,7 @@ skill:
 OpenTUI asks the terminal emulator to show a desktop notification with an operating system command (OSC) sequence. It does not call host notification tools.
 
 ```typescript
-const ok = renderer.triggerNotification("Build finished", "OpenTUI")
+const ok = renderer.triggerNotification("Build finished", "OpenTUI");
 ```
 
 `renderer.triggerNotification(message, title?)` returns `true` when OpenTUI selects a protocol and queues its output. It does not confirm that the terminal or desktop displayed a notification.
@@ -28,12 +28,12 @@ Check detection state through renderer capabilities:
 
 ```typescript
 if (renderer.capabilities?.notifications) {
-  renderer.triggerNotification("Tests passed", "CI")
+  renderer.triggerNotification("Tests passed", "CI");
 }
 
 renderer.on("capabilities", (capabilities) => {
-  console.log("notification capability", capabilities.notifications)
-})
+  console.log("notification capability", capabilities.notifications);
+});
 ```
 
 `createCliRenderer()` starts terminal queries, but it does not wait for all replies before it resolves. The renderer updates `capabilities` and emits the `capabilities` event as replies arrive. The startup capability handler stops after 5 seconds.
@@ -51,21 +51,21 @@ An OSC 99 reply must include the OpenTUI query identifier, `p=?`, and title supp
 
 Known terminal identities select these protocols:
 
-| Protocol | Detected terminal families                                                                                              |
-| -------- | ----------------------------------------------------------------------------------------------------------------------- |
-| OSC 99   | Kitty and foot                                                                                                          |
-| OSC 777  | Ghostty, WezTerm, Warp, hterm, Blink, Contour, VTE, GNOME Terminal, Tilix, Terminator, Xfce, rxvt, and Windows Terminal |
-| OSC 9    | iTerm, Apple Terminal, Terminal.app, and ConEmu                                                                         |
+| Protocol | Detected terminal families |
+| --- | --- |
+| OSC 99 | Kitty and foot |
+| OSC 777 | Ghostty, WezTerm, Warp, hterm, Blink, Contour, VTE, GNOME Terminal, Tilix, Terminator, Xfce, rxvt, and Windows Terminal |
+| OSC 9 | iTerm, Apple Terminal, Terminal.app, and ConEmu |
 
 Environment hints can select the same protocols. `TERM_FEATURES` with `No` selects OSC 9. `WT_SESSION` selects OSC 777. Detection is terminal-mediated and does not call `notify-send`, AppleScript, PowerShell, or another platform notification command.
 
 ## Protocol output
 
-| Protocol | Output behavior                                                                     |
-| -------- | ----------------------------------------------------------------------------------- |
-| OSC 99   | Sends base64 title and body payloads with one generated notification ID             |
-| OSC 777  | Sends `notify`, title, and body fields. Control bytes and semicolons become spaces  |
-| OSC 9    | Combines a nonempty title and body as `title: message`. Control bytes become spaces |
+| Protocol | Output behavior |
+| --- | --- |
+| OSC 99 | Sends base64 title and body payloads with one generated notification ID |
+| OSC 777 | Sends `notify`, title, and body fields. Control bytes and semicolons become spaces |
+| OSC 9 | Combines a nonempty title and body as `title: message`. Control bytes become spaces |
 
 When no title is supplied, each protocol sends the message in its supported body form.
 
@@ -75,9 +75,7 @@ Terminal and operating system settings decide how a notification appears. A term
 
 ## Multiplexers
 
-tmux does not forward raw notification OSC sequences. When OpenTUI detects
-`renderer.capabilities?.multiplexer === "tmux"`, it wraps the selected protocol in tmux device control string (DCS)
-passthrough. tmux must allow passthrough:
+tmux does not forward raw notification OSC sequences. When OpenTUI detects `renderer.capabilities?.multiplexer === "tmux"`, it wraps the selected protocol in tmux device control string (DCS) passthrough. tmux must allow passthrough:
 
 ```text
 set -g allow-passthrough on
@@ -114,9 +112,7 @@ See [Environment variables](/docs/reference/env-vars) for configuration timing. 
 
 ## Example
 
-See the
-[notification demo](https://github.com/anomalyco/opentui/blob/main/packages/examples/src/notification-demo.ts)
-for detection state, protocol output, and interactive notification requests.
+See the [notification demo](https://github.com/anomalyco/opentui/blob/main/packages/examples/src/notification-demo.ts) for detection state, protocol output, and interactive notification requests.
 
 ## Next
 

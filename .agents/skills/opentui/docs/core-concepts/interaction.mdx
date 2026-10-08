@@ -3,8 +3,7 @@ title: Interaction, focus, and selection
 description: Handle mouse input, renderable focus, terminal focus reports, and text selection
 ---
 
-{/* docs-lint-disable mdx-esm-import */}
-import MousePointerPreview from "../../../components/MousePointerPreview.astro"
+{/* docs-lint-disable mdx-esm-import */} import MousePointerPreview from "../../../components/MousePointerPreview.astro"
 
 # Interaction, focus, and selection
 
@@ -18,21 +17,19 @@ Mouse input is enabled by default. Set `useMouse: false` to disable it or `enabl
 
 Renderable options accept a catch-all `onMouse` handler and these specific handlers:
 
-| Handler          | `event.type` | Meaning                                           |
-| ---------------- | ------------ | ------------------------------------------------- |
-| `onMouseDown`    | `"down"`     | A button went down.                               |
-| `onMouseUp`      | `"up"`       | A button went up.                                 |
-| `onMouseMove`    | `"move"`     | The pointer moved without a pressed button.       |
-| `onMouseDrag`    | `"drag"`     | The pointer moved with a pressed button.          |
+| Handler | `event.type` | Meaning |
+| --- | --- | --- |
+| `onMouseDown` | `"down"` | A button went down. |
+| `onMouseUp` | `"up"` | A button went up. |
+| `onMouseMove` | `"move"` | The pointer moved without a pressed button. |
+| `onMouseDrag` | `"drag"` | The pointer moved with a pressed button. |
 | `onMouseDragEnd` | `"drag-end"` | An automatically captured left-button drag ended. |
-| `onMouseDrop`    | `"drop"`     | A captured drag ended over this target.           |
-| `onMouseOver`    | `"over"`     | The hit target changed to this renderable.        |
-| `onMouseOut`     | `"out"`      | The hit target changed away from this renderable. |
-| `onMouseScroll`  | `"scroll"`   | The terminal reported wheel input.                |
+| `onMouseDrop` | `"drop"` | A captured drag ended over this target. |
+| `onMouseOver` | `"over"` | The hit target changed to this renderable. |
+| `onMouseOut` | `"out"` | The hit target changed away from this renderable. |
+| `onMouseScroll` | `"scroll"` | The terminal reported wheel input. |
 
-OpenTUI does not synthesize a `click` event. A click produces `down` and `up`. A double click produces two such pairs.
-Mouse handlers receive these raw pairs. Text selection also counts repeated left-button downs, but `MouseEvent` has no
-click-count field.
+OpenTUI does not synthesize a `click` event. A click produces `down` and `up`. A double click produces two such pairs. Mouse handlers receive these raw pairs. Text selection also counts repeated left-button downs, but `MouseEvent` has no click-count field.
 
 `MouseButton.LEFT`, `MIDDLE`, and `RIGHT` are `0`, `1`, and `2`. For wheel input, read `event.scroll.direction` and `event.scroll.delta` instead of `event.button`.
 
@@ -48,20 +45,20 @@ Each `MouseEvent` also contains these fields:
 OpenTUI does not expose a coordinate-conversion helper. Compute local cells from the current target.
 
 ```typescript
-import { BoxRenderable, createCliRenderer } from "@opentui/core"
+import { BoxRenderable, createCliRenderer } from "@opentui/core";
 
-const renderer = await createCliRenderer()
+const renderer = await createCliRenderer();
 const box = new BoxRenderable(renderer, {
   width: 20,
   height: 4,
   onMouseDown(event) {
-    const localX = event.x - event.currentTarget!.x
-    const localY = event.y - event.currentTarget!.y
-    console.log(localX, localY)
+    const localX = event.x - event.currentTarget!.x;
+    const localY = event.y - event.currentTarget!.y;
+    console.log(localX, localY);
   },
-})
+});
 
-renderer.root.add(box)
+renderer.root.add(box);
 ```
 
 ## Hit order and propagation
@@ -74,8 +71,7 @@ The hit grid obeys clipping from `overflow: "hidden"` and `"scroll"`. A layout c
 
 Mouse events start at the hit target and bubble through `parent` links. `event.stopPropagation()` prevents later ancestors from receiving that event.
 
-In this overlapping pair, the front box receives both mouse downs. The first bubbles to `parent`; the second calls
-`stopPropagation()` in the front box's handler.
+In this overlapping pair, the front box receives both mouse downs. The first bubbles to `parent`; the second calls `stopPropagation()` in the front box's handler.
 
 ```text terminal=interaction-hit-bubbling
 ┌─parent─────────────────────────────┐
@@ -106,17 +102,20 @@ Right-button and middle-button drags follow hit testing without this capture. A 
 
 ## Mouse pointer styles
 
-`renderer.setMousePointer()` changes the mouse pointer style in the terminal pane. The style applies to the renderer,
-not to an individual renderable. Use `onMouseOver` to set the style. Use `onMouseOut` to restore `"default"`.
+`renderer.setMousePointer()` changes the mouse pointer style in the terminal pane. The style applies to the renderer, not to an individual renderable. Use `onMouseOver` to set the style. Use `onMouseOut` to restore `"default"`.
 
 ```typescript
-import { BoxRenderable, createCliRenderer, type MousePointerStyle } from "@opentui/core"
+import {
+  BoxRenderable,
+  createCliRenderer,
+  type MousePointerStyle,
+} from "@opentui/core";
 
-const renderer = await createCliRenderer()
+const renderer = await createCliRenderer();
 
 function setPointer(style: MousePointerStyle) {
-  renderer.setMousePointer(style)
-  renderer.requestRender()
+  renderer.setMousePointer(style);
+  renderer.requestRender();
 }
 
 const button = new BoxRenderable(renderer, {
@@ -125,27 +124,22 @@ const button = new BoxRenderable(renderer, {
   border: true,
   onMouseOver: () => setPointer("pointer"),
   onMouseOut: () => setPointer("default"),
-})
+});
 
-renderer.root.add(button)
+renderer.root.add(button);
 ```
 
-A demand-driven renderer writes the new style during its next frame. If the handler does not change a renderable
-property, call `requestRender()` to request the next frame.
+A demand-driven renderer writes the new style during its next frame. If the handler does not change a renderable property, call `requestRender()` to request the next frame.
 
-`MousePointerStyle` accepts the following CSS cursor values. Move your pointer over a value to preview the pointer from
-your browser and operating system. Your terminal can show a different pointer.
+`MousePointerStyle` accepts the following CSS cursor values. Move your pointer over a value to preview the pointer from your browser and operating system. Your terminal can show a different pointer.
 
 {/* docs-lint-disable mdx-component-node */}
 
 <MousePointerPreview />
 
-OpenTUI sends each value with [OSC 22](https://sw.kovidgoyal.net/kitty/pointer-shapes/), but it does not detect OSC 22
-support. A terminal can ignore an unsupported value or use the nearest available style. `"none"` hides the pointer if
-the terminal supports this value.
+OpenTUI sends each value with [OSC 22](https://sw.kovidgoyal.net/kitty/pointer-shapes/), but it does not detect OSC 22 support. A terminal can ignore an unsupported value or use the nearest available style. `"none"` hides the pointer if the terminal supports this value.
 
-The style changes only the pointer appearance. It does not change hit testing or mouse event delivery. Keep visible
-focus states and keyboard alternatives for every pointer interaction. `renderer.destroy()` resets the terminal pointer.
+The style changes only the pointer appearance. It does not change hit testing or mouse event delivery. Keep visible focus states and keyboard alternatives for every pointer interaction. `renderer.destroy()` resets the terminal pointer.
 
 ## Renderable focus
 
@@ -160,8 +154,8 @@ Use `focus()` and `blur()` for explicit control. Listen for `RenderableEvents.FO
 Focusing an input does not clear a selection in another renderable:
 
 ```typescript
-input.focus()
-input.value = "deploy --check"
+input.focus();
+input.value = "deploy --check";
 ```
 
 ```text terminal=interaction-selection-focus surface
@@ -189,22 +183,19 @@ Use `focused_renderable` for renderable focus changes. See [Terminal capabilitie
 
 Text-buffer renderables are selectable by default. Set `selectable: false` on [Text](/docs/components/text) or related content to disable selection.
 
-A left-button down on selectable content starts a global selection. Dragging updates its endpoints and extends the
-selection across selectable descendants in the active container.
+A left-button down on selectable content starts a global selection. Dragging updates its endpoints and extends the selection across selectable descendants in the active container.
 
-Text-buffer renderables, including Text, Code, Input, and Textarea, use repeated left-button presses for these selection
-behaviors:
+Text-buffer renderables, including Text, Code, Input, and Textarea, use repeated left-button presses for these selection behaviors:
 
-| Gesture                     | Result                                                       |
-| --------------------------- | ------------------------------------------------------------ |
-| First press and drag        | Start at zero width, then select by cells                    |
-| Second press                | Select the word at the pointer                               |
-| Third press                 | Select the logical source line, including its soft wraps     |
+| Gesture | Result |
+| --- | --- |
+| First press and drag | Start at zero width, then select by cells |
+| Second press | Select the word at the pointer |
+| Third press | Select the logical source line, including its soft wraps |
 | Drag after the second press | Extend by words and include the text between the outer words |
-| Drag after the third press  | Extend by logical source lines                               |
+| Drag after the third press | Extend by logical source lines |
 
-Each repeated press must hit the same renderable within 500 ms. Its x and y coordinates can each differ by at most one
-cell from the prior press. OpenTUI does not expose options for this interval or for the selection-word boundary set.
+Each repeated press must hit the same renderable within 500 ms. Its x and y coordinates can each differ by at most one cell from the prior press. OpenTUI does not expose options for this interval or for the selection-word boundary set.
 
 OpenTUI groups adjacent graphemes by whether their first code point is in this boundary set:
 
@@ -212,15 +203,11 @@ OpenTUI groups adjacent graphemes by whether their first code point is in this b
 space tab ' " │ ` | : ; , ( ) [ ] { } < > $
 ```
 
-Adjacent boundary graphemes form one selectable run. Adjacent non-boundary graphemes form another. Thus, double-clicking
-a run of spaces or tabs selects that run. `/`, `\`, `-`, and `.` are not boundaries, so `foo/bar` is one selection word.
-The same rule treats `日本語abc` as one selection word. A hard line break ends a word, but a soft wrap does not.
+Adjacent boundary graphemes form one selectable run. Adjacent non-boundary graphemes form another. Thus, double-clicking a run of spaces or tabs selects that run. `/`, `\`, `-`, and `.` are not boundaries, so `foo/bar` is one selection word. The same rule treats `日本語abc` as one selection word. A hard line break ends a word, but a soft wrap does not.
 
-These boundaries apply only to pointer selection. Textarea word movement and word deletion use editor boundaries, so
-they can stop at different positions.
+These boundaries apply only to pointer selection. Textarea word movement and word deletion use editor boundaries, so they can stop at different positions.
 
-Line selection excludes the line break. It trims leading and trailing ASCII spaces and tabs, unless the complete line
-contains only spaces and tabs.
+Line selection excludes the line break. It trims leading and trailing ASCII spaces and tabs, unless the complete line contains only spaces and tabs.
 
 ASCII Font, TextTable, and Embedded Terminal keep their component-specific cell selection behavior.
 
@@ -241,8 +228,7 @@ Use these public values:
 - `Selection.selectedRenderables` lists renderables with selected text.
 - `Selection.getSelectedText()` joins selected text in top-to-bottom, left-to-right order.
 
-A word or line selection can extend beyond `Selection.bounds`. The bounds describe the pointer gesture, not the expanded
-text range.
+A word or line selection can extend beyond `Selection.bounds`. The bounds describe the pointer gesture, not the expanded text range.
 
 Each text buffer converts the global cell rectangle to local coordinates. `TextBufferRenderable.getSelection()` then returns `{ start, end }`.
 
@@ -267,26 +253,33 @@ Read [Text and terminal cells](/docs/core-concepts/text-and-cells) before you co
 `createTestRenderer()` returns `mockMouse` and `mockInput`. Both send terminal sequences through the real parser.
 
 ```typescript
-import { InputRenderable, TextRenderable } from "@opentui/core"
-import { createTestRenderer } from "@opentui/core/testing"
+import { InputRenderable, TextRenderable } from "@opentui/core";
+import { createTestRenderer } from "@opentui/core/testing";
 
-const setup = await createTestRenderer({ width: 30, height: 6 })
+const setup = await createTestRenderer({ width: 30, height: 6 });
 
 try {
-  const text = new TextRenderable(setup.renderer, { content: "select this", width: 11 })
-  const input = new InputRenderable(setup.renderer, { position: "absolute", top: 2, width: 20 })
-  setup.renderer.root.add(text)
-  setup.renderer.root.add(input)
-  await setup.renderOnce()
+  const text = new TextRenderable(setup.renderer, {
+    content: "select this",
+    width: 11,
+  });
+  const input = new InputRenderable(setup.renderer, {
+    position: "absolute",
+    top: 2,
+    width: 20,
+  });
+  setup.renderer.root.add(text);
+  setup.renderer.root.add(input);
+  await setup.renderOnce();
 
-  await setup.mockMouse.drag(text.x, text.y, text.x + 5, text.y)
-  input.focus()
-  await setup.mockInput.typeText("hello")
+  await setup.mockMouse.drag(text.x, text.y, text.x + 5, text.y);
+  input.focus();
+  await setup.mockInput.typeText("hello");
 
-  console.log(setup.renderer.getSelection()?.getSelectedText())
-  console.log(input.value)
+  console.log(setup.renderer.getSelection()?.getSelectedText());
+  console.log(input.value);
 } finally {
-  setup.renderer.destroy()
+  setup.renderer.destroy();
 }
 ```
 

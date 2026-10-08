@@ -85,24 +85,24 @@ devver-cli
 
 ### 3.3 MVP Commands
 
-| Command                            | Description              | Priority | Linear Issue |
-| ---------------------------------- | ------------------------ | -------- | ------------ |
-| `devver` (no args)                 | Launch TUI               | P0       | -            |
-| `devver --help`                    | Show help                | P0       | -            |
-| `devver --version`                 | Show version             | P0       | ✅ Done      |
-| `devver auth login`                | Authenticate via Logto   | P0       | DEV-87       |
-| `devver auth logout`               | Clear credentials        | P0       | DEV-79       |
-| `devver auth status`               | Show login status        | P1       | DEV-79       |
-| `devver project use <id>`          | Select active project    | P0       | -            |
-| `devver project list`              | List projects            | P1       | DEV-34       |
-| `devver project info <id>`         | Show project details     | P1       | DEV-34       |
-| `devver project link <name> <url>` | Link external repo       | P1       | -            |
-| `devver deploy`                    | Deploy current directory | P0       | -            |
-| `devver secret set <key> <val>`    | Set a secret             | P1       | -            |
-| `devver secret set --file .env`    | Import secrets from file | P1       | -            |
-| `devver secret list`               | List secret keys         | P1       | -            |
-| `devver secret delete <key>`       | Remove a secret          | P2       | -            |
-| `devver update`                    | Self-update CLI          | P2       | DEV-99       |
+| Command | Description | Priority | Linear Issue |
+| --- | --- | --- | --- |
+| `devver` (no args) | Launch TUI | P0 | - |
+| `devver --help` | Show help | P0 | - |
+| `devver --version` | Show version | P0 | ✅ Done |
+| `devver auth login` | Authenticate via Logto | P0 | DEV-87 |
+| `devver auth logout` | Clear credentials | P0 | DEV-79 |
+| `devver auth status` | Show login status | P1 | DEV-79 |
+| `devver project use <id>` | Select active project | P0 | - |
+| `devver project list` | List projects | P1 | DEV-34 |
+| `devver project info <id>` | Show project details | P1 | DEV-34 |
+| `devver project link <name> <url>` | Link external repo | P1 | - |
+| `devver deploy` | Deploy current directory | P0 | - |
+| `devver secret set <key> <val>` | Set a secret | P1 | - |
+| `devver secret set --file .env` | Import secrets from file | P1 | - |
+| `devver secret list` | List secret keys | P1 | - |
+| `devver secret delete <key>` | Remove a secret | P2 | - |
+| `devver update` | Self-update CLI | P2 | DEV-99 |
 
 ---
 
@@ -425,12 +425,12 @@ Run `brew upgrade devver-cli` to update.
 
 _Track key design decisions here:_
 
-| Decision      | Choice                      | Rationale                                      | Date       |
-| ------------- | --------------------------- | ---------------------------------------------- | ---------- |
-| Command style | Verb-noun                   | Most intuitive for users (`devver auth login`) | 2026-01-10 |
-| Auth method   | Logto OAuth                 | Consistent with web platform, SSO support      | 2026-01-10 |
-| Distribution  | Homebrew + Cargo + Binaries | Cover macOS, Linux, Windows                    | 2026-01-10 |
-| TUI default   | No args → TUI               | Power users get rich interface by default      | 2026-01-10 |
+| Decision | Choice | Rationale | Date |
+| --- | --- | --- | --- |
+| Command style | Verb-noun | Most intuitive for users (`devver auth login`) | 2026-01-10 |
+| Auth method | Logto OAuth | Consistent with web platform, SSO support | 2026-01-10 |
+| Distribution | Homebrew + Cargo + Binaries | Cover macOS, Linux, Windows | 2026-01-10 |
+| TUI default | No args → TUI | Power users get rich interface by default | 2026-01-10 |
 
 ---
 

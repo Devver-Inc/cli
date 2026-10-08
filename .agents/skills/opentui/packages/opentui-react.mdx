@@ -29,23 +29,21 @@ categories:
 `@opentui/react` is a React renderer for OpenTUI. It requires React `>=19.2.0`.
 
 ```tsx
-import { createCliRenderer } from "@opentui/core"
-import { createRoot } from "@opentui/react"
+import { createCliRenderer } from "@opentui/core";
+import { createRoot } from "@opentui/react";
 
 function App() {
-  return <text>Hello, world!</text>
+  return <text>Hello, world!</text>;
 }
 
-const renderer = await createCliRenderer({ exitOnCtrlC: true })
-const root = createRoot(renderer)
+const renderer = await createCliRenderer({ exitOnCtrlC: true });
+const root = createRoot(renderer);
 
-root.render(<App />)
+root.render(<App />);
 ```
 
 `createRoot()` adopts the renderer. The code that creates the renderer owns `renderer.destroy()`.
 
 React hooks expose the renderer and terminal events through the React lifecycle.
 
-Read the [React bindings](/docs/bindings/react), [components overview](/docs/components),
-[runtime and platform support](/docs/getting-started/runtime-support), [testing](/docs/core-concepts/testing), and
-[package entry points](/docs/reference/package-entrypoints).
+Read the [React bindings](/docs/bindings/react), [components overview](/docs/components), [runtime and platform support](/docs/getting-started/runtime-support), [testing](/docs/core-concepts/testing), and [package entry points](/docs/reference/package-entrypoints).

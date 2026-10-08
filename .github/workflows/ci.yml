@@ -28,7 +28,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '26.5.0'
+          node-version: "26.5.0"
 
       - name: Synchronize release versions and locks
         run: bun run sync:version
@@ -60,7 +60,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '26.5.0'
+          node-version: "26.5.0"
 
       - name: Synchronize release versions and locks
         run: bun run sync:version
@@ -91,7 +91,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '26.5.0'
+          node-version: "26.5.0"
 
       - name: Synchronize release versions and locks
         run: bun run sync:version

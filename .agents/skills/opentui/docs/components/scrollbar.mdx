@@ -22,9 +22,9 @@ description: Control a scroll position with a standalone bar
 ### Renderable API
 
 ```typescript
-import { ScrollBarRenderable, createCliRenderer } from "@opentui/core"
+import { ScrollBarRenderable, createCliRenderer } from "@opentui/core";
 
-const renderer = await createCliRenderer()
+const renderer = await createCliRenderer();
 
 const scrollbar = new ScrollBarRenderable(renderer, {
   id: "scrollbar",
@@ -36,17 +36,17 @@ const scrollbar = new ScrollBarRenderable(renderer, {
     foregroundColor: "#888888",
   },
   onChange: (position) => {
-    console.log("Scroll position:", position)
+    console.log("Scroll position:", position);
   },
-})
+});
 
 // Connect the scrollbar to your content
-scrollbar.scrollSize = 200
-scrollbar.viewportSize = 20
-scrollbar.scrollPosition = 0
+scrollbar.scrollSize = 200;
+scrollbar.viewportSize = 20;
+scrollbar.scrollPosition = 0;
 
-renderer.root.add(scrollbar)
-scrollbar.focus()
+renderer.root.add(scrollbar);
+scrollbar.focus();
 ```
 
 ```text terminal=scrollbar-arrows
@@ -73,17 +73,17 @@ When focused, the scrollbar responds to:
 
 ## Properties
 
-| Property         | Type                           | Default | Description                            |
-| ---------------- | ------------------------------ | ------- | -------------------------------------- |
-| `orientation`    | `"vertical"` or `"horizontal"` | -       | Scrollbar direction                    |
-| `showArrows`     | `boolean`                      | `false` | Show arrow buttons                     |
-| `arrowOptions`   | `ArrowOptions`                 | -       | Styling for arrow buttons              |
-| `trackOptions`   | `Partial<SliderOptions>`       | -       | Styling for the track and thumb        |
-| `scrollSize`     | `number`                       | `0`     | Total scrollable size                  |
-| `viewportSize`   | `number`                       | `0`     | Visible size of the viewport           |
-| `scrollPosition` | `number`                       | `0`     | Current scroll position                |
-| `scrollStep`     | `number`                       | -       | Step size when `scrollBy(..., "step")` |
-| `onChange`       | `(position: number) => void`   | -       | Fired when scroll position changes     |
+| Property | Type | Default | Description |
+| --- | --- | --- | --- |
+| `orientation` | `"vertical"` or `"horizontal"` | - | Scrollbar direction |
+| `showArrows` | `boolean` | `false` | Show arrow buttons |
+| `arrowOptions` | `ArrowOptions` | - | Styling for arrow buttons |
+| `trackOptions` | `Partial<SliderOptions>` | - | Styling for the track and thumb |
+| `scrollSize` | `number` | `0` | Total scrollable size |
+| `viewportSize` | `number` | `0` | Visible size of the viewport |
+| `scrollPosition` | `number` | `0` | Current scroll position |
+| `scrollStep` | `number` | - | Step size when `scrollBy(..., "step")` |
+| `onChange` | `(position: number) => void` | - | Fired when scroll position changes |
 
 ## Related concepts
 

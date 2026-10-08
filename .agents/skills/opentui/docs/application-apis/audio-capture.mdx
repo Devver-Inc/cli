@@ -17,46 +17,51 @@ Capture is independent from playback. It does not start output or the mixer, and
 Create capture through `audio.openCapture(options?)`. The `AudioCaptureStream` constructor is private.
 
 ```typescript
-import { Audio, type AudioCaptureStream } from "@opentui/core"
+import { Audio, type AudioCaptureStream } from "@opentui/core";
 
-const audio = Audio.create({ autoStart: false })
-let capture: AudioCaptureStream | null = null
+const audio = Audio.create({ autoStart: false });
+let capture: AudioCaptureStream | null = null;
 
 audio.on("error", (error, context) => {
-  console.error(`${context.action}: ${error.message}`)
-})
+  console.error(`${context.action}: ${error.message}`);
+});
 
 function reportPcm(pcm: Float32Array, channels: number): void {
-  console.log(`received ${pcm.length / channels} frames`)
+  console.log(`received ${pcm.length / channels} frames`);
 }
 
 try {
   const activeCapture = await audio.openCapture({
     channels: 1,
     chunkFrames: 2048,
-  })
-  capture = activeCapture
+  });
+  capture = activeCapture;
 
   activeCapture.on("error", (error, context) => {
-    console.error(`${context.action}: ${error.message}`)
-  })
+    console.error(`${context.action}: ${error.message}`);
+  });
 
   const consumption = (async () => {
     for await (const pcm of activeCapture.readable) {
-      reportPcm(pcm, activeCapture.channels)
+      reportPcm(pcm, activeCapture.channels);
     }
-  })()
+  })();
 
-  await new Promise((resolve) => setTimeout(resolve, 1000))
-  activeCapture.stop()
-  await consumption
-  await activeCapture.closed
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  activeCapture.stop();
+  await consumption;
+  await activeCapture.closed;
 } finally {
-  if (capture != null && capture.state !== "stopped" && capture.state !== "errored" && capture.state !== "disposed") {
-    capture.dispose()
+  if (
+    capture != null &&
+    capture.state !== "stopped" &&
+    capture.state !== "errored" &&
+    capture.state !== "disposed"
+  ) {
+    capture.dispose();
   }
-  await capture?.closed
-  audio.dispose()
+  await capture?.closed;
+  audio.dispose();
 }
 ```
 
@@ -70,13 +75,13 @@ An unhandled later `error` event throws. A parent method that returns `false` or
 
 `openCapture()` accepts these options:
 
-| Option           | Default                 | Effect                                               |
-| ---------------- | ----------------------- | ---------------------------------------------------- |
-| `channels`       | `1`                     | Samples in each interleaved frame                    |
-| `capacityFrames` | `audio.sampleRate`      | Native ring capacity, equal to one second by default |
-| `chunkFrames`    | `2048`                  | Frames in each normal stream chunk                   |
-| `startOptions`   | Capture native defaults | Low-level input-device options                       |
-| `signal`         | None                    | Disposes capture when aborted                        |
+| Option | Default | Effect |
+| --- | --- | --- |
+| `channels` | `1` | Samples in each interleaved frame |
+| `capacityFrames` | `audio.sampleRate` | Native ring capacity, equal to one second by default |
+| `chunkFrames` | `2048` | Frames in each normal stream chunk |
+| `startOptions` | Capture native defaults | Low-level input-device options |
+| `signal` | None | Disposes capture when aborted |
 
 Frame counts and channel counts must be finite positive unsigned 32-bit integers. `chunkFrames` cannot exceed `capacityFrames`.
 
@@ -88,9 +93,7 @@ Capture always uses `audio.sampleRate`. Create another `Audio` engine to use a d
 
 ### Capture start-option detail
 
-Capture has a special default for `noFixedSizedCallback`. The wrapper sets the native value to `true` when that field
-is undefined. This applies when `startOptions` is omitted and when it is `{}`. Pass
-`startOptions: { noFixedSizedCallback: false }` to select `false` explicitly.
+Capture has a special default for `noFixedSizedCallback`. The wrapper sets the native value to `true` when that field is undefined. This applies when `startOptions` is omitted and when it is `{}`. Pass `startOptions: { noFixedSizedCallback: false }` to select `false` explicitly.
 
 See [Low-level start options](/docs/core-concepts/audio#low-level-start-options) for the complete field list.
 
@@ -135,11 +138,11 @@ Canceling `readable`, calling `dispose()`, aborting `signal`, or disposing the o
 List and select an input before capture starts.
 
 ```typescript
-const devices = audio.listCaptureDevices() ?? []
-const selected = devices.find((device) => device.isDefault) ?? devices[0]
+const devices = audio.listCaptureDevices() ?? [];
+const selected = devices.find((device) => device.isDefault) ?? devices[0];
 
 if (selected != null && !audio.selectCaptureDevice(selected.index)) {
-  throw new Error(`Could not select ${selected.name}`)
+  throw new Error(`Could not select ${selected.name}`);
 }
 ```
 
@@ -181,35 +184,35 @@ Use the direct API when application code controls the polling cadence.
 
 ```typescript
 audio.on("error", (error, context) => {
-  console.error(`${context.action}: ${error.message}`)
-})
+  console.error(`${context.action}: ${error.message}`);
+});
 
 if (!audio.startCapture({ channels: 2, capacityFrames: 48_000 })) {
-  throw new Error("Could not start capture")
+  throw new Error("Could not start capture");
 }
 
-const result = audio.readCaptureFrames(1024)
+const result = audio.readCaptureFrames(1024);
 if (result != null) {
-  const channels = audio.getCaptureStats()?.channels ?? 2
-  const validSamples = result.frames.subarray(0, result.framesRead * channels)
-  console.log(validSamples.length)
+  const channels = audio.getCaptureStats()?.channels ?? 2;
+  const validSamples = result.frames.subarray(0, result.framesRead * channels);
+  console.log(validSamples.length);
 }
 
-audio.stopCapture()
+audio.stopCapture();
 ```
 
 ### Direct method reference
 
-| Method                          | Result and behavior                             |
-| ------------------------------- | ----------------------------------------------- |
-| `listCaptureDevices()`          | Returns `AudioCaptureDevice[] \| null`          |
-| `selectCaptureDevice(index)`    | Selects one current index and returns `boolean` |
-| `clearCaptureDeviceSelection()` | Clears explicit selection and returns `void`    |
-| `startCapture(options?)`        | Starts input and returns `boolean`              |
-| `isCapturing()`                 | Reports whether the input device still runs     |
-| `readCaptureFrames(frameCount)` | Returns `{ frames, framesRead } \| null`        |
-| `getCaptureStats()`             | Returns `AudioCaptureStats \| null`             |
-| `stopCapture()`                 | Stops the input device and returns `boolean`    |
+| Method | Result and behavior |
+| --- | --- |
+| `listCaptureDevices()` | Returns `AudioCaptureDevice[] \| null` |
+| `selectCaptureDevice(index)` | Selects one current index and returns `boolean` |
+| `clearCaptureDeviceSelection()` | Clears explicit selection and returns `void` |
+| `startCapture(options?)` | Starts input and returns `boolean` |
+| `isCapturing()` | Reports whether the input device still runs |
+| `readCaptureFrames(frameCount)` | Returns `{ frames, framesRead } \| null` |
+| `getCaptureStats()` | Returns `AudioCaptureStats \| null` |
+| `stopCapture()` | Stops the input device and returns `boolean` |
 
 `readCaptureFrames()` consumes up to `frameCount` frames. `frameCount` cannot exceed the configured ring capacity.
 
@@ -228,32 +231,32 @@ Successful transitions emit parent `captureStarted` and `captureStopped` events.
 Create recording through `audio.recordToFile(filePath, options?)`. The `AudioRecorder` constructor is private.
 
 ```typescript
-import { Audio, type AudioRecorder } from "@opentui/core"
+import { Audio, type AudioRecorder } from "@opentui/core";
 
-const audio = Audio.create({ autoStart: false })
-const recording = "recording.wav"
-let recorder: AudioRecorder | null = null
+const audio = Audio.create({ autoStart: false });
+const recording = "recording.wav";
+let recorder: AudioRecorder | null = null;
 
 audio.on("error", (error, context) => {
-  console.error(`${context.action}: ${error.message}`)
-})
+  console.error(`${context.action}: ${error.message}`);
+});
 
 try {
   const activeRecorder = await audio.recordToFile(recording, {
     channels: 1,
-  })
-  recorder = activeRecorder
+  });
+  recorder = activeRecorder;
 
   activeRecorder.on("error", (error, context) => {
-    console.error(`${context.action}: ${error.message}`)
-  })
+    console.error(`${context.action}: ${error.message}`);
+  });
 
-  await new Promise((resolve) => setTimeout(resolve, 1000))
-  activeRecorder.stop()
-  await activeRecorder.closed
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  activeRecorder.stop();
+  await activeRecorder.closed;
 
   if (activeRecorder.state === "errored") {
-    throw new Error("Recording failed")
+    throw new Error("Recording failed");
   }
 } finally {
   if (
@@ -262,10 +265,10 @@ try {
     recorder.state !== "errored" &&
     recorder.state !== "disposed"
   ) {
-    recorder.dispose()
+    recorder.dispose();
   }
-  await recorder?.closed
-  audio.dispose()
+  await recorder?.closed;
+  audio.dispose();
 }
 ```
 
@@ -305,16 +308,16 @@ Classic RIFF limits the audio data chunk to exactly `4,294,967,259` bytes. The r
 
 ### `AudioCaptureStream`
 
-| Member                   | Behavior                                                  |
-| ------------------------ | --------------------------------------------------------- |
-| `readable`               | Demand-driven stream of interleaved `Float32Array` chunks |
-| `sampleRate`, `channels` | Captured PCM format                                       |
-| `chunkFrames`            | Normal requested chunk size                               |
-| `state`                  | Current capture-stream state                              |
-| `getStats()`             | Refreshes and returns capture statistics                  |
-| `stop()`                 | Stops input and starts a graceful drain                   |
-| `dispose()`              | Stops without a graceful drain                            |
-| `closed`                 | Resolves after cleanup and terminal event delivery        |
+| Member | Behavior |
+| --- | --- |
+| `readable` | Demand-driven stream of interleaved `Float32Array` chunks |
+| `sampleRate`, `channels` | Captured PCM format |
+| `chunkFrames` | Normal requested chunk size |
+| `state` | Current capture-stream state |
+| `getStats()` | Refreshes and returns capture statistics |
+| `stop()` | Stops input and starts a graceful drain |
+| `dispose()` | Stops without a graceful drain |
+| `closed` | Resolves after cleanup and terminal event delivery |
 
 Capture-stream state is `initializing`, `capturing`, `stopping`, `stopped`, `errored`, or `disposed`.
 
@@ -322,15 +325,15 @@ Capture-stream statistics contain `state`, `sampleRate`, `channels`, `capacityFr
 
 ### `AudioRecorder`
 
-| Member                   | Behavior                                            |
-| ------------------------ | --------------------------------------------------- |
-| `filePath`, `format`     | Destination path and literal `"wav"`                |
-| `sampleRate`, `channels` | Recorded PCM format                                 |
-| `state`                  | Current recorder state                              |
-| `getStats()`             | Returns capture, file, and duration statistics      |
-| `stop()`                 | Drains, finalizes, syncs, closes, and renames       |
-| `dispose()`              | Aborts before rename and removes the temporary file |
-| `closed`                 | Resolves after cleanup and terminal event delivery  |
+| Member | Behavior |
+| --- | --- |
+| `filePath`, `format` | Destination path and literal `"wav"` |
+| `sampleRate`, `channels` | Recorded PCM format |
+| `state` | Current recorder state |
+| `getStats()` | Returns capture, file, and duration statistics |
+| `stop()` | Drains, finalizes, syncs, closes, and renames |
+| `dispose()` | Aborts before rename and removes the temporary file |
+| `closed` | Resolves after cleanup and terminal event delivery |
 
 Recorder state is `initializing`, `recording`, `stopping`, `stopped`, `errored`, or `disposed`.
 
