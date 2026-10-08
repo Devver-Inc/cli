@@ -142,10 +142,20 @@ test("a foreground server serves identity on loopback and rejects browser cross-
         })
       ).status
     ).toBe(200);
-    expect(
-      (await fetch(`${running.url}/identity`, { method: "POST" })).status
-    ).toBe(405);
+    const methodNotAllowed = await fetch(`${running.url}/identity`, {
+      method: "POST",
+    });
+    expect(methodNotAllowed.status).toBe(405);
+    expect(methodNotAllowed.headers.get("allow")).toBe("GET");
     expect((await fetch(`${running.url}/missing`)).status).toBe(404);
+    // Only the prefixed, exactly matching path is a route.
+    for (const path of [
+      "/identity",
+      "/api/v1/identity/",
+      "/api/v1/identity?x=1",
+    ]) {
+      expect((await fetch(new URL(path, running.url))).status, path).toBe(404);
+    }
   } finally {
     child?.kill();
     if (child !== undefined) {

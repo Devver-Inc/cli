@@ -6,8 +6,8 @@ import type { AddressInfo } from "node:net";
 import { NodeRuntime } from "@effect/platform-node";
 import { Data, Effect } from "effect";
 
-import pkg from "../../../package.json" with { type: "json" };
 import { loadInstance } from "./identity";
+import { matchRoute } from "./routes";
 
 const HOST = "127.0.0.1";
 const API_PATH = "/api/v1";
@@ -55,12 +55,20 @@ export const serve = (name: string, port: number) =>
         response.writeHead(403).end("Forbidden");
         return;
       }
-      if (request.url !== `${API_PATH}/identity`) {
+      // The prefix is required and the path below it must match exactly, so a
+      // query string, a trailing slash or an unprefixed path is not a route.
+      const url = request.url ?? "";
+      const match = url.startsWith(API_PATH)
+        ? matchRoute(url.slice(API_PATH.length), request.method)
+        : ({ outcome: "unknown-path" } as const);
+      if (match.outcome === "unknown-path") {
         response.writeHead(404).end("Not found");
         return;
       }
-      if (request.method !== "GET") {
-        response.writeHead(405, { Allow: "GET" }).end("Method not allowed");
+      if (match.outcome === "wrong-method") {
+        response
+          .writeHead(405, { Allow: match.allow })
+          .end("Method not allowed");
         return;
       }
       response
@@ -68,13 +76,7 @@ export const serve = (name: string, port: number) =>
           "Content-Type": "application/json; charset=utf-8",
           "Cache-Control": "no-store",
         })
-        .end(
-          JSON.stringify({
-            ...instance,
-            serverVersion: pkg.version,
-            controlProtocolVersion: 1,
-          })
-        );
+        .end(JSON.stringify(match.route.handler({ instance })));
     });
 
     yield* Effect.addFinalizer(() =>
