@@ -89,7 +89,7 @@ const readDbName = (message: string) =>
     )
   );
 
-const resolveDbLinks = (projectId: string) =>
+export const resolveDbLinks = (projectId: string) =>
   Effect.gen(function* () {
     const project = yield* getProjectById(projectId);
     if (project.databaseConfiguration?.enabled !== true) {
@@ -102,9 +102,7 @@ const resolveDbLinks = (projectId: string) =>
       yield* Console.log("  Database type linking not yet supported.");
       return undefined;
     }
-    const databases = yield* listMongoDatabases(projectId).pipe(
-      Effect.orElseSucceed(() => [])
-    );
+    const databases = yield* listMongoDatabases(projectId);
     if (databases.length === 0) {
       yield* Console.log(
         "  No databases found on this project's MongoDB instance."
