@@ -1,9 +1,12 @@
 import { createContext, useCallback, useContext, useRef } from "react";
 import type { ReactNode } from "react";
 
-import { formatError } from "../../error";
-
-type Exit = (reason?: Error) => Promise<void>;
+/**
+ * Shutting the view down is the only thing the TUI decides for itself. Failures
+ * stay in the Effect that started it, where `NodeRuntime.runMain` renders the
+ * cause and sets the exit status.
+ */
+type Exit = () => Promise<void>;
 const ExitContext = createContext<Exit | undefined>(undefined);
 
 export function ExitProvider({
@@ -14,23 +17,13 @@ export function ExitProvider({
   onExit?: () => Promise<void>;
 }): ReactNode {
   const exiting = useRef(false);
-  const exit = useCallback(
-    async (reason?: Error) => {
-      if (exiting.current) {
-        return;
-      }
-      exiting.current = true;
-      await onExit?.();
-      if (reason !== undefined) {
-        const formatted = formatError(reason);
-        if (formatted !== undefined && formatted !== "") {
-          process.stderr.write(`${formatted}\n`);
-        }
-        process.exitCode = 1;
-      }
-    },
-    [onExit]
-  );
+  const exit = useCallback(async () => {
+    if (exiting.current) {
+      return;
+    }
+    exiting.current = true;
+    await onExit?.();
+  }, [onExit]);
   return <ExitContext.Provider value={exit}>{children}</ExitContext.Provider>;
 }
 

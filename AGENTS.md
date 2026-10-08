@@ -25,6 +25,7 @@
 ## Reliability and security
 
 - Never log tokens, passwords, or secret values. Credential decode failures report that the store is unusable without attaching the JSON syntax error or schema issue as a cause, because both render a fragment of the offending input. Store project secrets outside tracked files with owner-only permissions; never overwrite unreadable/corrupt secrets. Validate before writing or sending data.
+- `NodeRuntime.runMain` renders the failure cause and sets the exit status; do not hand-roll an error formatter beside it. A message belongs on the error that raises it (`formatBackendError` builds `ApiError.message` from the backend code), and anything that needs a whole cause as text uses `Cause.pretty`/`Cause.prettyErrors`. Never stringify an arbitrary caught value into output: its properties can carry credentials.
 - Errors must produce a nonzero exit status, cancellations must not masquerade as successful mutations, and resources (auth server, renderer, Effect scopes) must be cleaned up. Avoid `process.exit()` inside handlers/finalizers. Git/deploy checks fail closed if a subprocess result is unknown or unsuccessful.
 - Unimplemented commands must say they are unsupported and fail; do not print a simulated success or wait forever.
 
