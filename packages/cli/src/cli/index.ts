@@ -5,6 +5,7 @@ import { Command } from "effect/cli";
 
 import pkg from "../../../../package.json" with { type: "json" };
 import { auth } from "./auth";
+import { cloud } from "./cloud";
 import { config, init } from "./config";
 import { deploy } from "./deploy";
 import { attach, detach, server } from "./local-server";
@@ -21,6 +22,7 @@ export const cli = root.pipe(
   Command.withSubcommands([
     attach,
     auth,
+    cloud,
     config,
     deploy,
     detach,

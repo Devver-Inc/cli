@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { Schema } from "effect";
 
 import pkg from "../package.json" with { type: "json" };
+import { CliConfigSchema } from "../packages/cli/src/config/api";
 
 const cli = join(
   import.meta.dir,
@@ -170,6 +171,51 @@ test("config list renders the attached target without object coercion and marks 
     const cleared = await ws.run("config", "list");
     expect(cleared.output).not.toContain("api-url");
     expect(cleared.output).toContain(`local-target = listed at ${running.url}`);
+  } finally {
+    if (running !== undefined) {
+      await stop(running.child);
+    }
+    rmSync(ws.root, { recursive: true, force: true });
+  }
+});
+
+test("cloud selects the official API and switches cleanly with a local server", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  const ws = workspace();
+  let running: Awaited<ReturnType<typeof foreground>> | undefined;
+  const configFile = join(ws.root, "devver", "config", "cli");
+  const saved = () =>
+    Schema.decodeUnknownSync(CliConfigSchema)(
+      JSON.parse(readFileSync(configFile, "utf-8"))
+    );
+  try {
+    const selected = await ws.run("cloud");
+    expect(selected.status, selected.output).toBe(0);
+    expect(selected.output).toContain("https://app.devver.app/api/v1");
+    expect(saved()["cloud-target"]).toBe(true);
+    expect((await ws.run("config", "list")).output).toContain(
+      "cloud-target = https://app.devver.app/api/v1"
+    );
+
+    running = await foreground(ws.env, "switchable");
+    expect((await ws.run("attach", running.url)).status).toBe(0);
+    expect(saved()["cloud-target"]).toBeUndefined();
+    expect(saved()["local-target"]?.url).toBe(running.url);
+
+    expect((await ws.run("cloud")).status).toBe(0);
+    expect(saved()["cloud-target"]).toBe(true);
+    expect(saved()["local-target"]).toBeUndefined();
+    expect((await ws.run("detach")).status).toBe(0);
+    expect(saved()["cloud-target"]).toBeUndefined();
+    expect(saved()["local-target"]).toBeUndefined();
+
+    writeFileSync(configFile, '{"local-target":{"url":"broken"}}');
+    expect((await ws.run("cloud")).status).not.toBe(0);
+    expect(readFileSync(configFile, "utf-8")).toBe(
+      '{"local-target":{"url":"broken"}}'
+    );
   } finally {
     if (running !== undefined) {
       await stop(running.child);

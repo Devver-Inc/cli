@@ -3,7 +3,7 @@ import { Data, Effect, Layer, Option } from "effect";
 import { ApiBaseUrl, ApiClientLayer, AuthToken } from "../api/client";
 import type { ApiClient } from "../api/client";
 import { getAccessToken } from "../auth/client";
-import { readConfig } from "../config/api";
+import { CLOUD_API_URL, readConfig } from "../config/api";
 import { root } from "./root";
 
 class ApiTargetError extends Data.TaggedError("ApiTargetError")<{
@@ -18,14 +18,17 @@ export const withApi = <A, E, R>(effect: Effect.Effect<A, E, R | ApiClient>) =>
     if (config["local-target"] !== undefined) {
       return yield* new ApiTargetError({
         message:
-          "This operation is not supported on the attached local server. Run 'devver detach' to use an explicit cloud --api-url.",
+          "This operation is not supported on the attached local server. Run 'devver cloud' to select the official cloud API.",
       });
     }
-    const url = Option.getOrUndefined(apiUrl);
+    const explicitUrl = Option.getOrUndefined(apiUrl);
+    const url =
+      explicitUrl ??
+      (config["cloud-target"] === true ? CLOUD_API_URL : undefined);
     if (url === undefined || url === "") {
       return yield* new ApiTargetError({
         message:
-          "No CLI target attached. Run 'devver attach <url>' for a local server or provide an explicit cloud --api-url.",
+          "No CLI target selected. Run 'devver cloud', attach a local server, or provide --api-url for this command.",
       });
     }
     const token = yield* Effect.tryPromise(getAccessToken);

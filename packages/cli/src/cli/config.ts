@@ -3,7 +3,12 @@ import { Argument, Command } from "effect/cli";
 
 import "../config/detectors";
 import { readConfigFile, writeConfigFile } from "../config";
-import { getConfigValue, readConfig, unsetConfigValue } from "../config/api";
+import {
+  CLOUD_API_URL,
+  getConfigValue,
+  readConfig,
+  unsetConfigValue,
+} from "../config/api";
 import { detectProject } from "../config/detect";
 
 const configKey = Argument.String("key").pipe(
@@ -11,12 +16,12 @@ const configKey = Argument.String("key").pipe(
 );
 
 /**
- * A stored `api-url` no longer selects a target: commands need an attached
- * local server or an explicit `--api-url`. Legacy values still decode and can
- * be read or cleared, but storing one must never look like it took effect.
+ * A stored `api-url` no longer selects a target: commands need the official
+ * cloud selection, an attached local server, or an explicit `--api-url`.
+ * Legacy values still decode but must never look like they took effect.
  */
 const INACTIVE_API_URL =
-  "Setting 'api-url' no longer selects a target. Run 'devver attach <url>' for a local server, or pass --api-url to a single command for the cloud.";
+  "Setting 'api-url' no longer selects a target. Run 'devver cloud' for the official cloud, 'devver attach <url>' for a local server, or pass --api-url for one command.";
 const INACTIVE = "(inactive)";
 
 class ConfigCommandError extends Data.TaggedError("ConfigCommandError")<{
@@ -72,16 +77,23 @@ const list = Command.make("list", {}, () =>
       const target = config["local-target"];
       return entries.length === 0
         ? Console.log(
-            "  No config values set. Attach a local server or use an explicit --api-url for cloud commands."
+            "  No target selected. Run 'devver cloud', attach a local server, or pass --api-url for one command."
           )
         : Effect.forEach(
             entries,
-            ([entryKey]) =>
-              entryKey === "local-target" && target !== undefined
-                ? Console.log(`  ${entryKey} = ${target.name} at ${target.url}`)
-                : Console.log(
-                    `  ${entryKey} = ${config["api-url"] ?? ""} ${INACTIVE}`
-                  ),
+            ([entryKey]) => {
+              if (entryKey === "local-target" && target !== undefined) {
+                return Console.log(
+                  `  ${entryKey} = ${target.name} at ${target.url}`
+                );
+              }
+              if (entryKey === "cloud-target") {
+                return Console.log(`  ${entryKey} = ${CLOUD_API_URL}`);
+              }
+              return Console.log(
+                `  ${entryKey} = ${config["api-url"] ?? ""} ${INACTIVE}`
+              );
+            },
             {
               discard: true,
             }

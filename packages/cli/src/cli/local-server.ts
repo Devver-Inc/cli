@@ -89,7 +89,8 @@ export const attach = Command.make(
       // Read first: malformed stored state must never be overwritten by a new attachment.
       const config = await readConfig();
       const target = await verifyIdentity(url);
-      await writeConfig({ ...config, "local-target": target });
+      const { "cloud-target": _removed, ...rest } = config;
+      await writeConfig({ ...rest, "local-target": target });
       return target;
     }).pipe(
       Effect.flatMap((target) =>
@@ -102,10 +103,14 @@ export const attach = Command.make(
 
 export const detach = Command.make("detach", {}, () =>
   Effect.tryPromise(async () => {
-    const { "local-target": _removed, ...config } = await readConfig();
+    const {
+      "local-target": _local,
+      "cloud-target": _cloud,
+      ...config
+    } = await readConfig();
     await writeConfig(config);
-  }).pipe(Effect.flatMap(() => Console.log("Detached local server")))
-).pipe(Command.withDescription("Clear the local server selection"));
+  }).pipe(Effect.flatMap(() => Console.log("Detached target")))
+).pipe(Command.withDescription("Clear the selected target"));
 
 const status = Command.make("status", {}, () =>
   Effect.tryPromise(async () => {

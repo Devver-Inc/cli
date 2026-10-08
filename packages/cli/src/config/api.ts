@@ -1,14 +1,15 @@
 /**
  * Persistent CLI configuration stored in the XDG data directory.
  *
- * Config stores the attached local target and legacy api-url setting.
- * API commands require an attached target or an explicit --api-url flag;
- * neither the stored api-url nor DEVVER_API_URL selects a target.
+ * Config stores the selected local or official cloud target and the legacy
+ * api-url setting. Neither the stored api-url nor DEVVER_API_URL selects a target.
  */
 
 import { Schema } from "effect";
 
 import { Storage } from "../storage";
+
+export const CLOUD_API_URL = "https://app.devver.app/api/v1";
 
 const CONTROL_URL = /^http:\/\/127\.0\.0\.1:(?<port>[1-9]\d{0,4})\/api\/v1$/u;
 
@@ -37,6 +38,7 @@ export const LocalTargetSchema = Schema.Struct({
 export const CliConfigSchema = Schema.Struct({
   "api-url": Schema.optional(Schema.String),
   "local-target": Schema.optional(LocalTargetSchema),
+  "cloud-target": Schema.optional(Schema.Literal(true)),
 });
 
 export type CliConfig = typeof CliConfigSchema.Type;
@@ -62,6 +64,9 @@ export async function readConfig(): Promise<CliConfig> {
     const target = config["local-target"];
     if (target !== undefined) {
       validateControlUrl(target.url);
+      if (config["cloud-target"] === true) {
+        throw new Error("Conflicting CLI targets");
+      }
     }
     return config;
   } catch {
