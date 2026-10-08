@@ -7,16 +7,20 @@ export default defineConfig({
   extends: [core, antiSlop, recommended],
   ignorePatterns: [...(core.ignorePatterns ?? []), "repos/**", ".claude/**"],
   rules: {
-    // Object field order and function declarations carry meaning in Schema and Effect code.
+    // Schema and request field order mirrors the API contract it describes.
     "sort-keys": "off",
+    // `Effect.gen(function* () {})` takes an anonymous function expression.
     "func-style": "off",
     "func-names": "off",
-    // Effect callbacks and server teardown deliberately serialize asynchronous work.
+    // Scoped teardown and sequential probes await deliberately inside loops.
     "no-await-in-loop": "off",
     "unicorn/no-await-expression-member": "off",
+    // Node built-ins are imported by name (`import { join } from "node:path"`).
     "unicorn/import-style": "off",
+    // The OAuth callback and loopback allocation wrap Node events in a Promise.
     "promise/avoid-new": "off",
-    // `promise-function-async` requires async callbacks even when they return an existing Promise.
+    // `Effect.tryPromise(async () => existingPromise)` is the house style: the
+    // async wrapper satisfies `promise-function-async` without a bare `await`.
     "require-await": "off",
     "typescript/return-await": "off",
     // `effect/cli` and `effect/http` are unstable by design and are the mandated

@@ -6,6 +6,8 @@ import { getErrorMessage } from "./api/errors";
 // regex literal isn't re-allocated on every call (useTopLevelRegex).
 const OBJECT_OBJECT_RE = /\[object Object\]/iu;
 
+const isString = (value: unknown): value is string => typeof value === "string";
+
 export class DeployAbortError extends Error {
   constructor(message: string) {
     super(message);
@@ -66,10 +68,7 @@ export function formatError(input: unknown): string | undefined {
     return "Unexpected error";
   }
 
-  // Do not stringify arbitrary objects (which could contain credentials).
+  // Do not stringify arbitrary objects, which could carry credentials.
   // A thrown string is already the intended message.
-  // oxlint-disable-next-line anti-slop/no-runtime-typeof
-  return typeof input === "string"
-    ? `Unexpected error: ${input}`
-    : "Unexpected error";
+  return isString(input) ? `Unexpected error: ${input}` : "Unexpected error";
 }

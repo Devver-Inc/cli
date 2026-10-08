@@ -166,7 +166,8 @@ export const deploy = Command.make("deploy", {}, () =>
       });
       if (confirm !== "Yes") {
         yield* Console.log("Deployment cancelled.");
-        // A cancellation must stop before push or deployment creation.
+        // Stop before push or deployment creation. The success path falls out of
+        // the generator instead of returning, which `consistent-return` reports.
         // oxlint-disable-next-line typescript/consistent-return
         return;
       }

@@ -35,6 +35,10 @@ export const BackendErrorBodySchema = Schema.Struct({
 
 export type BackendErrorBody = typeof BackendErrorBodySchema.Type;
 
+/** The schema decodes `message` as a single code or a list of field messages. */
+const isCode = (message: BackendErrorBody["message"]): message is string =>
+  typeof message === "string";
+
 // Indexed by arbitrary backend codes; retain the dictionary contract for unknown codes.
 // oxlint-disable-next-line anti-slop/no-known-value-widening
 const ERROR_MESSAGES: Record<string, string> = {
@@ -147,15 +151,23 @@ export function getErrorMessage(code: string, fallback?: string): string {
 }
 
 /**
+ * The machine-readable code the backend puts in `message`, which validation
+ * failures send as a list instead of a single string.
+ */
+export function errorCode(
+  body: BackendErrorBody | undefined
+): string | undefined {
+  return isCode(body?.message) ? body.message : undefined;
+}
+
+/**
  * Format a backend error response into a human-readable string.
  *
  * Accepts the parsed JSON body from the NestJS error response and produces
  * a single-line message suitable for CLI output.
  */
 export function formatBackendError(body: BackendErrorBody): string {
-  // This value has already been decoded as string | readonly string[].
-  // oxlint-disable-next-line anti-slop/no-runtime-typeof
-  const code = typeof body.message === "string" ? body.message : undefined;
+  const code = errorCode(body);
   const statusLabel =
     body.statusCode === undefined ? "" : `(${body.statusCode})`;
 

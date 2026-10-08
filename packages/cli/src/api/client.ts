@@ -7,7 +7,11 @@ import {
 } from "effect/http";
 import type { HttpBody, HttpClientError } from "effect/http";
 
-import { BackendErrorBodySchema, formatBackendError } from "./errors";
+import {
+  BackendErrorBodySchema,
+  errorCode,
+  formatBackendError,
+} from "./errors";
 import type { BackendErrorBody } from "./errors";
 
 /**
@@ -48,18 +52,19 @@ interface ApiClientService {
     schema: Schema.Codec<A, unknown, never, unknown>
   ) => Effect.Effect<A, ApiRequestError>;
 
-  // Preserve the concrete request DTO type at the transport seam.
-  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters
-  readonly post: <A, B>(
+  // Request bodies are decoded by their owning module before they reach the
+  // transport, which only serializes them; `bodyJson` takes an unknown value.
+  readonly post: <A>(
     path: string,
-    body: B,
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Already decoded by its owning module; this seam only serializes it.
+    body: unknown,
     schema: Schema.Codec<A, unknown, never, unknown>
   ) => Effect.Effect<A, ApiRequestError>;
 
-  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters
-  readonly put: <A, B>(
+  readonly put: <A>(
     path: string,
-    body: B,
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Already decoded by its owning module; this seam only serializes it.
+    body: unknown,
     schema: Schema.Codec<A, unknown, never, unknown>
   ) => Effect.Effect<A, ApiRequestError>;
 
@@ -89,10 +94,7 @@ const checkStatus = (
           Effect.orElseSucceed(() => undefined)
         );
 
-        // The decoded backend schema permits a string or string array here.
-        const code =
-          // oxlint-disable-next-line anti-slop/no-runtime-typeof
-          typeof body?.message === "string" ? body.message : undefined;
+        const code = errorCode(body);
         const detail =
           body === undefined ? undefined : formatBackendError(body);
 

@@ -23,14 +23,18 @@ class ConfigCommandError extends Data.TaggedError("ConfigCommandError")<{
   message: string;
 }> {}
 
+const invalidKey = (key: string) =>
+  Effect.fail(
+    new ConfigCommandError({ message: `Invalid config key '${key}'` })
+  );
+
+// Both handlers reject an unknown key through a never-succeeding branch, which
+// Effect requires to be `return yield*` so the rest of the body sees `"api-url"`.
+// oxlint-disable typescript/consistent-return
 const get = Command.make("get", { key: configKey }, ({ key }) =>
-  // Effect's never-success branch must return to preserve key narrowing.
-  // oxlint-disable-next-line typescript/consistent-return
   Effect.gen(function* () {
     if (key !== "api-url") {
-      return yield* new ConfigCommandError({
-        message: `Invalid config key '${key}'`,
-      });
+      return yield* invalidKey(key);
     }
     const value = yield* Effect.tryPromise(async () => getConfigValue(key));
     yield* Console.log(
@@ -45,26 +49,21 @@ const set = Command.make(
   "set",
   { key: configKey, value: Argument.String("value") },
   ({ key }) =>
-    Effect.fail(
-      new ConfigCommandError({
-        message:
-          key === "api-url" ? INACTIVE_API_URL : `Invalid config key '${key}'`,
-      })
-    )
+    key === "api-url"
+      ? Effect.fail(new ConfigCommandError({ message: INACTIVE_API_URL }))
+      : invalidKey(key)
 );
 
 const unset = Command.make("unset", { key: configKey }, ({ key }) =>
-  // oxlint-disable-next-line typescript/consistent-return
   Effect.gen(function* () {
     if (key !== "api-url") {
-      return yield* new ConfigCommandError({
-        message: `Invalid config key '${key}'`,
-      });
+      return yield* invalidKey(key);
     }
     yield* Effect.tryPromise(async () => unsetConfigValue(key));
     yield* Console.log(`✓ Unset ${key}`);
   })
 );
+// oxlint-enable typescript/consistent-return
 
 const list = Command.make("list", {}, () =>
   Effect.tryPromise(readConfig).pipe(

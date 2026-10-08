@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Stats } from "node:fs";
 import { lstat, mkdir, open, readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -55,17 +56,8 @@ const NAME = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/u;
 const PRIVATE_DIRECTORY = 0o700;
 const PRIVATE_FILE = 0o600;
 
-function checkDataRoot(
-  stat: Awaited<ReturnType<typeof lstat>>,
-  created: boolean
-) {
-  if (
-    stat.uid !== process.getuid?.() ||
-    !stat.isDirectory() ||
-    // Node's stat mode may be bigint; permission arithmetic needs a number.
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof
-    typeof stat.mode !== "number"
-  ) {
+function checkDataRoot(stat: Stats, created: boolean) {
+  if (stat.uid !== process.getuid?.() || !stat.isDirectory()) {
     throw new Error(
       "Server data root must be owned by this user and not a symlink"
     );
@@ -84,15 +76,9 @@ function checkDataRoot(
   }
 }
 
-function checkOwner(
-  stat: Awaited<ReturnType<typeof lstat>>,
-  mode: number,
-  kind: "directory" | "file"
-) {
+function checkOwner(stat: Stats, mode: number, kind: "directory" | "file") {
   if (
     stat.uid !== process.getuid?.() ||
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof
-    typeof stat.mode !== "number" ||
     stat.mode % 0o1000 !== mode ||
     (kind === "directory" ? !stat.isDirectory() : !stat.isFile())
   ) {

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createServer } from "node:http";
 import type { IncomingMessage } from "node:http";
+import type { AddressInfo } from "node:net";
 
 import { NodeRuntime } from "@effect/platform-node";
 import { Data, Effect } from "effect";
@@ -15,6 +16,11 @@ const PORT = /^(?<zero>0|[1-9]\d*)$/u;
 class ServerStartupError extends Data.TaggedError("ServerStartupError")<{
   message: string;
 }> {}
+
+/** A bound loopback socket, as opposed to a pipe name or an unbound server. */
+const isTcpAddress = (
+  address: ReturnType<ReturnType<typeof createServer>["address"]>
+): address is AddressInfo => address !== null && typeof address !== "string";
 
 function headerCount(request: IncomingMessage, name: string): number {
   let count = 0;
@@ -31,8 +37,7 @@ export const serve = (name: string, port: number) =>
     const instance = yield* Effect.tryPromise(async () => loadInstance(name));
     const server = createServer((request, response) => {
       const address = server.address();
-      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Node's server.address() returns null, a pipe name, or an AddressInfo.
-      if (address === null || typeof address === "string") {
+      if (!isTcpAddress(address)) {
         response.writeHead(503).end();
         return;
       }
@@ -93,8 +98,7 @@ export const serve = (name: string, port: number) =>
       server.listen(port, HOST);
     });
     const address = server.address();
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Node's server.address() includes pipe names and null, not only TCP addresses.
-    if (address === null || typeof address === "string") {
+    if (!isTcpAddress(address)) {
       return yield* new ServerStartupError({
         message: "Server did not bind a loopback port",
       });

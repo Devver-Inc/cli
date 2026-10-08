@@ -364,9 +364,13 @@ test("Windows Task Scheduler keeps distinct instances alive after their creator 
       "No server attached"
     );
     // Detaching selects nothing: the supervised instance keeps answering.
+    const [firstIdentity] = identities;
+    if (firstIdentity === undefined) {
+      throw new Error("No instance identity was recorded");
+    }
     expect(
       decodeIdentity(await (await fetch(`${first}/identity`)).json()).instanceId
-    ).toBe(identities[0]);
+    ).toBe(firstIdentity);
     const serviceFile = join(state.servers, names[0] ?? "", "service.json");
     const originalService = readFileSync(serviceFile, "utf-8");
     try {

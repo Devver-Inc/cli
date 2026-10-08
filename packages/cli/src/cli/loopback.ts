@@ -1,4 +1,10 @@
+import type { AddressInfo } from "node:net";
 import { createServer } from "node:net";
+
+/** A bound TCP socket, as opposed to a pipe name or an unbound server. */
+const isTcpAddress = (
+  address: ReturnType<ReturnType<typeof createServer>["address"]>
+): address is AddressInfo => address !== null && typeof address !== "string";
 
 export async function availablePort() {
   const server = createServer();
@@ -8,9 +14,7 @@ export async function availablePort() {
       server.listen(0, "127.0.0.1", resolve);
     });
     const address = server.address();
-    // node:net returns an AddressInfo, a pipe name, or null.
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof
-    if (address === null || typeof address === "string") {
+    if (!isTcpAddress(address)) {
       throw new Error("Could not allocate a loopback port");
     }
     return address.port;
