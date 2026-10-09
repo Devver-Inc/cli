@@ -306,7 +306,7 @@ test("Windows refuses corrupt or widened instance state without replacing it", a
   }
 }, 180_000);
 
-test("Windows standalone artifact lists two created instances without Node or Bun", () => {
+test("Windows standalone artifact lists two created instances without Node or Bun", async () => {
   if (!(windows && realState)) {
     return;
   }
@@ -330,29 +330,31 @@ test("Windows standalone artifact lists two created instances without Node or Bu
   };
   expect(Bun.which("node", { PATH: state.noRuntimePath })).toBeNull();
   expect(Bun.which("bun", { PATH: state.noRuntimePath })).toBeNull();
-  const run = (args: string[], data?: string) => {
-    const result = Bun.spawnSync([exe, ...args], {
+  const run = async (args: string[], data?: string) => {
+    const child = Bun.spawn([exe, ...args], {
       env: { ...env, XDG_DATA_HOME: data },
       stdout: "pipe",
       stderr: "pipe",
     });
-    return {
-      status: result.exitCode,
-      output: result.stdout.toString() + result.stderr.toString(),
-    };
+    const output = `${await new Response(child.stdout).text()}${await new Response(child.stderr).text()}`;
+    return { status: await child.exited, output };
   };
   try {
+    const version = await run(["--version"]);
+    expect(version.status, version.output).toBe(0);
+    expect(version.output).toContain(`devver v${pkg.version}`);
     const urls: string[] = [];
     for (const name of names) {
-      const created = run(["new", "server", name]);
+      const created = await run(["new", "server", name]);
       expect(created.status, created.output).toBe(0);
+      expect(created.output).toMatch(CONTROL_URL);
       const url = CONTROL_URL.exec(created.output)?.[0];
       if (url === undefined) {
         throw new Error("No control URL");
       }
       urls.push(url);
     }
-    const listed = run(["server", "list"]);
+    const listed = await run(["server", "list"]);
     expect(listed.status, listed.output).toBe(0);
     for (const [index, name] of names.entries()) {
       expect(listed.output).toContain(`${name} (`);
@@ -361,9 +363,11 @@ test("Windows standalone artifact lists two created instances without Node or Bu
       );
     }
     expect(listed.output).not.toContain("[selected]");
-    expect(run(["attach", urls[0] ?? ""], config).status).toBe(0);
-    expect(run(["server", "status"], config).output).toContain("reachable");
-    expect(run(["server", "list"]).output).toContain(
+    expect((await run(["attach", urls[0] ?? ""], config)).status).toBe(0);
+    expect((await run(["server", "status"], config)).output).toContain(
+      "reachable"
+    );
+    expect((await run(["server", "list"])).output).toContain(
       `${urls[0]} — version ${pkg.version}: reachable`
     );
   } finally {

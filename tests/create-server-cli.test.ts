@@ -348,9 +348,15 @@ test("installed npm bin pins and starts its server after the CLI exits", async (
         serverVersion: pkg.version,
       })
     );
-    expect(runInstalled("server", "list").output).toContain(
-      "mismatched identity"
-    );
+    const probing = Bun.spawn([node, bin, "server", "list"], {
+      env: ws.env,
+      cwd: ws.root,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const output = `${await new Response(probing.stdout).text()}${await new Response(probing.stderr).text()}`;
+    expect(await probing.exited, output).toBe(0);
+    expect(output).toContain("mismatched identity");
     expect(runInstalled("server", "status").output).toContain("installed");
     const pinned = join(
       ws.root,
