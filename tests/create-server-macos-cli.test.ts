@@ -303,8 +303,24 @@ test("macOS launchd keeps named servers ready after CLI exits and attachment is 
       ).toBe(identity.instanceId);
     }
     expect(urls[0]).not.toBe(urls[1]);
+    const listed = ws.run("server", "list");
+    expect(listed.status, listed.output).toBe(0);
+    expect(listed.output).toContain(
+      `${urls[0]} — version ${pkg.version}: reachable`
+    );
+    expect(listed.output).toContain(
+      `${urls[1]} — version ${pkg.version}: reachable`
+    );
+    expect(listed.output).not.toContain("[selected]");
     expect(ws.run("server", "status").output).toContain("No server attached");
     expect(ws.run("attach", urls[0] ?? "").status).toBe(0);
+    const selected = ws.run("server", "list");
+    expect(selected.output).toContain(
+      `${urls[0]} — version ${pkg.version}: reachable [selected]`
+    );
+    expect(selected.output).toContain(
+      `${urls[1]} — version ${pkg.version}: reachable`
+    );
     expect(ws.run("server", "status").output).toContain("reachable");
     expect(ws.run("attach", urls[1] ?? "").status).toBe(0);
     expect(ws.run("server", "status").output).toContain("other");
