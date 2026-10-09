@@ -37,7 +37,13 @@ export const cli = root.pipe(
   ])
 );
 
-if (import.meta.main) {
+// Compiled Windows executables can report import.meta.main as false.
+declare const DEVVER_STANDALONE_ENTRY: boolean;
+if (
+  import.meta.main ||
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Build-only constant is absent in source and npm.
+  (typeof DEVVER_STANDALONE_ENTRY === "boolean" && DEVVER_STANDALONE_ENTRY)
+) {
   NodeRuntime.runMain(
     Command.run(cli, { version: versionLine(pkg.version) }).pipe(
       // This is the process entry point, the one place layers are provided.
