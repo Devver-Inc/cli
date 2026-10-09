@@ -8,7 +8,10 @@ import { buildDefines } from "./stamp";
 const config: Bun.BuildConfig = {
   entrypoints: ["./packages/cli/src/cli/index.ts"],
   compile: { outfile: "devver" },
-  define: buildDefines("standalone"),
+  define: {
+    ...buildDefines("standalone"),
+    DEVVER_STANDALONE_ENTRY: "true",
+  },
 };
 const result = await Bun.build(config);
 
@@ -27,6 +30,7 @@ const server = await Bun.build({
   compile: {
     outfile: `servers/${pkg.version}/devver-server${process.platform === "win32" ? ".exe" : ""}`,
   },
+  define: { DEVVER_STANDALONE_ENTRY: "true" },
 });
 if (!server.success) {
   console.error("Standalone server build failed:");

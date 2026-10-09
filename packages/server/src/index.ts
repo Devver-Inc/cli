@@ -127,7 +127,13 @@ function parsePort(input: string | undefined) {
   return port;
 }
 
-if (import.meta.main) {
+// Compiled Windows executables can report import.meta.main as false.
+declare const DEVVER_STANDALONE_ENTRY: boolean;
+if (
+  import.meta.main ||
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Build-only constant is absent in source and npm.
+  (typeof DEVVER_STANDALONE_ENTRY === "boolean" && DEVVER_STANDALONE_ENTRY)
+) {
   const [name, port, ...extra] = process.argv.slice(2);
   const main = Effect.gen(function* () {
     if (name === undefined || name === "" || extra.length > 0) {
