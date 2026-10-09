@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import {
+  existsSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -64,6 +65,16 @@ function build() {
     throw new Error(built.stderr.toString());
   }
   const cli = join(repo, "packages/cli/dist", "cli.mjs");
+  const systemRoot = process.env.SystemRoot ?? "C:\\Windows";
+  const noRuntimePath = [
+    join(systemRoot, "System32"),
+    join(systemRoot, "System32", "WindowsPowerShell", "v1.0"),
+    systemRoot,
+  ].join(";");
+  const runtimePath = `${dirname(node)};${noRuntimePath}`;
+  if (Bun.which("bun", { PATH: runtimePath }) !== null) {
+    throw new Error("Bun must be absent from the npm CLI process PATH");
+  }
   const run = (
     args: string[],
     env: Record<string, string | undefined> = {}
@@ -71,7 +82,13 @@ function build() {
     const result = Bun.spawnSync([node, ...args], {
       cwd: repo,
       // Instance state must resolve from the OS known folder, never an override.
-      env: { ...process.env, XDG_DATA_HOME: undefined, ...env },
+      env: {
+        ...process.env,
+        PATH: runtimePath,
+        Path: runtimePath,
+        XDG_DATA_HOME: undefined,
+        ...env,
+      },
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -103,6 +120,7 @@ function build() {
     attachment: (args: string[], data: string) =>
       run([cli, ...args], { XDG_DATA_HOME: data }),
     runServer: (name: string) => run([server, name, "0"]),
+    noRuntimePath,
     launchServer: (name: string) =>
       Bun.spawn([node, server, name, "0"], {
         env: { ...process.env, XDG_DATA_HOME: undefined },
@@ -288,6 +306,74 @@ test("Windows refuses corrupt or widened instance state without replacing it", a
   }
 }, 180_000);
 
+test("Windows standalone artifact lists two created instances without Node or Bun", () => {
+  if (!(windows && realState)) {
+    return;
+  }
+  const state = windowsState();
+  const built = Bun.spawnSync(["bun", "run", "build"], {
+    cwd: repo,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  expect(built.exitCode, built.stderr.toString()).toBe(0);
+  const exe = existsSync(join(repo, "devver.exe"))
+    ? join(repo, "devver.exe")
+    : join(repo, "devver");
+  const names = [`${unique}standalone`, `${unique}standaloneb`];
+  const config = mkdtempSync(join(tmpdir(), "devver-win-standalone-"));
+  const env = {
+    ...process.env,
+    PATH: state.noRuntimePath,
+    Path: state.noRuntimePath,
+    XDG_DATA_HOME: undefined,
+  };
+  expect(Bun.which("node", { PATH: state.noRuntimePath })).toBeNull();
+  expect(Bun.which("bun", { PATH: state.noRuntimePath })).toBeNull();
+  const run = (args: string[], data?: string) => {
+    const result = Bun.spawnSync([exe, ...args], {
+      env: { ...env, XDG_DATA_HOME: data },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    return {
+      status: result.exitCode,
+      output: result.stdout.toString() + result.stderr.toString(),
+    };
+  };
+  try {
+    const urls: string[] = [];
+    for (const name of names) {
+      const created = run(["new", "server", name]);
+      expect(created.status, created.output).toBe(0);
+      const url = CONTROL_URL.exec(created.output)?.[0];
+      if (url === undefined) {
+        throw new Error("No control URL");
+      }
+      urls.push(url);
+    }
+    const listed = run(["server", "list"]);
+    expect(listed.status, listed.output).toBe(0);
+    for (const [index, name] of names.entries()) {
+      expect(listed.output).toContain(`${name} (`);
+      expect(listed.output).toContain(
+        `${urls[index]} — version ${pkg.version}: reachable`
+      );
+    }
+    expect(listed.output).not.toContain("[selected]");
+    expect(run(["attach", urls[0] ?? ""], config).status).toBe(0);
+    expect(run(["server", "status"], config).output).toContain("reachable");
+    expect(run(["server", "list"]).output).toContain(
+      `${urls[0]} — version ${pkg.version}: reachable`
+    );
+  } finally {
+    for (const name of names) {
+      removeInstance(state.servers, name);
+    }
+    rmSync(config, { recursive: true, force: true });
+  }
+}, 300_000);
+
 test("Windows Task Scheduler keeps distinct instances alive after their creator exits", async () => {
   if (!(windows && realState)) {
     return;
@@ -356,6 +442,16 @@ test("Windows Task Scheduler keeps distinct instances alive after their creator 
     );
     const attached = state.attachment(["attach", first ?? ""], config);
     expect(attached.status, attached.output).toBe(0);
+    const selected = state.list();
+    expect(selected.status, selected.output).toBe(0);
+    // The attach-time XDG override isolates the CLI target; Windows instance
+    // enumeration deliberately rejects that override and stays read-only.
+    expect(selected.output).toContain(
+      `${first} — version ${pkg.version}: reachable`
+    );
+    expect(selected.output).toContain(
+      `${urls[1]} — version ${pkg.version}: reachable`
+    );
     expect(state.attachment(["server", "status"], config).output).toContain(
       ": reachable"
     );
