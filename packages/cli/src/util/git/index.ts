@@ -113,6 +113,18 @@ export async function getCurrentBranch(): Promise<string> {
   return branch;
 }
 
+/** The work tree root a local deployment reads committed objects from. */
+export async function getRepositoryRoot(): Promise<string> {
+  const root = requireSuccess(
+    await git("rev-parse", "--show-toplevel"),
+    "rev-parse --show-toplevel"
+  );
+  if (root === "") {
+    throw new DeployAbortError("Cannot deploy outside a Git work tree");
+  }
+  return root;
+}
+
 export async function getCurrentCommit(): Promise<string> {
   const commit = requireSuccess(
     await git("rev-parse", "--verify", "HEAD"),

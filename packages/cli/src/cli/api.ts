@@ -4,11 +4,28 @@ import { ApiBaseUrl, ApiClientLayer, AuthToken } from "../api/client";
 import type { ApiClient } from "../api/client";
 import { getAccessToken } from "../auth/client";
 import { CLOUD_API_URL, readConfig } from "../config/api";
+import type { LocalTargetSchema } from "../config/api";
 import { root } from "./root";
 
 class ApiTargetError extends Data.TaggedError("ApiTargetError")<{
   message: string;
 }> {}
+
+/**
+ * Supply one client for a verified local target for the entire command. The
+ * loopback control gate authorizes these requests, so they carry no token.
+ */
+export const withLocalApi = <A, E, R>(
+  target: typeof LocalTargetSchema.Type,
+  effect: Effect.Effect<A, E, R | ApiClient>
+) => {
+  const layer = ApiClientLayer.pipe(
+    Layer.provide(Layer.succeed(AuthToken, { token: null })),
+    Layer.provide(Layer.succeed(ApiBaseUrl, { url: target.url }))
+  );
+  // @effect-diagnostics-next-line strictEffectProvide:off
+  return effect.pipe(Effect.provide(layer), Effect.scoped);
+};
 
 /** Supply one authenticated client for the entire command. */
 export const withApi = <A, E, R>(effect: Effect.Effect<A, E, R | ApiClient>) =>

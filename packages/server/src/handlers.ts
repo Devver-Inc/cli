@@ -2,10 +2,12 @@ import { Effect } from "effect";
 import { HttpApiBuilder, HttpApiSchema } from "effect/http-api";
 
 import pkg from "../../../package.json" with { type: "json" };
-import { api, CONTROL_PROTOCOL_VERSION } from "./api";
+import { api, CONTROL_PROTOCOL_VERSION, DeployFailure } from "./api";
+import type { openDeployer } from "./deploy";
 import type { loadInstance } from "./identity";
 
 type Instance = Awaited<ReturnType<typeof loadInstance>>;
+type Deployer = Awaited<ReturnType<typeof openDeployer>>;
 
 export const instanceHandlers = (instance: Instance) =>
   HttpApiBuilder.group(api, "instance", (handlers) =>
@@ -21,5 +23,22 @@ export const instanceHandlers = (instance: Instance) =>
           headers: { "cache-control": "no-store" as const },
         })
       )
+    )
+  );
+
+export const deploymentHandlers = (deployer: Deployer) =>
+  HttpApiBuilder.group(api, "deployments", (handlers) =>
+    handlers.handle("create", ({ payload }) =>
+      Effect.tryPromise({
+        try: async () => deployer.deploy(payload),
+        // A fault outside the staged steps must still name a stage, not leak one.
+        catch: (error) =>
+          error instanceof DeployFailure
+            ? error
+            : new DeployFailure({
+                stage: "server",
+                message: "server: the deployment could not be completed",
+              }),
+      })
     )
   );

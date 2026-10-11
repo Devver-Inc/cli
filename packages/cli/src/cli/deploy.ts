@@ -9,6 +9,7 @@ import {
 } from "../api/deploy.requests";
 import { getProjectById } from "../api/projects.requests";
 import { checkForConfigFile, readConfigFile } from "../config";
+import { readConfig } from "../config/api";
 import { getDeploymentEnv, mergeEnv } from "../config/secrets";
 import {
   checkForConflicts,
@@ -25,6 +26,7 @@ import {
   linkRepoForCwd,
 } from "../util/repository/storage";
 import { withApi } from "./api";
+import { localDeploy } from "./local-deploy";
 
 class DeploymentError extends Data.TaggedError("DeploymentError")<{
   message: string;
@@ -135,63 +137,70 @@ export const resolveDbLinks = (projectId: string) =>
       : { MONGO_URL: choice };
   });
 
+const cloudDeploy = Effect.gen(function* () {
+  yield* Effect.tryPromise(checkForConfigFile);
+  yield* Effect.tryPromise(checkForGitRepo);
+  const config = yield* Effect.try(() => readConfigFile());
+  if (config === null) {
+    return yield* new DeploymentError({
+      message: "Config file not found. Run 'devver init' to create one.",
+    });
+  }
+  const { projectId, repoName, pushUrl } = yield* resolveRepository;
+  const branch = yield* Effect.tryPromise(getCurrentBranch);
+  const remoteBranchExists = yield* Effect.tryPromise(async () =>
+    checkRemoteBranch(pushUrl, branch)
+  );
+  yield* Effect.tryPromise(async () =>
+    checkForConflicts(pushUrl, branch, remoteBranchExists)
+  );
+  const commit = yield* Effect.tryPromise(getCurrentCommit);
+  yield* Console.log(
+    `\n  Deployment Summary:\n    Repository: ${repoName}\n    Branch: ${branch}\n    Commit: ${commit.slice(0, 7)}\n    Push URL: ${pushUrl}`
+  );
+  const confirm = yield* Prompt.select({
+    message: "Proceed with deployment?",
+    options: Prompt.Questions.YNOpts,
+  });
+  if (confirm !== "Yes") {
+    yield* Console.log("Deployment cancelled.");
+    // Stop before push or deployment creation. The success path falls out of
+    // the generator instead of returning, which `consistent-return` reports.
+    // oxlint-disable-next-line typescript/consistent-return
+    return;
+  }
+  yield* Effect.tryPromise(async () => pushBranch(pushUrl, branch));
+  yield* Console.log(`Successfully pushed to ${repoName}`);
+  const env = mergeEnv(config.env ?? {}, getDeploymentEnv(repoName));
+  const dbLinks = yield* resolveDbLinks(projectId);
+  const start = performance.now();
+  const result = yield* createDeployment(projectId, {
+    repo: repoName,
+    branch,
+    commit,
+    service: config.services,
+    env: Object.keys(env).length === 0 ? undefined : env,
+    dbLinks,
+  });
+  yield* Console.log(
+    `Deployment created successfully! (${((performance.now() - start) / 1000).toFixed(1)}s)`
+  );
+  yield* Console.log(`    Deployment ID: ${result.deploymentId}`);
+  if (result.service.web !== undefined) {
+    yield* Console.log(`    Web URL: ${result.service.web.url}`);
+  }
+  if (result.service.api !== undefined) {
+    yield* Console.log(`    API URL: ${result.service.api.url}`);
+  }
+});
+
 export const deploy = Command.make("deploy", {}, () =>
-  withApi(
-    Effect.gen(function* () {
-      yield* Effect.tryPromise(checkForConfigFile);
-      yield* Effect.tryPromise(checkForGitRepo);
-      const config = yield* Effect.try(() => readConfigFile());
-      if (config === null) {
-        return yield* new DeploymentError({
-          message: "Config file not found. Run 'devver init' to create one.",
-        });
-      }
-      const { projectId, repoName, pushUrl } = yield* resolveRepository;
-      const branch = yield* Effect.tryPromise(getCurrentBranch);
-      const remoteBranchExists = yield* Effect.tryPromise(async () =>
-        checkRemoteBranch(pushUrl, branch)
-      );
-      yield* Effect.tryPromise(async () =>
-        checkForConflicts(pushUrl, branch, remoteBranchExists)
-      );
-      const commit = yield* Effect.tryPromise(getCurrentCommit);
-      yield* Console.log(
-        `\n  Deployment Summary:\n    Repository: ${repoName}\n    Branch: ${branch}\n    Commit: ${commit.slice(0, 7)}\n    Push URL: ${pushUrl}`
-      );
-      const confirm = yield* Prompt.select({
-        message: "Proceed with deployment?",
-        options: Prompt.Questions.YNOpts,
-      });
-      if (confirm !== "Yes") {
-        yield* Console.log("Deployment cancelled.");
-        // Stop before push or deployment creation. The success path falls out of
-        // the generator instead of returning, which `consistent-return` reports.
-        // oxlint-disable-next-line typescript/consistent-return
-        return;
-      }
-      yield* Effect.tryPromise(async () => pushBranch(pushUrl, branch));
-      yield* Console.log(`Successfully pushed to ${repoName}`);
-      const env = mergeEnv(config.env ?? {}, getDeploymentEnv(repoName));
-      const dbLinks = yield* resolveDbLinks(projectId);
-      const start = performance.now();
-      const result = yield* createDeployment(projectId, {
-        repo: repoName,
-        branch,
-        commit,
-        service: config.services,
-        env: Object.keys(env).length === 0 ? undefined : env,
-        dbLinks,
-      });
-      yield* Console.log(
-        `Deployment created successfully! (${((performance.now() - start) / 1000).toFixed(1)}s)`
-      );
-      yield* Console.log(`    Deployment ID: ${result.deploymentId}`);
-      if (result.service.web !== undefined) {
-        yield* Console.log(`    Web URL: ${result.service.web.url}`);
-      }
-      if (result.service.api !== undefined) {
-        yield* Console.log(`    API URL: ${result.service.api.url}`);
-      }
-    })
-  )
+  Effect.gen(function* () {
+    // An explicitly attached local server deploys locally; every other target
+    // keeps the cloud path, and no target still fails closed inside it.
+    const target = (yield* Effect.tryPromise(readConfig))["local-target"];
+    return target === undefined
+      ? yield* withApi(cloudDeploy)
+      : yield* localDeploy(target);
+  })
 );

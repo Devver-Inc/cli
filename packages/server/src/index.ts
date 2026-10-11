@@ -13,7 +13,8 @@ import {
 import { HttpApiBuilder } from "effect/http-api";
 
 import { API_PATH, api } from "./api";
-import { instanceHandlers } from "./handlers";
+import { openDeployer } from "./deploy";
+import { deploymentHandlers, instanceHandlers } from "./handlers";
 import { loadInstance } from "./identity";
 
 const HOST = "127.0.0.1";
@@ -62,6 +63,12 @@ const serveOnListener = (name: string) =>
       });
     }
     const origin = `http://${HOST}:${address.port}`;
+    // Deployments live on their own listener, released with this scope so no
+    // supervised app process outlives the server that published it.
+    const deployer = yield* Effect.acquireRelease(
+      Effect.tryPromise(async () => openDeployer(name)),
+      (open) => Effect.promise(async () => open.close())
+    );
 
     const requestPolicy = HttpRouter.middleware(
       (next) =>
@@ -94,7 +101,8 @@ const serveOnListener = (name: string) =>
     const handler = yield* HttpRouter.toHttpEffect(
       Layer.mergeAll(
         HttpApiBuilder.layer(api).pipe(
-          Layer.provide(instanceHandlers(instance))
+          Layer.provide(instanceHandlers(instance)),
+          Layer.provide(deploymentHandlers(deployer))
         ),
         requestPolicy
       )
