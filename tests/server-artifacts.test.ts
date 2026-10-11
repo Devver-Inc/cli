@@ -2,10 +2,12 @@ import { expect, test } from "bun:test";
 import {
   existsSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -34,6 +36,9 @@ const decodePackedManifest = Schema.decodeUnknownSync(
 );
 const bin = Schema.Record(Schema.String, Schema.String);
 const decodeCliManifest = Schema.decodeUnknownSync(Schema.Struct({ bin }));
+const decodeLinuxService = Schema.decodeUnknownSync(
+  Schema.Struct({ unit: Schema.String })
+);
 const decodeLock = Schema.decodeUnknownSync(
   Schema.Struct({
     packages: Schema.Struct({ "packages/cli": Schema.Struct({ bin }) }),
@@ -289,10 +294,114 @@ test("npm artifact includes a versioned Node server beside the lazy CLI", async 
       name: "artifact",
       serverVersion: pkg.version,
     });
+    if (process.platform === "linux") {
+      const data = join(packRoot, "data");
+      const fake = join(packRoot, "fake-bin");
+      mkdirSync(fake);
+      writeFileSync(
+        join(fake, "systemd-run"),
+        `#!/bin/sh\nfor arg do case "$arg" in --unit=*) unit="\${arg#--unit=}";; esac; done\nwhile [ "$1" != "--" ]; do shift; done\nshift\n"$@" >/dev/null 2>&1 &\necho "$!" > "$XDG_DATA_HOME/$unit.pid"\n`,
+        { mode: 0o700 }
+      );
+      writeFileSync(
+        join(fake, "systemctl"),
+        '#!/bin/sh\ncase "$2" in is-active) read pid < "$XDG_DATA_HOME/$4.pid"; kill -0 "$pid";; stop) read pid < "$XDG_DATA_HOME/$3.pid"; kill "$pid";; esac\n',
+        { mode: 0o700 }
+      );
+      const env = {
+        ...process.env,
+        PATH: `${fake}:${dirname(node)}`,
+        XDG_DATA_HOME: data,
+        XDG_CONFIG_HOME: join(packRoot, "config"),
+      };
+      expect(Bun.which("bun", { PATH: env.PATH })).toBeNull();
+      const run = (...args: string[]) => {
+        const invocation = Bun.spawnSync(
+          [
+            node,
+            join(
+              installed,
+              "node_modules",
+              "@devver",
+              "cli",
+              "dist",
+              "cli.mjs"
+            ),
+            ...args,
+          ],
+          {
+            cwd: packRoot,
+            env,
+            stdout: "pipe",
+            stderr: "pipe",
+          }
+        );
+        return {
+          status: invocation.exitCode,
+          output: invocation.stdout.toString() + invocation.stderr.toString(),
+        };
+      };
+      const createdNames: string[] = [];
+      try {
+        const urls: string[] = [];
+        for (const name of ["alpha", "beta"]) {
+          createdNames.push(name);
+          const created = run("new", "server", name);
+          expect(created.status, created.output).toBe(0);
+          const url = /http:\/\/127\.0\.0\.1:\d+\/api\/v1/u.exec(
+            created.output
+          )?.[0];
+          expect(url).toBeDefined();
+          if (url === undefined) {
+            throw new Error("No control URL");
+          }
+          urls.push(url);
+        }
+        expect(run("server", "status").output).toContain("No server attached");
+        const listed = run("server", "list");
+        expect(listed.status, listed.output).toBe(0);
+        for (const url of urls) {
+          expect(listed.output).toContain(
+            `${url} — version ${pkg.version}: reachable`
+          );
+        }
+        expect(listed.output).not.toContain("[selected]");
+        expect(run("attach", urls[0] ?? "").status).toBe(0);
+        const selected = run("server", "list");
+        expect(selected.output).toContain(
+          `${urls[0]} — version ${pkg.version}: reachable [selected]`
+        );
+        expect(selected.output).toContain(
+          `${urls[1]} — version ${pkg.version}: reachable`
+        );
+        expect(run("server", "status").output).toContain("alpha");
+      } finally {
+        for (const name of createdNames) {
+          try {
+            const service = decodeLinuxService(
+              JSON.parse(
+                readFileSync(
+                  join(data, "devver", "servers", name, "service.json"),
+                  "utf-8"
+                )
+              )
+            );
+            const pid = Number(
+              readFileSync(join(data, `${service.unit}.pid`), "utf-8")
+            );
+            if (Number.isSafeInteger(pid) && pid > 0) {
+              process.kill(pid);
+            }
+          } catch {
+            // Failed creation or an already stopped child needs no cleanup.
+          }
+        }
+      }
+    }
   } finally {
     rmSync(packRoot, { recursive: true, force: true });
   }
-}, 30_000);
+}, 60_000);
 
 test("standalone artifact includes an independently runnable versioned server", async () => {
   if (process.platform === "win32") {

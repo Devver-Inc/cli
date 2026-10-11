@@ -367,9 +367,17 @@ test("Windows standalone artifact lists two created instances without Node or Bu
     expect((await run(["server", "status"], config)).output).toContain(
       "reachable"
     );
-    expect((await run(["server", "list"])).output).toContain(
+    const failed = await run(["attach", "http://127.0.0.1:1/api/v1"], config);
+    expect(failed.status).not.toBe(0);
+    expect((await run(["server", "status"], config)).output).toContain(
+      urls[0] ?? ""
+    );
+    const listedAfterAttach = await run(["server", "list"]);
+    expect(listedAfterAttach.status, listedAfterAttach.output).toBe(0);
+    expect(listedAfterAttach.output).toContain(
       `${urls[0]} — version ${pkg.version}: reachable`
     );
+    expect(listedAfterAttach.output).not.toContain("[selected]");
   } finally {
     for (const name of names) {
       removeInstance(state.servers, name);

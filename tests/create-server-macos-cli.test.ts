@@ -326,6 +326,14 @@ test("macOS launchd keeps named servers ready after CLI exits and attachment is 
     expect(ws.run("server", "status").output).toContain("other");
     expect(ws.run("detach").status).toBe(0);
     expect((await fetch(`${urls[1]}/identity`)).ok).toBe(true);
+    const failed = ws.run("attach", "http://127.0.0.1:1/api/v1");
+    expect(failed.status).not.toBe(0);
+    expect(ws.run("server", "status").output).toContain("No server attached");
+    bootout(domain, labels.at(-1) ?? "");
+    expect(await reachable(urls[1] ?? "")).toBe(false);
+    expect(ws.run("server", "list").output).toContain(
+      `${urls[1]} — version ${pkg.version}: unreachable`
+    );
   } finally {
     for (const label of labels) {
       bootout(domain, label);
