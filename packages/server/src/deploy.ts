@@ -70,7 +70,7 @@ const attempt = async <A>(stage: DeployStage, step: () => Promise<A>) => {
  * exhaustion (EMFILE, ENFILE) or a blocked local address (EACCES,
  * EADDRNOTAVAIL) means this server could not ask the question at all.
  */
-export const isConnectionRefused = (
+const isConnectionRefused = (
   error: unknown
 ): error is Error & { code: "ECONNREFUSED" } =>
   error instanceof Error && "code" in error && error.code === "ECONNREFUSED";
