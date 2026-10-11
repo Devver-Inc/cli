@@ -46,7 +46,7 @@ test("nightly CI stamps the tested commit despite versioning changes", () => {
     process.env.DEVVER_RELEASE_COMMIT = sha;
     expect(commitStamp()).toBe(sha.slice(0, 7));
     process.env.DEVVER_RELEASE_COMMIT = "wrong";
-    expect(() => commitStamp()).toThrow("Nightly checkout does not match");
+    expect(() => commitStamp()).toThrow("Release checkout does not match");
   } finally {
     rmSync(directory, { recursive: true, force: true });
     if (previousChannel === undefined) {
@@ -58,6 +58,37 @@ test("nightly CI stamps the tested commit despite versioning changes", () => {
       Reflect.deleteProperty(process.env, "DEVVER_RELEASE_COMMIT");
     } else {
       process.env.DEVVER_RELEASE_COMMIT = previousCommit;
+    }
+  }
+});
+
+test("dev artifact stamps the tested commit and dev channel", () => {
+  const channel = process.env.DEVVER_RELEASE_CHANNEL;
+  const commit = process.env.DEVVER_RELEASE_COMMIT;
+  try {
+    process.env.DEVVER_RELEASE_CHANNEL = "dev";
+    process.env.DEVVER_RELEASE_COMMIT = "wrong";
+    expect(() => buildDefines("npm")).toThrow(
+      "Release checkout does not match"
+    );
+    const sha = Bun.spawnSync(["git", "rev-parse", "HEAD"], {
+      cwd: repo,
+      stdout: "pipe",
+    })
+      .stdout.toString()
+      .trim();
+    process.env.DEVVER_RELEASE_COMMIT = sha;
+    expect(JSON.parse(buildDefines("npm").DEVVER_CHANNEL)).toBe("dev");
+  } finally {
+    if (channel === undefined) {
+      Reflect.deleteProperty(process.env, "DEVVER_RELEASE_CHANNEL");
+    } else {
+      process.env.DEVVER_RELEASE_CHANNEL = channel;
+    }
+    if (commit === undefined) {
+      Reflect.deleteProperty(process.env, "DEVVER_RELEASE_COMMIT");
+    } else {
+      process.env.DEVVER_RELEASE_COMMIT = commit;
     }
   }
 });

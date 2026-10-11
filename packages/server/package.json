@@ -12,8 +12,8 @@
     "test": "bun test tests/*.test.ts"
   },
   "dependencies": {
-    "@effect/platform-node": "^4",
-    "effect": "^4",
+    "@effect/platform-node": "4.0.0",
+    "effect": "4.0.0",
     "xdg-basedir": "^5.1.0"
   }
 }

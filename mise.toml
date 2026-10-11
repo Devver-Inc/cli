@@ -1,3 +1,13 @@
+[tools]
+"npm:@changesets/cli" = "3.0.3"
+
+[tasks.bump]
+description = "Record a patch, minor, or major release bump for a PR"
+run = "changeset add"
+
+[tasks.no-release]
+description = "Record that a PR needs no release"
+run = "changeset add --empty"
 
 [tasks.effect]
 run = """

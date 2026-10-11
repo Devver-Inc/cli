@@ -53,18 +53,14 @@ jobs:
         if: steps.changes.outputs.changed == 'true'
       - run: bun run check && bun run typecheck && bun test
         if: steps.changes.outputs.changed == 'true'
-      - name: Choose an unused prerelease version
+      - name: Choose an unused prerelease version from develop's plan
         if: steps.changes.outputs.changed == 'true'
         id: version
         shell: bash
         run: |
           set -euo pipefail
-          STABLE=$(npm view @devver/cli dist-tags.latest)
-          if [[ ! "$STABLE" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-            echo 'Cannot determine the published stable version' >&2
-            exit 1
-          fi
-          VERSION="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$(( ${BASH_REMATCH[3]} + 1 ))-nightly.build.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          TARGET=$(bun run scripts/target-version.ts)
+          VERSION="${TARGET}-nightly.build.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   binary:

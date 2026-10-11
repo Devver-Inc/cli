@@ -14,12 +14,13 @@ export function commitStamp(): string {
   }
   const expected = process.env.DEVVER_RELEASE_COMMIT;
   if (
-    process.env.DEVVER_RELEASE_CHANNEL === "nightly" &&
+    (process.env.DEVVER_RELEASE_CHANNEL === "nightly" ||
+      process.env.DEVVER_RELEASE_CHANNEL === "dev") &&
     expected !== undefined &&
     expected !== ""
   ) {
     if (git("rev-parse", "HEAD") !== expected) {
-      throw new Error("Nightly checkout does not match the tested commit");
+      throw new Error("Release checkout does not match the tested commit");
     }
     return commit;
   }
@@ -34,7 +35,10 @@ export function buildDefines(channel: "npm" | "standalone") {
   return {
     DEVVER_VERSION: JSON.stringify(pkg.version),
     DEVVER_CHANNEL: JSON.stringify(
-      process.env.DEVVER_RELEASE_CHANNEL === "nightly" ? "nightly" : channel
+      process.env.DEVVER_RELEASE_CHANNEL === "nightly" ||
+        process.env.DEVVER_RELEASE_CHANNEL === "dev"
+        ? process.env.DEVVER_RELEASE_CHANNEL
+        : channel
     ),
     DEVVER_COMMIT: JSON.stringify(commitStamp()),
   };

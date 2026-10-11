@@ -2,8 +2,6 @@ import { expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import pkg from "../../../package.json" with { type: "json" };
-
 const entry = fileURLToPath(new URL("../src/cli/index.ts", import.meta.url));
 
 function run(...args: string[]) {
@@ -20,5 +18,5 @@ test("CLI entry provides help and version without starting the TUI", () => {
 
   const version = run("--version");
   expect(version.status).toBe(0);
-  expect(version.stdout).toContain(`devver v${pkg.version} (`);
+  expect(version.stdout).toMatch(/^devver v\d+\.\d+\.\d+ \(dev,/u);
 });
