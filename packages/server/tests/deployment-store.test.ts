@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -23,6 +24,8 @@ const decodeProbe = Schema.decodeUnknownSync(
     worktree: Schema.String,
     status: Schema.String,
     stage: Schema.NullOr(Schema.String),
+    sitePort: Schema.NullOr(Schema.Finite),
+    appPort: Schema.Finite,
     createdAt: Schema.String,
   })
 );
@@ -78,6 +81,8 @@ test("the durable deployment record is readable by both distributions", async ()
     expect(written.runtime).toBe("node");
     expect(written.status).toBe("ready");
     expect(written.parentDeploymentId).toBeNull();
+    expect(written.sitePort).toBe(47_321);
+    expect(written.appPort).toBe(47_320);
     // The same file reopened by the other runtime yields the same record.
     const read = run(standalone, "read", join(temp, "npm.sqlite"));
     expect(read.runtime).toBe("bun");
@@ -135,6 +140,113 @@ test("a deployment store is owner-only and rejects records it cannot validate", 
     });
   } finally {
     store.close();
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+const APP_PORT = 46_123;
+const SITE_PORT = 46_124;
+
+const recorded = (deploymentId: string, commit: string) => ({
+  deploymentId,
+  repositoryId: "a".repeat(64),
+  commit,
+  parentDeploymentId: null,
+  worktree: join(tmpdir(), "devver-worktrees", deploymentId),
+});
+
+const first = recorded("11111111-1111-4111-8111-111111111111", "1".repeat(40));
+const second = recorded("22222222-2222-4222-8222-222222222222", "2".repeat(40));
+
+test("ready deployments and the published app port survive reopening the records", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "devver-store-"));
+  const file = join(temp, "deployments.sqlite");
+  try {
+    const store = await openDeploymentStore(file);
+    expect(store.appPort()).toBeUndefined();
+    store.setAppPort(APP_PORT);
+    store.record(first);
+    store.markReady(first.deploymentId, SITE_PORT);
+    store.record(second);
+    store.markFailed(second.deploymentId, "readiness");
+    store.close();
+
+    const reopened = await openDeploymentStore(file);
+    try {
+      expect(reopened.appPort()).toBe(APP_PORT);
+      const { deployments, unreadable } = reopened.list();
+      expect(unreadable).toBe(0);
+      expect(deployments).toHaveLength(2);
+      const listed = (deploymentId: string) =>
+        deployments.find((entry) => entry.deploymentId === deploymentId);
+      expect(listed(first.deploymentId)).toMatchObject({
+        commit: first.commit,
+        worktree: first.worktree,
+        status: "ready",
+        stage: null,
+        sitePort: SITE_PORT,
+      });
+      expect(listed(second.deploymentId)).toMatchObject({
+        status: "failed",
+        stage: "readiness",
+        sitePort: null,
+      });
+
+      reopened.markDegraded(first.deploymentId, "process");
+      expect(reopened.read(first.deploymentId)).toMatchObject({
+        status: "degraded",
+        stage: "process",
+        sitePort: null,
+      });
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("a corrupt deployment row is reported unreadable without replacing earlier records", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "devver-store-"));
+  const file = join(temp, "deployments.sqlite");
+  try {
+    const store = await openDeploymentStore(file);
+    store.record(first);
+    store.markReady(first.deploymentId, SITE_PORT);
+    store.record(second);
+    store.markReady(second.deploymentId, SITE_PORT + 1);
+    store.close();
+
+    // Only a writer outside this module can produce a row the schema rejects.
+    const raw = new Database(file);
+    raw.run("UPDATE deployments SET status = 'bogus' WHERE deploymentId = ?", [
+      second.deploymentId,
+    ]);
+    raw.close();
+
+    const reopened = await openDeploymentStore(file);
+    try {
+      const { deployments, unreadable } = reopened.list();
+      expect(unreadable).toBe(1);
+      expect(deployments).toHaveLength(1);
+      expect(deployments[0]).toMatchObject({
+        deploymentId: first.deploymentId,
+        status: "ready",
+        sitePort: SITE_PORT,
+      });
+      expect(() => reopened.read(second.deploymentId)).toThrow();
+    } finally {
+      reopened.close();
+    }
+
+    // The unreadable record is still there: nothing overwrote or dropped it.
+    const after = new Database(file, { readonly: true });
+    const rows = after
+      .query("SELECT status FROM deployments WHERE deploymentId = ?")
+      .all(second.deploymentId);
+    after.close();
+    expect(rows).toEqual([{ status: "bogus" }]);
+  } finally {
     await rm(temp, { recursive: true, force: true });
   }
 });

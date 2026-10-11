@@ -35,10 +35,17 @@ const identity = {
 
 const NewDeploymentSchema = Schema.Struct(identity);
 
+/** Ports are TEXT on the way in and out, like every other column. */
+const PortSchema = Schema.NumberFromString.check(
+  Schema.isInt(),
+  Schema.isBetween({ minimum: 1, maximum: 65_535 })
+);
+
 const DeploymentSchema = Schema.Struct({
   ...identity,
-  status: Schema.Literals(["preparing", "ready", "failed"]),
+  status: Schema.Literals(["preparing", "ready", "failed", "degraded"]),
   stage: Schema.NullOr(DeployStageSchema),
+  sitePort: Schema.NullOr(PortSchema),
   createdAt: Schema.String,
 });
 
@@ -48,6 +55,10 @@ export type NewDeployment = typeof NewDeploymentSchema.Type;
 
 const decodeNewDeployment = Schema.decodeUnknownSync(NewDeploymentSchema);
 const decodeDeployment = Schema.decodeUnknownSync(DeploymentSchema);
+const encodePort = Schema.encodeUnknownSync(PortSchema);
+const decodePort = Schema.decodeUnknownSync(PortSchema);
+
+const APP_PORT = "appPort";
 
 /** Every column is TEXT, so a row carries only strings and SQL nulls. */
 type SqlValue = string | null;
@@ -125,7 +136,19 @@ export async function openDeploymentStore(path: string) {
     worktree TEXT NOT NULL,
     status TEXT NOT NULL,
     stage TEXT,
+    sitePort TEXT,
     createdAt TEXT NOT NULL
+  ) STRICT`);
+  try {
+    // Records written before deployments were reconciled on restart have no
+    // site port; adding the column keeps those deployments readable.
+    database.exec("ALTER TABLE deployments ADD COLUMN sitePort TEXT");
+  } catch {
+    // oxlint-disable-next-line eslint/preserve-caught-error -- The only expected failure is the column already existing.
+  }
+  database.exec(`CREATE TABLE IF NOT EXISTS instance (
+    key TEXT PRIMARY KEY NOT NULL,
+    value TEXT NOT NULL
   ) STRICT`);
   const statement = (sql: string) => database.prepare(sql);
   const insert = statement(
@@ -134,13 +157,20 @@ export async function openDeploymentStore(path: string) {
      VALUES (?, ?, ?, ?, ?, 'preparing', NULL, ?)`
   );
   const setStatus = statement(
-    "UPDATE deployments SET status = ?, stage = ? WHERE deploymentId = ?"
+    "UPDATE deployments SET status = ?, stage = ?, sitePort = ? WHERE deploymentId = ?"
   );
+  const columns = `deploymentId, repositoryId, commitSha AS "commit", parentDeploymentId,
+            worktree, status, stage, sitePort, createdAt`;
   const select = statement(
-    `SELECT deploymentId, repositoryId, commitSha AS "commit", parentDeploymentId,
-            worktree, status, stage, createdAt
-     FROM deployments WHERE deploymentId = ?`
+    `SELECT ${columns} FROM deployments WHERE deploymentId = ?`
   );
+  const selectAll = statement(
+    `SELECT ${columns} FROM deployments ORDER BY createdAt, deploymentId`
+  );
+  const setSetting = statement(
+    "INSERT INTO instance (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+  );
+  const selectSetting = statement("SELECT value FROM instance WHERE key = ?");
   return {
     record: (input: NewDeployment) => {
       const deployment = decodeNewDeployment(input);
@@ -153,15 +183,44 @@ export async function openDeploymentStore(path: string) {
         new Date().toISOString()
       );
     },
-    markReady: (deploymentId: string) => {
-      setStatus.run("ready", null, deploymentId);
+    markReady: (deploymentId: string, sitePort: number) => {
+      setStatus.run("ready", null, encodePort(sitePort), deploymentId);
     },
     markFailed: (deploymentId: string, stage: DeployStage) => {
-      setStatus.run("failed", stage, deploymentId);
+      setStatus.run("failed", stage, null, deploymentId);
+    },
+    /** Recorded intent the server could not serve again: no port, no route. */
+    markDegraded: (deploymentId: string, stage: DeployStage) => {
+      setStatus.run("degraded", stage, null, deploymentId);
     },
     read: (deploymentId: string): Deployment | undefined => {
       const [row] = select.all(deploymentId);
       return row === undefined ? undefined : decodeDeployment(row);
+    },
+    /**
+     * Every record this runtime can trust, plus how many it cannot. A row that
+     * fails to decode is counted, never rewritten: a half-known deployment
+     * must not overwrite the record of an earlier one.
+     */
+    list: () => {
+      const deployments: Deployment[] = [];
+      let unreadable = 0;
+      for (const row of selectAll.all()) {
+        try {
+          deployments.push(decodeDeployment(row));
+        } catch {
+          unreadable += 1;
+        }
+      }
+      return { deployments, unreadable };
+    },
+    /** The loopback port every deployment URL of this instance is published on. */
+    appPort: (): number | undefined => {
+      const [row] = selectSetting.all(APP_PORT);
+      return row === undefined ? undefined : decodePort(row.value);
+    },
+    setAppPort: (port: number) => {
+      setSetting.run(APP_PORT, encodePort(port));
     },
     close: () => {
       database.close();

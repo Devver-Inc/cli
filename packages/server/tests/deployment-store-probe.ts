@@ -18,7 +18,8 @@ try {
       parentDeploymentId: null,
       worktree: "/tmp/devver-probe-worktree",
     });
-    store.markReady(id);
+    store.markReady(id, 47_321);
+    store.setAppPort(47_320);
   } else if (mode !== "read") {
     throw new Error("Usage: probe <write|read> <file>");
   }
@@ -29,6 +30,7 @@ try {
   console.log(
     JSON.stringify({
       runtime: process.versions.bun === undefined ? "node" : "bun",
+      appPort: store.appPort(),
       ...record,
     })
   );

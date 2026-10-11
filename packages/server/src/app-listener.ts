@@ -45,7 +45,16 @@ export async function allocatePort() {
   }
 }
 
-export async function startAppListener() {
+/**
+ * The one listener every deployment of an instance is published on.
+ *
+ * `preferred` is the port this instance published before: deployment URLs
+ * carry it, so reusing it keeps every printed URL valid across a restart. When
+ * another process holds it a new port is taken instead, and the stale URLs
+ * simply stop connecting: a Host whose port is not the bound one is never
+ * routed, so no request reaches a different deployment.
+ */
+export async function startAppListener(preferred?: number) {
   const routes = new Map<string, number>();
   let listening = 0;
   const listener = createServer((incoming, response) => {
@@ -82,10 +91,20 @@ export async function startAppListener() {
     });
     incoming.pipe(proxied);
   });
-  await new Promise<void>((resolve, reject) => {
-    listener.once("error", reject);
-    listener.listen(0, HOST, resolve);
-  });
+  const bind = async (port: number) =>
+    new Promise<void>((resolve, reject) => {
+      const failed = (error: Error) => {
+        reject(error);
+      };
+      listener.once("error", failed);
+      listener.listen(port, HOST, () => {
+        listener.removeListener("error", failed);
+        resolve();
+      });
+    });
+  await (preferred === undefined
+    ? bind(0)
+    : bind(preferred).catch(async () => bind(0)));
   const address = listener.address();
   if (!isInetAddress(address)) {
     listener.close();

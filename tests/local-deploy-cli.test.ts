@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import {
   existsSync,
@@ -9,6 +10,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { Schema } from "effect";
 
 import pkg from "../package.json" with { type: "json" };
 
@@ -130,6 +133,37 @@ const stop = async (child: ReturnType<typeof Bun.spawn>) => {
   child.kill();
   await child.exited;
 };
+
+const STARTUP_DEADLINE = 20_000;
+
+/** Start a server that is expected to give up, without waiting on it forever. */
+async function startupResult(
+  env: Record<string, string | undefined>,
+  name: string
+) {
+  const child = Bun.spawn(["bun", "run", server, name, "0"], {
+    env,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const status = await Promise.race([
+    child.exited,
+    new Promise<undefined>((resolve) => {
+      setTimeout(() => {
+        resolve(undefined);
+      }, STARTUP_DEADLINE);
+    }),
+  ]);
+  if (status === undefined) {
+    child.kill("SIGKILL");
+    await child.exited;
+  }
+  const [out, err] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  return { status, output: `${out}${err}` };
+}
 
 async function body(url: string, headers: Record<string, string> = {}) {
   const response = await fetch(url, {
@@ -269,3 +303,150 @@ test("cloud and unselected targets keep the existing deploy behaviour", async ()
     rmSync(ws.root, { recursive: true, force: true });
   }
 }, 60_000);
+
+const decodeRecord = Schema.decodeUnknownSync(
+  Schema.Struct({
+    status: Schema.String,
+    sitePort: Schema.NullOr(Schema.String),
+  })
+);
+
+/** Only a writer outside the server can leave a record it cannot decode. */
+function corrupt(instance: string, deploymentId: string) {
+  const database = new Database(join(instance, "deployments.sqlite"));
+  try {
+    database.run(
+      "UPDATE deployments SET status = 'bogus' WHERE deploymentId = ?",
+      [deploymentId]
+    );
+  } finally {
+    database.close();
+  }
+}
+
+/** What the server itself persisted about one deployment, as plain strings. */
+function record(instance: string, deploymentId: string) {
+  const database = new Database(join(instance, "deployments.sqlite"), {
+    readonly: true,
+  });
+  try {
+    const row: unknown = database
+      .query("SELECT status, sitePort FROM deployments WHERE deploymentId = ?")
+      .get(deploymentId);
+    return decodeRecord(row);
+  } finally {
+    database.close();
+  }
+}
+
+async function deployRevision(
+  ws: ReturnType<typeof workspace>,
+  directory: string
+) {
+  const deployed = await ws.run(["deploy"], directory);
+  expect(deployed.status, deployed.output).toBe(0);
+  const match = APP_URL.exec(deployed.output);
+  const { url, id } = match?.groups ?? {};
+  if (url === undefined || id === undefined) {
+    throw new Error(`Deploy did not print an app URL: ${deployed.output}`);
+  }
+  return { url, id };
+}
+
+test("two committed revisions keep independent URLs across a server restart", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  packagedTools();
+  const ws = workspace();
+  const source = checkout(ws.root);
+  const instance = join(ws.root, "devver", "servers", "revisions");
+  let running = await foreground(ws.env, "revisions");
+  try {
+    expect((await ws.run(["attach", running.url])).status).toBe(0);
+    const a = await deployRevision(ws, source.directory);
+
+    // A second explicit deploy of a later commit is its own root deployment.
+    writeFileSync(join(source.directory, "index.html"), "<h1>revision b</h1>");
+    git(source.directory, "add", ".");
+    const commitB = git(source.directory, "commit", "-q", "-m", "revision b");
+    expect(commitB).not.toBe(source.commit);
+    const b = await deployRevision(ws, source.directory);
+    expect(b.id).not.toBe(a.id);
+    expect(b.url).not.toBe(a.url);
+    expect((await body(a.url)).text).toBe("<h1>committed site</h1>");
+    expect((await body(b.url)).text).toBe("<h1>revision b</h1>");
+
+    // Rewriting and deleting the source branch discards both commits from the
+    // checkout; the server keeps its own retained objects and both URLs.
+    git(source.directory, "checkout", "-q", "--detach", source.commit);
+    git(source.directory, "branch", "-q", "-D", "main");
+    git(source.directory, "reflog", "expire", "--expire=now", "--all");
+    git(source.directory, "gc", "--prune=now", "-q");
+    writeFileSync(join(source.directory, "index.html"), "<h1>uncommitted</h1>");
+    const bare = join(
+      instance,
+      "repositories",
+      readdirSync(join(instance, "repositories"))[0] ?? ""
+    );
+    for (const commit of [
+      source.commit,
+      git(source.directory, "rev-parse", "HEAD"),
+    ]) {
+      expect(git(bare, "cat-file", "-t", `${commit}^{commit}`)).toBe("commit");
+    }
+    expect(
+      git(bare, "for-each-ref", "--format=%(refname)", "refs/devver")
+    ).toContain(a.id);
+    expect((await body(a.url)).text).toBe("<h1>committed site</h1>");
+    expect((await body(b.url)).text).toBe("<h1>revision b</h1>");
+
+    // A killed server leaves its supervised static sites behind; the next one
+    // reconciles them instead of adding a second process per deployment.
+    const orphanPort = record(instance, b.id).sitePort;
+    expect(orphanPort).toMatch(/^\d+$/u);
+    running.child.kill("SIGKILL");
+    await running.child.exited;
+    rmSync(join(instance, "worktrees", b.id), { recursive: true, force: true });
+    running = await foreground(ws.env, "revisions");
+
+    // The recovered deployment answers on the URL that was printed before.
+    const recovered = await body(a.url);
+    expect(recovered.status).toBe(200);
+    expect(recovered.text).toBe("<h1>committed site</h1>");
+    const unrecoverable = await body(b.url).catch(() => ({
+      status: 0,
+      text: "",
+    }));
+    expect(unrecoverable.status).not.toBe(200);
+    expect(unrecoverable.text).not.toContain("committed site");
+    // The static site the killed server supervised for B is stopped, not left
+    // running beside a second one.
+    const orphan = await body(`http://127.0.0.1:${orphanPort}/`).catch(() => ({
+      status: 0,
+      text: "",
+    }));
+    expect(orphan.text).not.toContain("revision b");
+    expect(record(instance, a.id)).toMatchObject({ status: "ready" });
+    expect(record(instance, b.id)).toEqual({
+      status: "degraded",
+      sitePort: null,
+    });
+
+    // Metadata this server cannot read fails its startup closed: it serves no
+    // deployment rather than guessing, and replaces no earlier record.
+    await stop(running.child);
+    corrupt(instance, a.id);
+    const refused = await startupResult(ws.env, "revisions");
+    expect(refused.status).toBeGreaterThan(0);
+    expect(refused.output).not.toMatch(CONTROL_URL);
+    expect(record(instance, a.id).status).toBe("bogus");
+    expect(record(instance, b.id)).toEqual({
+      status: "degraded",
+      sitePort: null,
+    });
+  } finally {
+    await stop(running.child);
+    rmSync(ws.root, { recursive: true, force: true });
+  }
+}, 180_000);

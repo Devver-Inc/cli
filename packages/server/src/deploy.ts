@@ -88,8 +88,9 @@ async function reachable(url: string) {
 }
 
 /**
- * Open the deployment state of one server instance: its durable records and
- * the single app-facing listener its deployments are published on.
+ * Open the deployment state of one server instance: its durable records, the
+ * single app-facing listener its deployments are published on, and the
+ * reconciliation that brings the two back together after a restart.
  */
 export async function openDeployer(name: string) {
   const instanceDirectory = join(await instanceParent(name), name);
@@ -98,8 +99,10 @@ export async function openDeployer(name: string) {
   );
   let listener;
   try {
-    listener = await startAppListener();
+    listener = await startAppListener(store.appPort());
+    store.setAppPort(listener.port);
   } catch (error) {
+    await listener?.close();
     store.close();
     throw error;
   }
@@ -107,14 +110,54 @@ export async function openDeployer(name: string) {
     string,
     { readonly toolsDirectory: string; readonly port: number }
   >();
+  const appDirectory = (deploymentId: string) =>
+    join(instanceDirectory, "apps", deploymentId);
+  const appUrl = (deploymentId: string) =>
+    `http://${deploymentId}.localhost:${listener.port}/`;
+
+  /**
+   * Serve one selected worktree and publish its route, proven by a request to
+   * its own app URL. A failure here leaves no route and no managed process,
+   * whether it happened during a deploy or while recovering one.
+   */
+  const publish = async (
+    deploymentId: string,
+    worktree: string,
+    toolsDirectory: string
+  ) => {
+    const site = await attempt("config", async () =>
+      staticSourceDirectory(worktree)
+    );
+    const port = await attempt("process", allocatePort);
+    try {
+      await attempt("process", async () =>
+        startStaticSite({
+          toolsDirectory,
+          instanceDirectory: appDirectory(deploymentId),
+          siteDirectory: site,
+          port,
+        })
+      );
+      listener.publish(deploymentId, port);
+      await attempt("readiness", async () => reachable(appUrl(deploymentId)));
+      running.set(deploymentId, { toolsDirectory, port });
+      return port;
+    } catch (error) {
+      listener.withdraw(deploymentId);
+      await stopStaticSite({
+        toolsDirectory,
+        instanceDirectory: appDirectory(deploymentId),
+        port,
+      }).catch(() => undefined);
+      throw error;
+    }
+  };
 
   const deploy = async (input: {
     readonly source: string;
     readonly commit: string;
   }) => {
     const deploymentId = randomUUID();
-    const appDirectory = join(instanceDirectory, "apps", deploymentId);
-    const url = `http://${deploymentId}.localhost:${listener.port}/`;
     const toolsDirectory = await attempt("server", packagedToolsDirectory);
     const source = await attempt("source", async () =>
       verifiedSource(input.source, input.commit)
@@ -128,7 +171,6 @@ export async function openDeployer(name: string) {
       worktree,
     });
     let bare: string | undefined;
-    let port: number | undefined;
     try {
       const synced = await attempt("git", async () =>
         syncCommit({
@@ -148,39 +190,18 @@ export async function openDeployer(name: string) {
           commit: input.commit,
         })
       );
-      const site = await attempt("config", async () =>
-        staticSourceDirectory(added)
+      store.markReady(
+        deploymentId,
+        await publish(deploymentId, added, toolsDirectory)
       );
-      const allocated = await attempt("process", allocatePort);
-      port = allocated;
-      await attempt("process", async () =>
-        startStaticSite({
-          toolsDirectory,
-          instanceDirectory: appDirectory,
-          siteDirectory: site,
-          port: allocated,
-        })
-      );
-      listener.publish(deploymentId, allocated);
-      await attempt("readiness", async () => reachable(url));
-      store.markReady(deploymentId);
-      running.set(deploymentId, { toolsDirectory, port: allocated });
       return {
         deploymentId,
         repositoryId: source.repositoryId,
         commit: input.commit,
         parentDeploymentId: null,
-        url,
+        url: appUrl(deploymentId),
       };
     } catch (error) {
-      listener.withdraw(deploymentId);
-      if (port !== undefined) {
-        await stopStaticSite({
-          toolsDirectory,
-          instanceDirectory: appDirectory,
-          port,
-        }).catch(() => undefined);
-      }
       if (bare !== undefined) {
         await removeWorktree(bare, worktree).catch(() => undefined);
       }
@@ -192,7 +213,57 @@ export async function openDeployer(name: string) {
     }
   };
 
-  return {
+  /**
+   * Match persisted intent to reality once, at startup. A static site
+   * supervised by a killed server can still be running, so the recorded one is
+   * stopped before this server starts its own: exactly one process and one
+   * route per deployment. Whatever cannot be served again becomes degraded
+   * with no route, so it answers at its own address and nowhere else.
+   *
+   * A record this server cannot read stops it here, like any other unsafe
+   * instance state: it is left exactly as found, and nothing is published from
+   * a half-known set of deployments.
+   */
+  const reconcile = async () => {
+    const { deployments, unreadable } = store.list();
+    if (unreadable > 0) {
+      throw new Error(
+        "Deployment records hold entries this server cannot read; they were not replaced"
+      );
+    }
+    const tools = await packagedToolsDirectory().catch(() => undefined);
+    for (const deployment of deployments) {
+      const { deploymentId, sitePort, status } = deployment;
+      if (status === "failed" || status === "degraded") {
+        continue;
+      }
+      if (sitePort !== null && tools !== undefined) {
+        await stopStaticSite({
+          toolsDirectory: tools,
+          instanceDirectory: appDirectory(deploymentId),
+          port: sitePort,
+        }).catch(() => undefined);
+      }
+      // An interrupted deploy never finished its worktree: it is not recovered.
+      if (status === "preparing" || tools === undefined) {
+        store.markDegraded(deploymentId, "server");
+        continue;
+      }
+      try {
+        store.markReady(
+          deploymentId,
+          await publish(deploymentId, deployment.worktree, tools)
+        );
+      } catch (error) {
+        store.markDegraded(
+          deploymentId,
+          error instanceof DeployFailure ? error.stage : "server"
+        );
+      }
+    }
+  };
+
+  const deployer = {
     appPort: listener.port,
     deploy,
     close: async () => {
@@ -200,7 +271,7 @@ export async function openDeployer(name: string) {
         listener.withdraw(deploymentId);
         await stopStaticSite({
           toolsDirectory: site.toolsDirectory,
-          instanceDirectory: join(instanceDirectory, "apps", deploymentId),
+          instanceDirectory: appDirectory(deploymentId),
           port: site.port,
         }).catch(() => undefined);
       }
@@ -209,4 +280,11 @@ export async function openDeployer(name: string) {
       store.close();
     },
   };
+  try {
+    await reconcile();
+  } catch (error) {
+    await deployer.close();
+    throw error;
+  }
+  return deployer;
 }
