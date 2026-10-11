@@ -143,8 +143,8 @@ test("version check rejects malformed manifests without rewriting them", () => {
   }
 });
 
-test("stable and nightly publish the CLI workspace, not the private root", () => {
-  for (const channel of ["release", "nightly"]) {
+test("stable, nightly and dev publish the CLI workspace, not the private root", () => {
+  for (const channel of ["release", "nightly", "dev"]) {
     const workflow = readFileSync(
       join(root, `.github/workflows/${channel}.yml`),
       "utf-8"

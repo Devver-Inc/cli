@@ -1,8 +1,6 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 
-import pkg from "../package.json";
-
 function cli(...args: string[]) {
   const child = Bun.spawnSync(
     ["bun", "run", "packages/cli/src/cli/index.ts", ...args],
@@ -21,7 +19,7 @@ function cli(...args: string[]) {
 test("Effect CLI provides help and version", () => {
   expect(cli("--help").output).toContain("config");
   expect(cli("--help").output).toContain("secret");
-  expect(cli("--version").output).toContain(pkg.version);
+  expect(cli("--version").output).toMatch(/^devver v\d+\.\d+\.\d+ \(dev,/u);
 });
 
 test("Effect CLI rejects invalid arguments and unsupported commands", () => {

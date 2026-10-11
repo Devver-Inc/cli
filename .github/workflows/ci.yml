@@ -83,6 +83,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require release intent on pull requests
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE:refs/remotes/origin/$BASE"
+          if ! git diff --diff-filter=A --name-only "origin/$BASE...HEAD" -- '.changeset/*.md' | grep -q .; then
+            echo 'Add a changeset with mise run bump, or an empty one with mise run no-release.' >&2
+            exit 1
+          fi
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -98,6 +112,10 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Validate PR changesets
+        if: github.event_name == 'pull_request'
+        run: bunx changeset status --since "origin/$GITHUB_BASE_REF"
 
       - name: Build and test CLI workspace
         run: |
