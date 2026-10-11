@@ -10,6 +10,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { createConnection } from "node:net";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -32,6 +33,9 @@ import { staticSourceDirectory } from "./static-source";
 const READINESS_DEADLINE = 20_000;
 const READINESS_INTERVAL = 200;
 const READINESS_TIMEOUT = 1000;
+const STOP_DEADLINE = 10_000;
+const STOP_INTERVAL = 200;
+const CONNECT_TIMEOUT = 1000;
 // Prose only: a detail with a path, URL or token in it never reaches the client.
 const SAFE_DETAIL = /^(?=[^\n]* )[A-Za-z0-9 ,.'()-]{1,120}$/u;
 
@@ -60,6 +64,48 @@ const attempt = async <A>(stage: DeployStage, step: () => Promise<A>) => {
     });
   }
 };
+
+/**
+ * Nothing accepts a loopback connection on this port.
+ *
+ * The connection is the whole question: a listening socket is accepted by the
+ * kernel whatever the process behind it is doing, and a static site whose
+ * files were removed still answers requests. Only a refused connection shows
+ * that the process is gone.
+ */
+async function refused(port: number) {
+  return await new Promise<boolean>((resolve) => {
+    const socket = createConnection({ host: "127.0.0.1", port });
+    const settle = (gone: boolean) => {
+      socket.destroy();
+      resolve(gone);
+    };
+    socket.setTimeout(CONNECT_TIMEOUT, () => {
+      settle(false);
+    });
+    socket.once("connect", () => {
+      settle(false);
+    });
+    socket.once("error", () => {
+      settle(true);
+    });
+  });
+}
+
+/**
+ * Teardown of a recorded static site is idempotent and tolerant by contract,
+ * so its port is the only proof it worked; stopping is not instantaneous, so
+ * that proof is awaited for a bounded time.
+ */
+async function stopped(port: number) {
+  const deadline = Date.now() + STOP_DEADLINE;
+  let gone = await refused(port);
+  while (!gone && Date.now() < deadline) {
+    await delay(STOP_INTERVAL);
+    gone = await refused(port);
+  }
+  return gone;
+}
 
 /** Readiness is the printed app URL answering, not a Host header trick. */
 async function reachable(url: string) {
@@ -242,13 +288,15 @@ export async function openDeployer(name: string) {
   /**
    * Match persisted intent to reality once, at startup. A static site
    * supervised by a killed server can still be running, so the recorded one is
-   * stopped before this server starts its own: exactly one process and one
-   * route per deployment. Whatever cannot be served again becomes degraded
-   * with no route, so it answers at its own address and nowhere else.
+   * stopped, and proven gone by its own port, before this server starts its
+   * own: exactly one process and one route per deployment. Whatever cannot be
+   * served again becomes degraded with no route, so it answers at its own
+   * address and nowhere else.
    *
-   * A record this server cannot read stops it here, like any other unsafe
-   * instance state: it is left exactly as found, and nothing is published from
-   * a half-known set of deployments.
+   * A record this server cannot read, or whose recorded site it cannot prove
+   * is gone, stops it here, like any other unsafe instance state: that record
+   * is left exactly as found, with the port a later start needs to clean it
+   * up, and nothing is published beside a backend that may still be serving.
    */
   const reconcile = async () => {
     const { deployments, unreadable } = store.list();
@@ -263,15 +311,30 @@ export async function openDeployer(name: string) {
       if (status === "failed" || status === "degraded") {
         continue;
       }
-      if (sitePort !== null && tools !== undefined) {
+      // Retiring a record needs the packaged tools as much as recovering one:
+      // without them the site it may have left running cannot be stopped, and
+      // its recorded port is the only address left to stop it with.
+      if (tools === undefined) {
+        throw new Error(
+          "This server installation has no packaged static toolchain to reconcile recorded deployments with; they were left as they are"
+        );
+      }
+      if (sitePort !== null) {
         await stopStaticSite({
           toolsDirectory: tools,
           instanceDirectory: appDirectory(deploymentId),
           port: sitePort,
         }).catch(() => undefined);
+        if (!(await stopped(sitePort))) {
+          throw new Error(
+            "A static site recorded by an earlier run is still serving on its port; no deployment was republished"
+          );
+        }
       }
-      // An interrupted deploy never finished its worktree: it is not recovered.
-      if (status === "preparing" || tools === undefined) {
+      // An interrupted deploy never finished its worktree, and a record with no
+      // port cannot show that the site an earlier run started is gone: neither
+      // is recovered, because neither may end up served twice.
+      if (status === "preparing" || sitePort === null) {
         store.markDegraded(deploymentId, "server");
         continue;
       }

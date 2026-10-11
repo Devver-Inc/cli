@@ -8,6 +8,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import type { AddressInfo } from "node:net";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -148,9 +149,10 @@ const STARTUP_DEADLINE = 20_000;
 /** Start a server that is expected to give up, without waiting on it forever. */
 async function startupResult(
   env: Record<string, string | undefined>,
-  name: string
+  name: string,
+  command: string[] = ["bun", "run", server]
 ) {
-  const child = Bun.spawn(["bun", "run", server, name, "0"], {
+  const child = Bun.spawn([...command, name, "0"], {
     env,
     stdout: "pipe",
     stderr: "pipe",
@@ -174,19 +176,34 @@ async function startupResult(
   return { status, output: `${out}${err}` };
 }
 
-/** Hold a loopback port so the next server has to bind a different one. */
-async function hold(port: string) {
+const isInetAddress = (
+  address: string | AddressInfo | null
+): address is AddressInfo => address !== null && typeof address !== "string";
+
+/**
+ * Hold a loopback port, either so the next server has to bind a different one
+ * or so a port a record names keeps answering from something the packaged
+ * teardown has no way to stop. Port 0 holds an unused one and reports which.
+ */
+async function hold(port: number) {
   const holder = createServer();
   await new Promise<void>((resolve, reject) => {
     holder.once("error", reject);
-    holder.listen(Number(port), "127.0.0.1", resolve);
+    holder.listen(port, "127.0.0.1", resolve);
   });
-  return async () =>
-    new Promise<void>((resolve) => {
-      holder.close(() => {
-        resolve();
-      });
-    });
+  const address = holder.address();
+  if (!isInetAddress(address)) {
+    throw new Error("The held listener has no loopback port");
+  }
+  return {
+    port: address.port,
+    release: async () =>
+      new Promise<void>((resolve) => {
+        holder.close(() => {
+          resolve();
+        });
+      }),
+  };
 }
 
 async function body(url: string, headers: Record<string, string> = {}) {
@@ -413,6 +430,49 @@ function repoint(instance: string, deploymentId: string, worktree: string) {
 }
 
 /**
+ * A ready record carrying a site port of someone else's choosing, or none at
+ * all like a record migrated from before that column existed. Only a writer
+ * outside the server can leave either.
+ */
+function recordSite(
+  instance: string,
+  deploymentId: string,
+  sitePort: number | null
+) {
+  instanceRecords(instance, (database) => {
+    database.run(
+      "UPDATE deployments SET status = 'ready', stage = NULL, sitePort = ? WHERE deploymentId = ?",
+      [sitePort === null ? null : String(sitePort), deploymentId]
+    );
+  });
+}
+
+/**
+ * The npm server artifact, built where the packaged toolchain it normally
+ * ships beside is absent: the same bundle this distribution installs, with
+ * nothing on the paths it looks for its static tools on.
+ */
+async function toollessServer(root: string) {
+  const directory = join(root, "toolless");
+  const built = await Bun.build({
+    entrypoints: [server],
+    outdir: directory,
+    naming: { entry: "server.mjs" },
+    target: "node",
+    format: "esm",
+    packages: "bundle",
+  });
+  expect(built.success, built.logs.map((log) => log.message).join("\n")).toBe(
+    true
+  );
+  const node = Bun.which("node");
+  if (node === null) {
+    throw new Error("Node is required to run the bundled server");
+  }
+  return [node, join(directory, "server.mjs")];
+}
+
+/**
  * The durable state a server killed between starting a deployment's static
  * site and recording it ready leaves behind: still preparing, carrying the
  * port the site it started is listening on.
@@ -588,9 +648,9 @@ test("two committed revisions keep independent URLs across a server restart", as
     expect(a.url).toContain(`:${published}/`);
     // Holding the published port forces the refused startup onto another one,
     // which it must not record over the port every printed URL carries.
-    const release = await hold(published);
+    const held = await hold(Number(published));
     const refusedStartup = await startupResult(ws.env, "revisions");
-    await release();
+    await held.release();
     expect(refusedStartup.status).toBeGreaterThan(0);
     expect(refusedStartup.output).not.toMatch(CONTROL_URL);
     expect(appPort(instance)).toBe(published);
@@ -698,6 +758,92 @@ test("an interrupted preparing deployment loses the site it left listening", asy
     const routed = await body(deployed.url);
     expect(routed.status).not.toBe(200);
     expect(routed.text).toContain("No deployment is published");
+  } finally {
+    await stop(running.child);
+    rmSync(ws.root, { recursive: true, force: true });
+  }
+}, 180_000);
+
+test("a recorded site that cannot be proven gone is never replaced", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  packagedTools();
+  const ws = workspace();
+  const source = checkout(ws.root);
+  const instance = join(ws.root, "devver", "servers", "unproven");
+  let running = await foreground(ws.env, "unproven");
+  try {
+    expect((await ws.run(["attach", running.url])).status).toBe(0);
+    const a = await deployRevision(ws, source.directory);
+    const { sitePort } = record(instance, a.id);
+    if (sitePort === null) {
+      throw new Error("A ready deployment recorded no site port");
+    }
+    const published = appPort(instance);
+    const site = `http://127.0.0.1:${sitePort}/`;
+    running.child.kill("SIGKILL");
+    await running.child.exited;
+    // The killed server's supervised site is still serving on its own port.
+    expect((await body(site)).text).toBe("<h1>committed site</h1>");
+
+    // A server without its packaged toolchain cannot stop that site, so it
+    // gives up rather than forget the port that is the only way to reach it.
+    const toolless = await startupResult(
+      ws.env,
+      "unproven",
+      await toollessServer(ws.root)
+    );
+    expect(toolless.status).toBeGreaterThan(0);
+    expect(toolless.output).not.toMatch(CONTROL_URL);
+    expect(record(instance, a.id)).toMatchObject({ status: "ready", sitePort });
+    expect(appPort(instance)).toBe(published);
+    expect((await body(site)).text).toBe("<h1>committed site</h1>");
+
+    // A recorded port still answering after the teardown ran is the proof the
+    // old backend is there. The port a record keeps is also what shows no
+    // second site was started for it: starting one records its own port first.
+    const held = await hold(0);
+    recordSite(instance, a.id, held.port);
+    const unstoppable = await startupResult(ws.env, "unproven");
+    expect(unstoppable.status).toBeGreaterThan(0);
+    expect(unstoppable.output).not.toMatch(CONTROL_URL);
+    expect(record(instance, a.id)).toMatchObject({
+      status: "ready",
+      sitePort: String(held.port),
+    });
+    expect(appPort(instance)).toBe(published);
+    const unpublished = await body(a.url).catch(() => ({ status: 0 }));
+    expect(unpublished.status).not.toBe(200);
+    await held.release();
+
+    // A ready record with no port at all cannot show its backend is gone
+    // either: it is retired without a route instead of being served twice.
+    recordSite(instance, a.id, null);
+    running = await foreground(ws.env, "unproven");
+    expect(record(instance, a.id)).toMatchObject({
+      status: "degraded",
+      sitePort: null,
+    });
+    const unrouted = await body(a.url).catch(() => ({ status: 0, text: "" }));
+    expect(unrouted.status).not.toBe(200);
+    expect(unrouted.text).not.toContain("committed site");
+    // The site the killed server left is still the only one serving it.
+    expect((await body(site)).text).toBe("<h1>committed site</h1>");
+    await stop(running.child);
+
+    // Restoring the port it was started on lets a later start finish the
+    // cleanup the refused ones deferred, and recover the deployment.
+    recordSite(instance, a.id, Number(sitePort));
+    running = await foreground(ws.env, "unproven");
+    const recovered = await body(a.url);
+    expect(recovered.status).toBe(200);
+    expect(recovered.text).toBe("<h1>committed site</h1>");
+    const after = record(instance, a.id);
+    expect(after.status).toBe("ready");
+    if (after.sitePort !== sitePort) {
+      expect((await refused(site)).status).toBe(0);
+    }
   } finally {
     await stop(running.child);
     rmSync(ws.root, { recursive: true, force: true });
