@@ -165,7 +165,7 @@ test("the standalone CLI switches between its packaged servers with no runtime i
   }
 }, 30_000);
 
-test("the Linux standalone artifact creates, lists and selects two instances without Node or Bun", () => {
+test("the Linux standalone artifact creates, lists and selects two instances without Node or Bun", async () => {
   if (process.platform !== "linux") {
     return;
   }
@@ -210,6 +210,36 @@ test("the Linux standalone artifact creates, lists and selects two instances wit
       `${urls[0]} — version ${pkg.version}: reachable [selected]`
     );
     expect(ws.run("server", "status").output).toContain("alpha");
+    const failed = ws.run("attach", "http://127.0.0.1:1/api/v1");
+    expect(failed.status).not.toBe(0);
+    expect(ws.run("server", "list").output).toContain(
+      `${urls[0]} — version ${pkg.version}: reachable [selected]`
+    );
+    const beta = decodeLinuxService(
+      JSON.parse(
+        readFileSync(
+          join(ws.root, "data", "devver", "servers", "beta", "service.json"),
+          "utf-8"
+        )
+      )
+    );
+    const betaPid = Number(
+      readFileSync(join(ws.root, "data", `${beta.unit}.pid`), "utf-8")
+    );
+    process.kill(betaPid);
+    let stopped = false;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (
+        ws
+          .run("server", "list")
+          .output.includes(`${urls[1]} — version ${pkg.version}: unreachable`)
+      ) {
+        stopped = true;
+        break;
+      }
+      await Bun.sleep(50);
+    }
+    expect(stopped).toBe(true);
   } finally {
     for (const name of ["alpha", "beta"]) {
       try {
