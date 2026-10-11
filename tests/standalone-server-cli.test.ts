@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { Schema } from "effect";
 
 import pkg from "../package.json";
+import { startStaticSite } from "../packages/server";
 
 const repo = join(import.meta.dir, "..");
 const cli = join(repo, "devver");
@@ -106,6 +107,45 @@ const stop = async (child: ReturnType<typeof Bun.spawn>) => {
   await child.exited;
 };
 
+/**
+ * A created instance runs from the installation the CLI pinned, so the static
+ * tools must serve from there rather than only from this build tree.
+ */
+async function expectPinnedToolsServeStatically(root: string) {
+  const tools = join(root, "data", "devver", "installations", pkg.version);
+  for (const tool of ["pitchfork", "websitino"]) {
+    const pinnedTool = statSync(join(tools, tool));
+    expect(pinnedTool.mode % 0o1000).toBe(0o700);
+    expect(pinnedTool.size).toBe(
+      statSync(join(repo, "servers", pkg.version, tool)).size
+    );
+  }
+  const site = join(root, "site");
+  mkdirSync(site, { recursive: true });
+  writeFileSync(join(site, "index.html"), "<h1>pinned static site</h1>");
+  const listener = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: { data: () => undefined },
+  });
+  const { port } = listener;
+  listener.stop(true);
+  const running = await startStaticSite({
+    toolsDirectory: tools,
+    instanceDirectory: join(root, "static-instance"),
+    siteDirectory: site,
+    port,
+  });
+  try {
+    const served = await fetch(`http://127.0.0.1:${port}/`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    expect(await served.text()).toBe("<h1>pinned static site</h1>");
+  } finally {
+    await running.stop();
+  }
+}
+
 // Supervision needs a reachable per-user launchd domain; headless CI may lack one.
 function supervisableDomain() {
   if (process.platform !== "darwin") {
@@ -196,6 +236,7 @@ test("the Linux standalone artifact creates, lists and selects two instances wit
       }
       urls.push(url);
     }
+    await expectPinnedToolsServeStatically(ws.root);
     const listed = ws.run("server", "list");
     expect(listed.status, listed.output).toBe(0);
     expect(listed.output).toContain(
@@ -308,6 +349,7 @@ test("the standalone CLI supervises the server copy it packages, without attachi
     expect(readFileSync(join(instance, "service.plist"), "utf-8")).toContain(
       `<string>${pinned}</string>`
     );
+    await expectPinnedToolsServeStatically(ws.root);
 
     const identity = decodeIdentity(
       await (await fetch(`${url}/identity`)).json()
