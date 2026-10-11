@@ -14,6 +14,7 @@ import { chmodSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import pkg from "../package.json";
 import cli from "../packages/cli/package.json";
 import { buildDefines } from "./stamp";
+import { packageStaticTools } from "./static-tools";
 
 const outfile = "packages/cli/dist/cli.mjs";
 const serverOutfile = `packages/cli/dist/servers/${pkg.version}/server.mjs`;
@@ -56,6 +57,8 @@ if (!server.success) {
   }
   process.exit(1);
 }
+
+await packageStaticTools(`packages/cli/dist/servers/${pkg.version}`);
 
 const shebang = "#!/usr/bin/env node\n";
 for (const file of [outfile, serverOutfile]) {

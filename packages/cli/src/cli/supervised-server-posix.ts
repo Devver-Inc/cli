@@ -45,42 +45,46 @@ export async function pinServer(parent: string) {
   // The npm CLI is split into ESM chunks beside dist/servers; argv[1] may
   // be the extensionless npm bin symlink rather than dist/cli.mjs.
   const sourceRoot = npm ? import.meta.dirname : dirname(process.execPath);
-  const source = join(
-    sourceRoot,
-    "servers",
-    pkg.version,
-    npm ? "server.mjs" : "devver-server"
-  );
-  const packaged = await lstat(source);
-  if (!packaged.isFile()) {
-    throw new Error("Packaged server must be a regular file");
-  }
-  const destination = join(version, npm ? "server.mjs" : "devver-server");
-  const staging = join(version, `.server-${randomUUID()}`);
-  const handle = await open(staging, "wx", FILE_MODE);
-  try {
-    await handle.writeFile(await readFile(source));
-    await handle.sync();
-    try {
-      // A complete, fsynced copy becomes visible atomically; never replace a pin.
-      await link(staging, destination);
-    } catch (error) {
-      if (!isAlreadyExists(error)) {
-        throw error;
-      }
+  const serverName = npm ? "server.mjs" : "devver-server";
+  for (const name of [
+    serverName,
+    "pitchfork",
+    "websitino",
+    "PITCHFORK-LICENSE",
+    "WEBSITINO-LICENSE",
+  ]) {
+    const source = join(sourceRoot, "servers", pkg.version, name);
+    if (!(await lstat(source)).isFile()) {
+      throw new Error("Packaged server tool must be a regular file");
     }
-  } finally {
-    await handle.close();
-    await rm(staging, { force: true });
+    const destination = join(version, name);
+    const staging = join(version, `.server-${randomUUID()}`);
+    const handle = await open(staging, "wx", FILE_MODE);
+    try {
+      await handle.writeFile(await readFile(source));
+      await handle.sync();
+      try {
+        // A complete, fsynced copy becomes visible atomically; never replace a pin.
+        await link(staging, destination);
+      } catch (error) {
+        if (!isAlreadyExists(error)) {
+          throw error;
+        }
+      }
+    } finally {
+      await handle.close();
+      await rm(staging, { force: true });
+    }
+    const pinned = await lstat(destination);
+    if (
+      pinned.uid !== process.getuid?.() ||
+      !pinned.isFile() ||
+      pinned.mode % 0o1000 !== FILE_MODE
+    ) {
+      throw new Error("Pinned server tool must be an owner-only regular file");
+    }
   }
-  const pinned = await lstat(destination);
-  if (
-    pinned.uid !== process.getuid?.() ||
-    !pinned.isFile() ||
-    pinned.mode % 0o1000 !== FILE_MODE
-  ) {
-    throw new Error("Pinned server must be an owner-only regular file");
-  }
+  const destination = join(version, serverName);
   return {
     command: npm ? process.execPath : destination,
     args: npm ? [destination] : [],

@@ -12,7 +12,7 @@ devver --version                  # runs the freshly built ./devver
 
 The watcher rebuilds the executable; an already-running process does not restart. The source CLI reports the pending Changesets target and Git commit when you request `--version`; watch-built binaries report the `dev` channel. Release builds stamp their version and commit. npm publishes only `@devver/cli`, including a bundled offline server at `dist/servers/<version>/server.mjs`; the server workspace is not published.
 
-Build with `bun run build:npm` for Node/npm or `bun run build` for standalone executables. Run `bun run check`, `bun run typecheck`, and `bun test` from the root.
+Build with `bun run build:npm` for Node/npm or `bun run build` for standalone executables. Both distributions package pinned MIT-licensed Pitchfork and Websitino for local static serving; builds download and verify their checksums, while runtime startup never downloads them. **Local static serving requires macOS 14 or newer on Apple Silicon** (or supported Linux x64 / Windows x64); older macOS fails rather than attempting to run an incompatible Websitino binary. Run `bun run check`, `bun run typecheck`, and `bun test` from the root.
 
 ## Development and release versions
 

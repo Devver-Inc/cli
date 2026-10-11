@@ -68,6 +68,10 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.5.0"
+
       # Windows instance state lives under the real per-user LOCALAPPDATA and an
       # XDG override fails closed, so the checks that create it cannot isolate
       # themselves. This job is that isolation: a runner whose LOCALAPPDATA no
@@ -76,7 +80,7 @@ jobs:
         shell: bash
         env:
           DEVVER_WINDOWS_STATE_TESTS: "1"
-        run: bun test tests/windows-server.test.ts tests/server-identity.test.ts
+        run: bun test tests/windows-server.test.ts tests/server-identity.test.ts packages/server/tests/static-artifacts.test.ts
 
   build:
     name: Build Check

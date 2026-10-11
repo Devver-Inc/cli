@@ -4,6 +4,7 @@ import { rmSync } from "node:fs";
 
 import pkg from "../package.json";
 import { buildDefines } from "./stamp";
+import { packageStaticTools } from "./static-tools";
 
 const config: Bun.BuildConfig = {
   entrypoints: ["./packages/cli/src/cli/index.ts"],
@@ -39,6 +40,8 @@ if (!server.success) {
   }
   process.exit(1);
 }
+
+await packageStaticTools(`servers/${pkg.version}`);
 
 console.log(
   `Built devver and servers/${pkg.version}/devver-server (version ${pkg.version})`
