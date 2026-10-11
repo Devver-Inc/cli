@@ -94,6 +94,13 @@ const isSqliteModule = (value: unknown): value is SqliteModule =>
   (("DatabaseSync" in value && typeof value.DatabaseSync === "function") ||
     ("Database" in value && typeof value.Database === "function"));
 
+/** `PRAGMA table_info` names the columns of an existing table, as text. */
+const hasSitePort = (database: SqliteDatabase) =>
+  database
+    .prepare("PRAGMA table_info(deployments)")
+    .all()
+    .some((column) => column.name === "sitePort");
+
 /** The record file is created owner-only before any driver can widen it. */
 async function privateFile(path: string) {
   const handle = await open(path, "a", PRIVATE_FILE);
@@ -139,12 +146,11 @@ export async function openDeploymentStore(path: string) {
     sitePort TEXT,
     createdAt TEXT NOT NULL
   ) STRICT`);
-  try {
-    // Records written before deployments were reconciled on restart have no
-    // site port; adding the column keeps those deployments readable.
+  // Developer state written before deployments were reconciled on restart has
+  // no site port column; adding it keeps those records readable. Only a missing
+  // column is tolerated, so a real SQLite failure still stops the server.
+  if (!hasSitePort(database)) {
     database.exec("ALTER TABLE deployments ADD COLUMN sitePort TEXT");
-  } catch {
-    // oxlint-disable-next-line eslint/preserve-caught-error -- The only expected failure is the column already existing.
   }
   database.exec(`CREATE TABLE IF NOT EXISTS instance (
     key TEXT PRIMARY KEY NOT NULL,
@@ -158,6 +164,9 @@ export async function openDeploymentStore(path: string) {
   );
   const setStatus = statement(
     "UPDATE deployments SET status = ?, stage = ?, sitePort = ? WHERE deploymentId = ?"
+  );
+  const setSite = statement(
+    "UPDATE deployments SET sitePort = ? WHERE deploymentId = ?"
   );
   const columns = `deploymentId, repositoryId, commitSha AS "commit", parentDeploymentId,
             worktree, status, stage, sitePort, createdAt`;
@@ -182,6 +191,14 @@ export async function openDeploymentStore(path: string) {
         deployment.worktree,
         new Date().toISOString()
       );
+    },
+    /**
+     * The port a deployment's static site was allocated, recorded before that
+     * site is started: a server killed before readiness still leaves the port
+     * its successor needs to stop the process it left behind.
+     */
+    markSite: (deploymentId: string, sitePort: number) => {
+      setSite.run(encodePort(sitePort), deploymentId);
     },
     markReady: (deploymentId: string, sitePort: number) => {
       setStatus.run("ready", null, encodePort(sitePort), deploymentId);

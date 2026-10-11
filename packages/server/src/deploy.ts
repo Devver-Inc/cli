@@ -4,8 +4,9 @@
  * Every stage either completes or removes what it attempted: a failed sync,
  * configuration, process start or readiness check leaves no route, no managed
  * process and no worktree, and records the deployment as failed at that stage
- * instead of ready. Only a real request to the published app hostname declares
- * a deployment ready.
+ * instead of ready. A deployment this server cannot record as ready is
+ * unpublished for the same reason, before its record is rewritten. Only a real
+ * request to the published app hostname declares a deployment ready.
  */
 
 import { randomUUID } from "node:crypto";
@@ -18,6 +19,7 @@ import type { DeployStage } from "./deployment-store";
 import { openDeploymentStore } from "./deployment-store";
 import {
   addWorktree,
+  removeDeploymentRef,
   removeWorktree,
   syncCommit,
   verifiedSource,
@@ -100,7 +102,6 @@ export async function openDeployer(name: string) {
   let listener;
   try {
     listener = await startAppListener(store.appPort());
-    store.setAppPort(listener.port);
   } catch (error) {
     await listener?.close();
     store.close();
@@ -129,6 +130,9 @@ export async function openDeployer(name: string) {
       staticSourceDirectory(worktree)
     );
     const port = await attempt("process", allocatePort);
+    // Durable before the process exists: a server killed from here on leaves
+    // the port its successor needs to stop what it started.
+    store.markSite(deploymentId, port);
     try {
       await attempt("process", async () =>
         startStaticSite({
@@ -151,6 +155,26 @@ export async function openDeployer(name: string) {
       }).catch(() => undefined);
       throw error;
     }
+  };
+
+  /**
+   * Undo a publish, whatever the next step did. It is addressed by what this
+   * server is running, so it is a no-op when the publish cleaned up after
+   * itself, and runs before any record is rewritten: a deployment that is no
+   * longer ready must not keep a route or a process either way.
+   */
+  const unpublish = async (deploymentId: string) => {
+    const site = running.get(deploymentId);
+    if (site === undefined) {
+      return;
+    }
+    running.delete(deploymentId);
+    listener.withdraw(deploymentId);
+    await stopStaticSite({
+      toolsDirectory: site.toolsDirectory,
+      instanceDirectory: appDirectory(deploymentId),
+      port: site.port,
+    }).catch(() => undefined);
   };
 
   const deploy = async (input: {
@@ -202,8 +226,10 @@ export async function openDeployer(name: string) {
         url: appUrl(deploymentId),
       };
     } catch (error) {
+      await unpublish(deploymentId);
       if (bare !== undefined) {
         await removeWorktree(bare, worktree).catch(() => undefined);
+        await removeDeploymentRef(bare, deploymentId);
       }
       store.markFailed(
         deploymentId,
@@ -252,9 +278,16 @@ export async function openDeployer(name: string) {
       try {
         store.markReady(
           deploymentId,
-          await publish(deploymentId, deployment.worktree, tools)
+          // The worktree of a deployment is where this server puts it, never a
+          // path read back from a record.
+          await publish(
+            deploymentId,
+            join(instanceDirectory, "worktrees", deploymentId),
+            tools
+          )
         );
       } catch (error) {
+        await unpublish(deploymentId);
         store.markDegraded(
           deploymentId,
           error instanceof DeployFailure ? error.stage : "server"
@@ -267,15 +300,9 @@ export async function openDeployer(name: string) {
     appPort: listener.port,
     deploy,
     close: async () => {
-      for (const [deploymentId, site] of running) {
-        listener.withdraw(deploymentId);
-        await stopStaticSite({
-          toolsDirectory: site.toolsDirectory,
-          instanceDirectory: appDirectory(deploymentId),
-          port: site.port,
-        }).catch(() => undefined);
+      for (const deploymentId of running.keys()) {
+        await unpublish(deploymentId);
       }
-      running.clear();
       await listener.close();
       store.close();
     },
@@ -285,6 +312,11 @@ export async function openDeployer(name: string) {
   } catch (error) {
     await deployer.close();
     throw error;
+  }
+  // Only a startup that got this far may replace the port the printed URLs of
+  // healthy deployments carry: a refused one leaves that record as found.
+  if (store.appPort() !== listener.port) {
+    store.setAppPort(listener.port);
   }
   return deployer;
 }

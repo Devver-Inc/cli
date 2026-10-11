@@ -8,6 +8,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -81,6 +82,14 @@ function git(cwd: string, ...args: string[]) {
   expect(result.exitCode, result.stderr.toString()).toBe(0);
   return result.stdout.toString().trim();
 }
+
+/** The instance's own bare repository: one checkout deploys in these tests. */
+const bareRepository = (instance: string) =>
+  join(
+    instance,
+    "repositories",
+    readdirSync(join(instance, "repositories"))[0] ?? ""
+  );
 
 /** A committed static site plus edits that must never reach a deployment. */
 function checkout(root: string) {
@@ -165,6 +174,21 @@ async function startupResult(
   return { status, output: `${out}${err}` };
 }
 
+/** Hold a loopback port so the next server has to bind a different one. */
+async function hold(port: string) {
+  const holder = createServer();
+  await new Promise<void>((resolve, reject) => {
+    holder.once("error", reject);
+    holder.listen(Number(port), "127.0.0.1", resolve);
+  });
+  return async () =>
+    new Promise<void>((resolve) => {
+      holder.close(() => {
+        resolve();
+      });
+    });
+}
+
 async function body(url: string, headers: Record<string, string> = {}) {
   const response = await fetch(url, {
     headers,
@@ -172,6 +196,26 @@ async function body(url: string, headers: Record<string, string> = {}) {
     signal: AbortSignal.timeout(5000),
   });
   return { status: response.status, text: await response.text() };
+}
+
+/**
+ * Nothing is listening on an address any more.
+ *
+ * A site whose files were removed still answers, so only a refused connection
+ * proves its process is gone; the stop is not instantaneous, so it is awaited.
+ */
+async function refused(url: string) {
+  const deadline = Date.now() + 10_000;
+  let answered = { status: 0, text: "" };
+  while (Date.now() < deadline) {
+    try {
+      answered = await body(url);
+    } catch {
+      return { status: 0, text: "" };
+    }
+    await Bun.sleep(200);
+  }
+  return answered;
 }
 
 test("deploy serves the committed HEAD of an attached local target at a loopback app URL", async () => {
@@ -277,6 +321,15 @@ test("a failing deploy stage exits nonzero and leaves no route behind", async ()
     const instance = join(ws.root, "devver", "servers", "failing");
     expect(existsSync(join(instance, "apps"))).toBe(false);
     expect(readdirSync(join(instance, "worktrees"))).toEqual([]);
+    // A deployment that failed retains no commit of its own.
+    expect(
+      git(
+        bareRepository(instance),
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/devver"
+      )
+    ).toBe("");
   } finally {
     await stop(running.child);
     rmSync(ws.root, { recursive: true, force: true });
@@ -307,9 +360,87 @@ test("cloud and unselected targets keep the existing deploy behaviour", async ()
 const decodeRecord = Schema.decodeUnknownSync(
   Schema.Struct({
     status: Schema.String,
+    stage: Schema.NullOr(Schema.String),
     sitePort: Schema.NullOr(Schema.String),
   })
 );
+
+const decodeAttempt = Schema.decodeUnknownSync(
+  Schema.Struct({ deploymentId: Schema.String, sitePort: Schema.String })
+);
+
+const decodeSetting = Schema.decodeUnknownSync(
+  Schema.Struct({ value: Schema.String })
+);
+
+function instanceRecords<A>(instance: string, read: (db: Database) => A) {
+  const database = new Database(join(instance, "deployments.sqlite"));
+  try {
+    return read(database);
+  } finally {
+    database.close();
+  }
+}
+
+/**
+ * Make the server's own "ready" write fail the way a full disk or a busy
+ * records file would, and keep the port it published on: only a writer outside
+ * the server can stage that failure, and the port it allocated is the one a
+ * leaked static site would still be listening on.
+ */
+function blockReadyRecord(instance: string) {
+  instanceRecords(instance, (database) => {
+    database.run(
+      "CREATE TABLE attempted (deploymentId TEXT NOT NULL, sitePort TEXT NOT NULL)"
+    );
+    database.run(`CREATE TRIGGER attempted_site AFTER UPDATE OF sitePort ON deployments
+       WHEN new.sitePort IS NOT NULL
+       BEGIN INSERT INTO attempted VALUES (new.deploymentId, new.sitePort); END`);
+    database.run(`CREATE TRIGGER block_ready BEFORE UPDATE OF status ON deployments
+       WHEN new.status = 'ready'
+       BEGIN SELECT RAISE(ABORT, 'injected record failure'); END`);
+  });
+}
+
+/** Only an outside writer can point a record at a directory of its choosing. */
+function repoint(instance: string, deploymentId: string, worktree: string) {
+  instanceRecords(instance, (database) => {
+    database.run("UPDATE deployments SET worktree = ? WHERE deploymentId = ?", [
+      worktree,
+      deploymentId,
+    ]);
+  });
+}
+
+/**
+ * The durable state a server killed between starting a deployment's static
+ * site and recording it ready leaves behind: still preparing, carrying the
+ * port the site it started is listening on.
+ */
+function interrupt(instance: string, deploymentId: string) {
+  instanceRecords(instance, (database) => {
+    database.run(
+      "UPDATE deployments SET status = 'preparing', stage = NULL WHERE deploymentId = ?",
+      [deploymentId]
+    );
+  });
+}
+
+/** The deployment the server published before its record write was refused. */
+const publishedAttempt = (instance: string) =>
+  decodeAttempt(
+    instanceRecords(instance, (database) =>
+      database.query("SELECT deploymentId, sitePort FROM attempted").get()
+    )
+  );
+
+/** The loopback port this instance publishes every deployment URL on. */
+const appPort = (instance: string) =>
+  decodeSetting(
+    instanceRecords(instance, (database) =>
+      database.query("SELECT value FROM instance WHERE key = 'appPort'").get()
+    )
+  ).value;
 
 /** Only a writer outside the server can leave a record it cannot decode. */
 function corrupt(instance: string, deploymentId: string) {
@@ -331,7 +462,9 @@ function record(instance: string, deploymentId: string) {
   });
   try {
     const row: unknown = database
-      .query("SELECT status, sitePort FROM deployments WHERE deploymentId = ?")
+      .query(
+        "SELECT status, stage, sitePort FROM deployments WHERE deploymentId = ?"
+      )
       .get(deploymentId);
     return decodeRecord(row);
   } finally {
@@ -369,7 +502,9 @@ test("two committed revisions keep independent URLs across a server restart", as
     // A second explicit deploy of a later commit is its own root deployment.
     writeFileSync(join(source.directory, "index.html"), "<h1>revision b</h1>");
     git(source.directory, "add", ".");
-    const commitB = git(source.directory, "commit", "-q", "-m", "revision b");
+    git(source.directory, "commit", "-q", "-m", "revision b");
+    const commitB = git(source.directory, "rev-parse", "HEAD");
+    expect(commitB).toMatch(/^[0-9a-f]{40}$/u);
     expect(commitB).not.toBe(source.commit);
     const b = await deployRevision(ws, source.directory);
     expect(b.id).not.toBe(a.id);
@@ -384,30 +519,40 @@ test("two committed revisions keep independent URLs across a server restart", as
     git(source.directory, "reflog", "expire", "--expire=now", "--all");
     git(source.directory, "gc", "--prune=now", "-q");
     writeFileSync(join(source.directory, "index.html"), "<h1>uncommitted</h1>");
-    const bare = join(
-      instance,
-      "repositories",
-      readdirSync(join(instance, "repositories"))[0] ?? ""
-    );
-    for (const commit of [
-      source.commit,
-      git(source.directory, "rev-parse", "HEAD"),
-    ]) {
+    const bare = bareRepository(instance);
+    // The later revision is gone from the checkout it was deployed from.
+    expect(() => {
+      git(source.directory, "cat-file", "-e", `${commitB}^{commit}`);
+    }).toThrow();
+    // Both deployed commits, and the ref that pins each of them, survive.
+    for (const commit of [source.commit, commitB]) {
       expect(git(bare, "cat-file", "-t", `${commit}^{commit}`)).toBe("commit");
     }
-    expect(
-      git(bare, "for-each-ref", "--format=%(refname)", "refs/devver")
-    ).toContain(a.id);
+    const refs = git(
+      bare,
+      "for-each-ref",
+      "--format=%(refname)",
+      "refs/devver"
+    );
+    for (const id of [a.id, b.id]) {
+      expect(refs).toContain(`refs/devver/deployments/${id}`);
+    }
     expect((await body(a.url)).text).toBe("<h1>committed site</h1>");
     expect((await body(b.url)).text).toBe("<h1>revision b</h1>");
 
     // A killed server leaves its supervised static sites behind; the next one
     // reconciles them instead of adding a second process per deployment.
+    const aPort = record(instance, a.id).sitePort;
     const orphanPort = record(instance, b.id).sitePort;
-    expect(orphanPort).toMatch(/^\d+$/u);
+    if (aPort === null || orphanPort === null) {
+      throw new Error("A ready deployment recorded no site port");
+    }
     running.child.kill("SIGKILL");
     await running.child.exited;
     rmSync(join(instance, "worktrees", b.id), { recursive: true, force: true });
+    // A record pointing at the checkout does not make the server serve it: the
+    // worktree of a deployment is where this server put it.
+    repoint(instance, a.id, source.directory);
     running = await foreground(ws.env, "revisions");
 
     // The recovered deployment answers on the URL that was printed before.
@@ -420,15 +565,17 @@ test("two committed revisions keep independent URLs across a server restart", as
     }));
     expect(unrecoverable.status).not.toBe(200);
     expect(unrecoverable.text).not.toContain("committed site");
-    // The static site the killed server supervised for B is stopped, not left
-    // running beside a second one.
-    const orphan = await body(`http://127.0.0.1:${orphanPort}/`).catch(() => ({
-      status: 0,
-      text: "",
-    }));
-    expect(orphan.text).not.toContain("revision b");
+    // Each static site the killed server supervised is stopped, not left
+    // running beside the one this server started: where the recovered
+    // deployment took a new port, nothing answers on the port it had.
+    const aRecovered = record(instance, a.id).sitePort;
+    for (const port of [aPort, orphanPort]) {
+      if (port !== aRecovered) {
+        expect((await refused(`http://127.0.0.1:${port}/`)).status).toBe(0);
+      }
+    }
     expect(record(instance, a.id)).toMatchObject({ status: "ready" });
-    expect(record(instance, b.id)).toEqual({
+    expect(record(instance, b.id)).toMatchObject({
       status: "degraded",
       sitePort: null,
     });
@@ -437,14 +584,120 @@ test("two committed revisions keep independent URLs across a server restart", as
     // deployment rather than guessing, and replaces no earlier record.
     await stop(running.child);
     corrupt(instance, a.id);
-    const refused = await startupResult(ws.env, "revisions");
-    expect(refused.status).toBeGreaterThan(0);
-    expect(refused.output).not.toMatch(CONTROL_URL);
+    const published = appPort(instance);
+    expect(a.url).toContain(`:${published}/`);
+    // Holding the published port forces the refused startup onto another one,
+    // which it must not record over the port every printed URL carries.
+    const release = await hold(published);
+    const refusedStartup = await startupResult(ws.env, "revisions");
+    await release();
+    expect(refusedStartup.status).toBeGreaterThan(0);
+    expect(refusedStartup.output).not.toMatch(CONTROL_URL);
+    expect(appPort(instance)).toBe(published);
     expect(record(instance, a.id).status).toBe("bogus");
-    expect(record(instance, b.id)).toEqual({
+    expect(record(instance, b.id)).toMatchObject({
       status: "degraded",
       sitePort: null,
     });
+    // A degraded deployment keeps the commit it pinned.
+    expect(
+      git(bare, "for-each-ref", "--format=%(refname)", "refs/devver")
+    ).toContain(`refs/devver/deployments/${b.id}`);
+  } finally {
+    await stop(running.child);
+    rmSync(ws.root, { recursive: true, force: true });
+  }
+}, 180_000);
+
+test("a refused ready record leaves no route, process or worktree behind", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  packagedTools();
+  const ws = workspace();
+  const source = checkout(ws.root);
+  const instance = join(ws.root, "devver", "servers", "recording");
+  const running = await foreground(ws.env, "recording");
+  try {
+    expect((await ws.run(["attach", running.url])).status).toBe(0);
+    blockReadyRecord(instance);
+    const failed = await ws.run(["deploy"], source.directory);
+    expect(failed.status).not.toBe(0);
+    expect(failed.output).not.toMatch(APP_URL);
+
+    // The site was published and proven reachable before the record failed.
+    const attempt = publishedAttempt(instance);
+    expect(attempt.sitePort).toMatch(/^\d+$/u);
+    // A recorded port with no deploy stage is the published-then-unrecordable
+    // deployment: every stage completed and only the ready write was refused.
+    expect(record(instance, attempt.deploymentId)).toEqual({
+      status: "failed",
+      stage: "server",
+      sitePort: null,
+    });
+    // The route is withdrawn, not merely serving a removed worktree: the
+    // listener's own answer is what an unpublished address gives.
+    const routed = await body(
+      `http://${attempt.deploymentId}.localhost:${appPort(instance)}/`
+    );
+    expect(routed.status).not.toBe(200);
+    expect(routed.text).toContain("No deployment is published");
+    // The static site process is stopped, and its worktree is gone.
+    expect(
+      (await refused(`http://127.0.0.1:${attempt.sitePort}/`)).status
+    ).toBe(0);
+    expect(existsSync(join(instance, "worktrees", attempt.deploymentId))).toBe(
+      false
+    );
+    // A failed deployment retains no commit of its own.
+    expect(
+      git(
+        bareRepository(instance),
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/devver"
+      )
+    ).toBe("");
+  } finally {
+    await stop(running.child);
+    rmSync(ws.root, { recursive: true, force: true });
+  }
+}, 180_000);
+
+test("an interrupted preparing deployment loses the site it left listening", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  packagedTools();
+  const ws = workspace();
+  const source = checkout(ws.root);
+  const instance = join(ws.root, "devver", "servers", "interrupted");
+  let running = await foreground(ws.env, "interrupted");
+  try {
+    expect((await ws.run(["attach", running.url])).status).toBe(0);
+    const deployed = await deployRevision(ws, source.directory);
+    const { sitePort } = record(instance, deployed.id);
+    expect(sitePort).toMatch(/^\d+$/u);
+
+    running.child.kill("SIGKILL");
+    await running.child.exited;
+    // The killed server's supervised site is still serving on its own port.
+    expect((await body(`http://127.0.0.1:${sitePort}/`)).text).toBe(
+      "<h1>committed site</h1>"
+    );
+    interrupt(instance, deployed.id);
+
+    running = await foreground(ws.env, "interrupted");
+    // An interrupted deploy is not recovered, and what it started is stopped
+    // rather than left listening with nothing to reach it.
+    expect((await refused(`http://127.0.0.1:${sitePort}/`)).status).toBe(0);
+    expect(record(instance, deployed.id)).toMatchObject({
+      status: "degraded",
+      sitePort: null,
+    });
+    const routed = await body(deployed.url);
+    expect(routed.status).not.toBe(200);
+    expect(routed.text).toContain("No deployment is published");
   } finally {
     await stop(running.child);
     rmSync(ws.root, { recursive: true, force: true });

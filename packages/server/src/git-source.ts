@@ -164,6 +164,19 @@ export async function addWorktree(options: {
   return worktree;
 }
 
+/**
+ * Drop the pin of a deployment that will never be served. Best effort: an
+ * unremoved ref only retains an object, while failing here would replace the
+ * deployment failure the caller is already reporting.
+ */
+export async function removeDeploymentRef(bare: string, deploymentId: string) {
+  await git(bare, "update-ref", [
+    "update-ref",
+    "-d",
+    `refs/devver/deployments/${deploymentId}`,
+  ]).catch(() => undefined);
+}
+
 export async function removeWorktree(bare: string, worktree: string) {
   await git(bare, "worktree remove", [
     "worktree",

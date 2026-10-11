@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { chmod, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -198,6 +198,84 @@ test("ready deployments and the published app port survive reopening the records
         stage: "process",
         sitePort: null,
       });
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("the allocated site port is persisted before a deployment is ready", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "devver-store-"));
+  const store = await openDeploymentStore(join(temp, "deployments.sqlite"));
+  try {
+    store.record(first);
+    // A crash after the site process starts is only recoverable if the port it
+    // was started on is already durable while the deployment is preparing.
+    store.markSite(first.deploymentId, SITE_PORT);
+    expect(store.read(first.deploymentId)).toMatchObject({
+      status: "preparing",
+      stage: null,
+      sitePort: SITE_PORT,
+    });
+    store.markDegraded(first.deploymentId, "server");
+    expect(store.read(first.deploymentId)).toMatchObject({
+      status: "degraded",
+      sitePort: null,
+    });
+  } finally {
+    store.close();
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("records written before the site port column are readable without losing them", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "devver-store-"));
+  const file = join(temp, "deployments.sqlite");
+  try {
+    // Unreleased developer state: a records file created before `sitePort`.
+    const legacy = new Database(file);
+    legacy.run(`CREATE TABLE deployments (
+      deploymentId TEXT PRIMARY KEY NOT NULL,
+      repositoryId TEXT NOT NULL,
+      commitSha TEXT NOT NULL,
+      parentDeploymentId TEXT REFERENCES deployments(deploymentId),
+      worktree TEXT NOT NULL,
+      status TEXT NOT NULL,
+      stage TEXT,
+      createdAt TEXT NOT NULL
+    ) STRICT`);
+    legacy.run(
+      `INSERT INTO deployments VALUES (?, ?, ?, NULL, ?, 'ready', NULL, ?)`,
+      [
+        first.deploymentId,
+        first.repositoryId,
+        first.commit,
+        first.worktree,
+        new Date().toISOString(),
+      ]
+    );
+    legacy.close();
+    await chmod(file, 0o600);
+
+    const store = await openDeploymentStore(file);
+    try {
+      expect(store.read(first.deploymentId)).toMatchObject({
+        commit: first.commit,
+        status: "ready",
+        sitePort: null,
+      });
+      store.markSite(first.deploymentId, SITE_PORT);
+      expect(store.read(first.deploymentId)?.sitePort).toBe(SITE_PORT);
+      expect(store.list().unreadable).toBe(0);
+    } finally {
+      store.close();
+    }
+    // Reopening an already migrated file does not alter it again.
+    const reopened = await openDeploymentStore(file);
+    try {
+      expect(reopened.read(first.deploymentId)?.sitePort).toBe(SITE_PORT);
     } finally {
       reopened.close();
     }
