@@ -2,6 +2,31 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { Schema } from "effect";
+import { load } from "js-yaml";
+
+const decodeJobs = Schema.decodeUnknownSync(
+  Schema.Struct({ jobs: Schema.Record(Schema.String, Schema.Unknown) })
+);
+const decodeTargets = Schema.decodeUnknownSync(
+  Schema.Struct({
+    strategy: Schema.Struct({
+      matrix: Schema.Struct({
+        include: Schema.Array(
+          Schema.Struct({ target: Schema.String, os: Schema.String })
+        ),
+      }),
+    }),
+  })
+);
+const decodeOs = Schema.decodeUnknownSync(
+  Schema.Struct({
+    strategy: Schema.Struct({
+      matrix: Schema.Struct({ os: Schema.Array(Schema.String) }),
+    }),
+  })
+);
+
 const workflow = (name: string) =>
   readFileSync(
     join(import.meta.dir, "..", `.github/workflows/${name}.yml`),
@@ -25,6 +50,31 @@ test("stable release applies changesets, tags its version commit, and builds tha
   expect(stable).toContain(
     "npm publish --workspace @devver/cli --access public"
   );
+});
+
+test("Windows jobs and standalone targets stay paused while macOS and Linux remain", () => {
+  const { jobs: ci } = decodeJobs(load(workflow("ci")));
+  expect(Object.keys(ci)).not.toContain("windows-server");
+  expect(Object.keys(ci)).not.toContain("static-deploy-windows");
+  expect(decodeOs(ci.test).strategy.matrix.os).toEqual([
+    "ubuntu-latest",
+    "macos-latest",
+  ]);
+  for (const [name, job] of [
+    ["release", "build"],
+    ["dev", "binary"],
+    ["nightly", "binary"],
+  ] as const) {
+    const source = workflow(name);
+    const { jobs } = decodeJobs(load(source));
+    expect(decodeTargets(jobs[job]).strategy.matrix.include).toEqual([
+      { target: "aarch64-apple-darwin", os: "macos-latest" },
+      { target: "x86_64-unknown-linux-gnu", os: "ubuntu-latest" },
+    ]);
+    if (name !== "release") {
+      expect(source).toContain("!= 4 )); then");
+    }
+  }
 });
 
 test("dev artifacts use a verified commit and cannot update npm latest", () => {

@@ -77,8 +77,9 @@ jobs:
             os: macos-latest
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
+          # Windows standalone publishing resumes after runtime verification.
+          # - target: x86_64-pc-windows-msvc
+          #   os: windows-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -99,32 +100,30 @@ jobs:
         run: bun run build
         env:
           DEVVER_RELEASE_CHANNEL: nightly
-      - name: Verify Windows server is packaged (runtime smoke gated by #84)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $version = (Get-Content package.json | ConvertFrom-Json).version
-          if (!(Test-Path "servers/$version/devver-server.exe")) { throw 'Missing versioned Windows server executable' }
+      #       - name: Verify Windows server is packaged (runtime smoke gated by #84)
+      #         if: runner.os == 'Windows'
+      #         shell: pwsh
+      #         run: |
+      #           $version = (Get-Content package.json | ConvertFrom-Json).version
+      #           if (!(Test-Path "servers/$version/devver-server.exe")) { throw 'Missing versioned Windows server executable' }
       - name: Archive (Unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
           tar czf devver-cli-${{ matrix.target }}.tar.gz devver servers
           shasum -a 256 devver-cli-${{ matrix.target }}.tar.gz > devver-cli-${{ matrix.target }}.tar.gz.sha256
-      - name: Archive (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          7z a devver-cli-${{ matrix.target }}.zip devver.exe servers
-          (Get-FileHash devver-cli-${{ matrix.target }}.zip -Algorithm SHA256).Hash.ToLower() + "  devver-cli-${{ matrix.target }}.zip" | Out-File -Encoding utf8 devver-cli-${{ matrix.target }}.zip.sha256
+      #       - name: Archive (Windows)
+      #         if: runner.os == 'Windows'
+      #         shell: pwsh
+      #         run: |
+      #           7z a devver-cli-${{ matrix.target }}.zip devver.exe servers
+      #           (Get-FileHash devver-cli-${{ matrix.target }}.zip -Algorithm SHA256).Hash.ToLower() + "  devver-cli-${{ matrix.target }}.zip" | Out-File -Encoding utf8 devver-cli-${{ matrix.target }}.zip.sha256
       - uses: actions/upload-artifact@v4
         with:
           name: devver-cli-${{ matrix.target }}
           path: |
             devver-cli-${{ matrix.target }}.tar.gz
             devver-cli-${{ matrix.target }}.tar.gz.sha256
-            devver-cli-${{ matrix.target }}.zip
-            devver-cli-${{ matrix.target }}.zip.sha256
           if-no-files-found: error
 
   npm:
@@ -175,8 +174,8 @@ jobs:
         shell: bash
         run: |
           shopt -s nullglob
-          files=(artifacts/*.tar.gz artifacts/*.zip artifacts/*.sha256)
-          if (( ${#files[@]} != 6 )); then
+          files=(artifacts/*.tar.gz artifacts/*.sha256)
+          if (( ${#files[@]} != 4 )); then
             echo 'Missing nightly archives or checksums' >&2
             exit 1
           fi

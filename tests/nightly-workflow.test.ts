@@ -20,10 +20,9 @@ test("nightly skips unchanged develop and publishes the exact tested commit", ()
   expect(workflow).toContain('--target "$SHA" --title "$VERSION"');
 });
 
-test("CI runs on the develop integration line, including the Windows server job", () => {
-  // Parsed rather than string-matched: the point is which branches sit under
-  // each trigger. Without develop, a PR to the integration line runs no job at
-  // all and the Windows-only server coverage never executes anywhere.
+test("CI runs on the develop integration line while Windows jobs are paused", () => {
+  // Parsed rather than string-matched: a PR to develop must still run the
+  // macOS/Linux jobs, while Windows remains explicitly paused.
   const workflow = Schema.decodeUnknownSync(
     Schema.Struct({
       on: Schema.Struct({
@@ -42,7 +41,8 @@ test("CI runs on the develop integration line, including the Windows server job"
   );
   expect(workflow.on.pull_request.branches).toContain("develop");
   expect(workflow.on.push.branches).toContain("develop");
-  expect(Object.keys(workflow.jobs)).toContain("windows-server");
+  expect(Object.keys(workflow.jobs)).toContain("test");
+  expect(Object.keys(workflow.jobs)).not.toContain("windows-server");
 });
 
 test("the test script carries a timeout the cross-process suite can actually meet", () => {
