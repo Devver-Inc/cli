@@ -44,7 +44,6 @@ const DeploymentSchema = Schema.Struct({
   ...identity,
   status: Schema.Literals(["preparing", "ready", "failed", "degraded"]),
   stage: Schema.NullOr(DeployStageSchema),
-  sitePort: Schema.NullOr(PortSchema),
   createdAt: Schema.String,
 });
 
@@ -92,13 +91,6 @@ const isSqliteModule = (value: unknown): value is SqliteModule =>
   (("DatabaseSync" in value && typeof value.DatabaseSync === "function") ||
     ("Database" in value && typeof value.Database === "function"));
 
-/** `PRAGMA table_info` names the columns of an existing table, as text. */
-const hasSitePort = (database: SqliteDatabase) =>
-  database
-    .prepare("PRAGMA table_info(deployments)")
-    .all()
-    .some((column) => column.name === "sitePort");
-
 /** The record file is created owner-only before any driver can widen it. */
 async function privateFile(path: string) {
   const handle = await open(path, "a", PRIVATE_FILE);
@@ -141,14 +133,18 @@ export async function openDeploymentStore(path: string) {
     worktree TEXT NOT NULL,
     status TEXT NOT NULL,
     stage TEXT,
-    sitePort TEXT,
     createdAt TEXT NOT NULL
   ) STRICT`);
-  // Developer state written before deployments were reconciled on restart has
-  // no site port column; adding it keeps those records readable. Only a missing
-  // column is tolerated, so a real SQLite failure still stops the server.
-  if (!hasSitePort(database)) {
-    database.exec("ALTER TABLE deployments ADD COLUMN sitePort TEXT");
+  // State written before teardown stopped addressing daemons by name carried
+  // a per-deployment site port. No port is recorded any more: the deployment
+  // host owns every port decision, so a stale column is dropped when present.
+  if (
+    database
+      .prepare("PRAGMA table_info(deployments)")
+      .all()
+      .some((column) => column.name === "sitePort")
+  ) {
+    database.exec("ALTER TABLE deployments DROP COLUMN sitePort");
   }
   database.exec(`CREATE TABLE IF NOT EXISTS instance (
     key TEXT PRIMARY KEY NOT NULL,
@@ -161,13 +157,10 @@ export async function openDeploymentStore(path: string) {
      VALUES (?, ?, ?, ?, ?, 'preparing', NULL, ?)`
   );
   const setStatus = statement(
-    "UPDATE deployments SET status = ?, stage = ?, sitePort = ? WHERE deploymentId = ?"
-  );
-  const setSite = statement(
-    "UPDATE deployments SET sitePort = ? WHERE deploymentId = ?"
+    "UPDATE deployments SET status = ?, stage = ? WHERE deploymentId = ?"
   );
   const columns = `deploymentId, repositoryId, commitSha AS "commit", parentDeploymentId,
-            worktree, status, stage, sitePort, createdAt`;
+            worktree, status, stage, createdAt`;
   const select = statement(
     `SELECT ${columns} FROM deployments WHERE deploymentId = ?`
   );
@@ -190,23 +183,15 @@ export async function openDeploymentStore(path: string) {
         new Date().toISOString()
       );
     },
-    /**
-     * The port a deployment's static site was allocated, recorded before that
-     * site is started: a server killed before readiness still leaves the port
-     * its successor needs to stop the process it left behind.
-     */
-    markSite: (deploymentId: string, sitePort: number) => {
-      setSite.run(encodePort(sitePort), deploymentId);
-    },
-    markReady: (deploymentId: string, sitePort: number) => {
-      setStatus.run("ready", null, encodePort(sitePort), deploymentId);
+    markReady: (deploymentId: string) => {
+      setStatus.run("ready", null, deploymentId);
     },
     markFailed: (deploymentId: string, stage: DeployStage) => {
-      setStatus.run("failed", stage, null, deploymentId);
+      setStatus.run("failed", stage, deploymentId);
     },
-    /** Recorded intent the server could not serve again: no port, no route. */
+    /** Recorded intent the server could not serve again: no route. */
     markDegraded: (deploymentId: string, stage: DeployStage) => {
-      setStatus.run("degraded", stage, null, deploymentId);
+      setStatus.run("degraded", stage, deploymentId);
     },
     read: (deploymentId: string): Deployment | undefined => {
       const [row] = select.all(deploymentId);

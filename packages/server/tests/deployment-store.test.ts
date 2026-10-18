@@ -24,7 +24,6 @@ const decodeProbe = Schema.decodeUnknownSync(
     worktree: Schema.String,
     status: Schema.String,
     stage: Schema.NullOr(Schema.String),
-    sitePort: Schema.NullOr(Schema.Finite),
     appPort: Schema.Finite,
     createdAt: Schema.String,
   })
@@ -81,7 +80,6 @@ test("the durable deployment record is readable by both distributions", async ()
     expect(written.runtime).toBe("node");
     expect(written.status).toBe("ready");
     expect(written.parentDeploymentId).toBeNull();
-    expect(written.sitePort).toBe(47_321);
     expect(written.appPort).toBe(47_320);
     // The same file reopened by the other runtime yields the same record.
     const read = run(standalone, "read", join(temp, "npm.sqlite"));
@@ -145,7 +143,6 @@ test("a deployment store is owner-only and rejects records it cannot validate", 
 });
 
 const APP_PORT = 46_123;
-const SITE_PORT = 46_124;
 
 const recorded = (deploymentId: string, commit: string) => ({
   deploymentId,
@@ -166,7 +163,7 @@ test("ready deployments and the published app port survive reopening the records
     expect(store.appPort()).toBeUndefined();
     store.setAppPort(APP_PORT);
     store.record(first);
-    store.markReady(first.deploymentId, SITE_PORT);
+    store.markReady(first.deploymentId);
     store.record(second);
     store.markFailed(second.deploymentId, "readiness");
     store.close();
@@ -184,19 +181,16 @@ test("ready deployments and the published app port survive reopening the records
         worktree: first.worktree,
         status: "ready",
         stage: null,
-        sitePort: SITE_PORT,
       });
       expect(listed(second.deploymentId)).toMatchObject({
         status: "failed",
         stage: "readiness",
-        sitePort: null,
       });
 
       reopened.markDegraded(first.deploymentId, "process");
       expect(reopened.read(first.deploymentId)).toMatchObject({
         status: "degraded",
         stage: "process",
-        sitePort: null,
       });
     } finally {
       reopened.close();
@@ -206,23 +200,18 @@ test("ready deployments and the published app port survive reopening the records
   }
 });
 
-test("the allocated site port is persisted before a deployment is ready", async () => {
+test("a preparing record stays readable while the deployment runs", async () => {
   const temp = await mkdtemp(join(tmpdir(), "devver-store-"));
   const store = await openDeploymentStore(join(temp, "deployments.sqlite"));
   try {
     store.record(first);
-    // A crash after the site process starts is only recoverable if the port it
-    // was started on is already durable while the deployment is preparing.
-    store.markSite(first.deploymentId, SITE_PORT);
     expect(store.read(first.deploymentId)).toMatchObject({
       status: "preparing",
       stage: null,
-      sitePort: SITE_PORT,
     });
     store.markDegraded(first.deploymentId, "server");
     expect(store.read(first.deploymentId)).toMatchObject({
       status: "degraded",
-      sitePort: null,
     });
   } finally {
     store.close();
@@ -230,11 +219,11 @@ test("the allocated site port is persisted before a deployment is ready", async 
   }
 });
 
-test("records written before the site port column are readable without losing them", async () => {
+test("records written before teardown was name-addressed stay readable", async () => {
   const temp = await mkdtemp(join(tmpdir(), "devver-store-"));
   const file = join(temp, "deployments.sqlite");
   try {
-    // Unreleased developer state: a records file created before `sitePort`.
+    // State written when records carried a per-deployment site port.
     const legacy = new Database(file);
     legacy.run(`CREATE TABLE deployments (
       deploymentId TEXT PRIMARY KEY NOT NULL,
@@ -244,10 +233,11 @@ test("records written before the site port column are readable without losing th
       worktree TEXT NOT NULL,
       status TEXT NOT NULL,
       stage TEXT,
+      sitePort TEXT,
       createdAt TEXT NOT NULL
     ) STRICT`);
     legacy.run(
-      `INSERT INTO deployments VALUES (?, ?, ?, NULL, ?, 'ready', NULL, ?)`,
+      `INSERT INTO deployments VALUES (?, ?, ?, NULL, ?, 'ready', NULL, '47321', ?)`,
       [
         first.deploymentId,
         first.repositoryId,
@@ -264,18 +254,17 @@ test("records written before the site port column are readable without losing th
       expect(store.read(first.deploymentId)).toMatchObject({
         commit: first.commit,
         status: "ready",
-        sitePort: null,
       });
-      store.markSite(first.deploymentId, SITE_PORT);
-      expect(store.read(first.deploymentId)?.sitePort).toBe(SITE_PORT);
       expect(store.list().unreadable).toBe(0);
     } finally {
       store.close();
     }
-    // Reopening an already migrated file does not alter it again.
+    // Reopening the migrated file reads it the same way.
     const reopened = await openDeploymentStore(file);
     try {
-      expect(reopened.read(first.deploymentId)?.sitePort).toBe(SITE_PORT);
+      expect(reopened.read(first.deploymentId)).toMatchObject({
+        status: "ready",
+      });
     } finally {
       reopened.close();
     }
@@ -290,9 +279,9 @@ test("a corrupt deployment row is reported unreadable without replacing earlier 
   try {
     const store = await openDeploymentStore(file);
     store.record(first);
-    store.markReady(first.deploymentId, SITE_PORT);
+    store.markReady(first.deploymentId);
     store.record(second);
-    store.markReady(second.deploymentId, SITE_PORT + 1);
+    store.markReady(second.deploymentId);
     store.close();
 
     // Only a writer outside this module can produce a row the schema rejects.
@@ -310,7 +299,6 @@ test("a corrupt deployment row is reported unreadable without replacing earlier 
       expect(deployments[0]).toMatchObject({
         deploymentId: first.deploymentId,
         status: "ready",
-        sitePort: SITE_PORT,
       });
       expect(() => reopened.read(second.deploymentId)).toThrow();
     } finally {

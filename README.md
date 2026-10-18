@@ -14,6 +14,8 @@ The watcher rebuilds the executable; an already-running process does not restart
 
 Build with `bun run build:npm` for Node/npm or `bun run build` for standalone executables. Both distributions package pinned MIT-licensed Pitchfork and Websitino for local static serving; builds download and verify their checksums, while runtime startup never downloads them. **Local static serving requires macOS 14 or newer on Apple Silicon** (or supported Linux x64 / Windows x64); older macOS fails rather than attempting to run an incompatible Websitino binary. Run `bun run check`, `bun run typecheck`, and `bun test` from the root.
 
+After `bun run build`, use `./devver new server <name>` (or put this checkout first on `PATH`); a new server pins this build under its own instance ID, even when the version number has not changed. Existing servers keep their pinned binaries. For an isolated foreground test that cleans up on Ctrl-C, run `mise run dev-local`; it prints a temporary CLI command to use from your website checkout.
+
 ## Development and release versions
 
 Every PR must add a `.changeset/*.md` file: run `mise run bump` and select `@devver/cli` with the appropriate patch/minor/major bump, or `mise run no-release` for a change that needs no release. Commit the file with the PR; CI checks for it. Changesets on `develop` determine the planned version shown by `bun run cmd --version`. A local checkout also shows its commit SHA; it does not reserve a published build number. With no pending changesets, local source shows the current stable baseline instead.

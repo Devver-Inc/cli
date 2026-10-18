@@ -413,6 +413,15 @@ test("Windows Task Scheduler keeps distinct instances alive after their creator 
       expect(identity.name).toBe(name);
       expect(identity.serverVersion).toBe(pkg.version);
       identities.push(identity.instanceId);
+      const pinned = join(
+        dirname(state.servers),
+        "installations",
+        pkg.version,
+        identity.instanceId,
+        "server.mjs"
+      );
+      expect(existsSync(pinned)).toBe(true);
+      await verifyWindowsPrivate({ path: pinned, kind: "file" });
 
       const service = await readInstanceService(name);
       expect(service.serverVersion).toBe(pkg.version);

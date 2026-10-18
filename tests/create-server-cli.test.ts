@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import {
+  appendFileSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -270,6 +271,17 @@ test("installed npm bin pins and starts its server after the CLI exits", async (
       };
     };
     const urls: string[] = [];
+    const instanceIds: string[] = [];
+    const packagedServer = join(
+      installed,
+      "node_modules",
+      "@devver",
+      "cli",
+      "dist",
+      "servers",
+      pkg.version,
+      "server.mjs"
+    );
     for (const name of ["installed", "second"]) {
       const created = runInstalled("new", "server", name);
       expect(created.status, created.output).toBe(0);
@@ -283,6 +295,22 @@ test("installed npm bin pins and starts its server after the CLI exits", async (
         await (await fetch(`${url}/identity`)).json()
       );
       expect(identity.name).toBe(name);
+      instanceIds.push(identity.instanceId);
+      const pinned = join(
+        ws.root,
+        "data",
+        "devver",
+        "installations",
+        pkg.version,
+        identity.instanceId,
+        "server.mjs"
+      );
+      expect(readFileSync(pinned).equals(readFileSync(packagedServer))).toBe(
+        true
+      );
+      if (name === "installed") {
+        appendFileSync(packagedServer, "\n// subsequent local build\n");
+      }
     }
     const listed = runInstalled("server", "list");
     expect(listed.status, listed.output).toBe(0);
@@ -364,25 +392,13 @@ test("installed npm bin pins and starts its server after the CLI exits", async (
       "devver",
       "installations",
       pkg.version,
+      instanceIds[0] ?? "",
       "server.mjs"
     );
     expect(statSync(pinned).mode % 0o1000).toBe(0o700);
-    expect(
-      readFileSync(pinned).equals(
-        readFileSync(
-          join(
-            installed,
-            "node_modules",
-            "@devver",
-            "cli",
-            "dist",
-            "servers",
-            pkg.version,
-            "server.mjs"
-          )
-        )
-      )
-    ).toBe(true);
+    expect(readFileSync(pinned).equals(readFileSync(packagedServer))).toBe(
+      false
+    );
   } finally {
     if (foreign !== undefined) {
       await new Promise<void>((resolve) => {
@@ -484,6 +500,7 @@ test("a native user manager keeps distinct named servers reachable after creatio
             "devver",
             "installations",
             pkg.version,
+            identity.instanceId,
             "server.mjs"
           )
         ).mode % 0o1000

@@ -18,7 +18,7 @@ try {
       parentDeploymentId: null,
       worktree: "/tmp/devver-probe-worktree",
     });
-    store.markReady(id, 47_321);
+    store.markReady(id);
     store.setAppPort(47_320);
   } else if (mode !== "read") {
     throw new Error("Usage: probe <write|read> <file>");

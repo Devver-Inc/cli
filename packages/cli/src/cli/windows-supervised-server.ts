@@ -139,10 +139,11 @@ async function waitForIdentity(
   return lastProbe;
 }
 
-async function pinServer(parent: string) {
+async function pinServer(parent: string, instanceId: string) {
   const installations = join(dirname(parent), "installations");
   const version = join(installations, pkg.version);
-  await windowsPrivateDirectories(installations, version);
+  const pinnedInstance = join(version, instanceId);
+  await windowsPrivateDirectories(installations, version, pinnedInstance);
   const npm = process.versions.bun === undefined;
   // The npm CLI is split into ESM chunks beside dist/servers; argv[1] may
   // be the extensionless npm bin shim rather than dist/cli.mjs.
@@ -159,8 +160,8 @@ async function pinServer(parent: string) {
     if (!(await lstat(source)).isFile()) {
       throw new Error("Packaged server tool must be a regular file");
     }
-    const destination = join(version, name);
-    const staging = join(version, `.server-${randomUUID()}`);
+    const destination = join(pinnedInstance, name);
+    const staging = join(pinnedInstance, `.server-${randomUUID()}`);
     const handle = await open(staging, "wx");
     try {
       await verifyWindowsPrivate({ path: staging, kind: "file" });
@@ -180,7 +181,7 @@ async function pinServer(parent: string) {
     }
     await verifyWindowsPrivate({ path: destination, kind: "file" });
   }
-  const destination = join(version, serverName);
+  const destination = join(pinnedInstance, serverName);
   return {
     command: npm ? process.execPath : destination,
     args: npm ? [destination] : [],
@@ -222,7 +223,7 @@ export async function create(name: string) {
   try {
     const instance = await loadInstance(name);
     const port = await availablePort();
-    const pinned = await pinServer(parent);
+    const pinned = await pinServer(parent, instance.instanceId);
     const service = join(directory, "service.json");
     const handle = await open(service, "wx");
     try {

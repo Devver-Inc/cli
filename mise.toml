@@ -1,6 +1,10 @@
 [tools]
 "npm:@changesets/cli" = "3.0.3"
 
+[tasks.dev-local]
+description = "Build and serve an isolated local instance for manual deploy testing"
+run = "bash scripts/dev-local.sh"
+
 [tasks.bump]
 description = "Record a patch, minor, or major release bump for a PR"
 run = "changeset add"

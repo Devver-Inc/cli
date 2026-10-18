@@ -77,7 +77,7 @@ if [[ "$FEATURE" == deploy ]]; then
   printf '<h1>uncommitted edit</h1>\n' > index.html
   cli deploy | tee "$PROOF/deploy.txt"
   grep -Fq "Commit: $(< "$PROOF/selected-head.txt")" "$PROOF/deploy.txt"
-  APP_URL=$(grep -Eo 'http://[a-f0-9-]{36}\.localhost:[0-9]+/' "$PROOF/deploy.txt" | tail -1)
+  APP_URL=$(grep -Eo "http://[a-f0-9-]{36}\.$NAME\.localhost:[0-9]+/" "$PROOF/deploy.txt" | tail -1)
   [[ -n "$APP_URL" ]]
   APP_PORT=${APP_URL%/}
   APP_PORT=${APP_PORT##*:}
@@ -88,7 +88,7 @@ if [[ "$FEATURE" == deploy ]]; then
   grep -Fxq '<h1>committed static page</h1>' "$PROOF/app-response.html"
   DEPLOYMENT_ID=$(grep -Eo 'Deployment ID: [a-f0-9-]{36}' "$PROOF/deploy.txt" | tail -1)
   DEPLOYMENT_ID=${DEPLOYMENT_ID##* }
-  [[ "$APP_URL" == "http://$DEPLOYMENT_ID.localhost:$APP_PORT/" ]]
+  [[ "$APP_URL" == "http://$DEPLOYMENT_ID.$NAME.localhost:$APP_PORT/" ]]
   bun -e '
     import { Database } from "bun:sqlite";
     const db = new Database(process.argv[1], { readonly: true });

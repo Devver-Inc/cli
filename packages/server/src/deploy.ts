@@ -7,15 +7,18 @@
  * instead of ready. A deployment this server cannot record as ready is
  * unpublished for the same reason, before its record is rewritten. Only a real
  * request to the published app hostname declares a deployment ready.
+ *
+ * Deployments are daemons of one Pitchfork supervisor, addressed by their own
+ * id. Pitchfork assigns their ports and its reverse proxy routes each stable
+ * hostname to whichever port its process bound, so no port is chosen here.
  */
 
 import { randomUUID } from "node:crypto";
-import { createConnection } from "node:net";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { DeployFailure } from "./api";
-import { allocatePort, startAppListener } from "./app-listener";
+import { openDeploymentHost } from "./deployment-host";
 import type { DeployStage } from "./deployment-store";
 import { openDeploymentStore } from "./deployment-store";
 import {
@@ -27,24 +30,20 @@ import {
 } from "./git-source";
 import { instanceParent } from "./identity";
 import { packagedToolsDirectory } from "./packaged-tools";
-import { startStaticSite, stopStaticSite } from "./static-site";
-import { staticSourceDirectory } from "./static-source";
+import { prepareDaemon } from "./workloads";
 
 const READINESS_DEADLINE = 20_000;
 const READINESS_INTERVAL = 200;
 const READINESS_TIMEOUT = 1000;
-const STOP_DEADLINE = 10_000;
-const STOP_INTERVAL = 200;
-const CONNECT_TIMEOUT = 1000;
 // Prose only: a detail with a path, URL or token in it never reaches the client.
 const SAFE_DETAIL = /^(?=[^\n]* )[A-Za-z0-9 ,.'()-]{1,120}$/u;
 
 const stageMessage: Record<DeployStage, string> = {
-  server: "server: this installation cannot deploy static sites",
+  server: "server: this installation cannot deploy this workload",
   source: "source: the checkout or commit cannot be deployed",
   git: "git: the commit could not be synchronized",
-  config: "config: the static configuration is not usable",
-  process: "process: the static site could not be started",
+  config: "config: the deployment configuration is not usable",
+  process: "process: the deployment process could not be started",
   readiness: "readiness: the app URL did not serve the deployment",
 };
 
@@ -64,58 +63,6 @@ const attempt = async <A>(stage: DeployStage, step: () => Promise<A>) => {
     });
   }
 };
-
-/**
- * A socket error proves nothing unless the kernel refused the connection:
- * exhaustion (EMFILE, ENFILE) or a blocked local address (EACCES,
- * EADDRNOTAVAIL) means this server could not ask the question at all.
- */
-const isConnectionRefused = (
-  error: unknown
-): error is Error & { code: "ECONNREFUSED" } =>
-  error instanceof Error && "code" in error && error.code === "ECONNREFUSED";
-
-/**
- * Nothing accepts a loopback connection on this port.
- *
- * The connection is the whole question: a listening socket is accepted by the
- * kernel whatever the process behind it is doing, and a static site whose
- * files were removed still answers requests. Only a refused connection shows
- * that the process is gone; every other outcome leaves the port taken.
- */
-async function refused(port: number) {
-  return await new Promise<boolean>((resolve) => {
-    const socket = createConnection({ host: "127.0.0.1", port });
-    const settle = (gone: boolean) => {
-      socket.destroy();
-      resolve(gone);
-    };
-    socket.setTimeout(CONNECT_TIMEOUT, () => {
-      settle(false);
-    });
-    socket.once("connect", () => {
-      settle(false);
-    });
-    socket.once("error", (error) => {
-      settle(isConnectionRefused(error));
-    });
-  });
-}
-
-/**
- * Teardown of a recorded static site is idempotent and tolerant by contract,
- * so its port is the only proof it worked; stopping is not instantaneous, so
- * that proof is awaited for a bounded time.
- */
-async function stopped(port: number) {
-  const deadline = Date.now() + STOP_DEADLINE;
-  let gone = await refused(port);
-  while (!gone && Date.now() < deadline) {
-    await delay(STOP_INTERVAL);
-    gone = await refused(port);
-  }
-  return gone;
-}
 
 /** Readiness is the printed app URL answering, not a Host header trick. */
 async function reachable(url: string) {
@@ -147,90 +94,48 @@ async function reachable(url: string) {
 
 /**
  * Open the deployment state of one server instance: its durable records, the
- * single app-facing listener its deployments are published on, and the
- * reconciliation that brings the two back together after a restart.
+ * deployment host its processes are published on, and the reconciliation that
+ * brings the two back together after a restart.
  */
 export async function openDeployer(name: string) {
   const instanceDirectory = join(await instanceParent(name), name);
   const store = await openDeploymentStore(
     join(instanceDirectory, "deployments.sqlite")
   );
-  let listener;
+  let host;
   try {
-    listener = await startAppListener(store.appPort());
+    host = await openDeploymentHost({
+      toolsDirectory: await packagedToolsDirectory(),
+      instanceDirectory,
+      proxyPort: store.appPort(),
+    });
   } catch (error) {
-    await listener?.close();
     store.close();
     throw error;
   }
-  const running = new Map<
-    string,
-    { readonly toolsDirectory: string; readonly port: number }
-  >();
-  const appDirectory = (deploymentId: string) =>
-    join(instanceDirectory, "apps", deploymentId);
-  const appUrl = (deploymentId: string) =>
-    `http://${deploymentId}.localhost:${listener.port}/`;
-
   /**
    * Serve one selected worktree and publish its route, proven by a request to
    * its own app URL. A failure here leaves no route and no managed process,
    * whether it happened during a deploy or while recovering one.
    */
-  const publish = async (
-    deploymentId: string,
-    worktree: string,
-    toolsDirectory: string
-  ) => {
-    const site = await attempt("config", async () =>
-      staticSourceDirectory(worktree)
-    );
-    const port = await attempt("process", allocatePort);
-    // Durable before the process exists: a server killed from here on leaves
-    // the port its successor needs to stop what it started.
-    store.markSite(deploymentId, port);
+  const publish = async (deploymentId: string, worktree: string) => {
+    const spec = await attempt("config", async () => prepareDaemon(worktree));
     try {
-      await attempt("process", async () =>
-        startStaticSite({
-          toolsDirectory,
-          instanceDirectory: appDirectory(deploymentId),
-          siteDirectory: site,
-          port,
-        })
-      );
-      listener.publish(deploymentId, port);
-      await attempt("readiness", async () => reachable(appUrl(deploymentId)));
-      running.set(deploymentId, { toolsDirectory, port });
-      return port;
+      await attempt("process", async () => host.publish(deploymentId, spec));
+      await attempt("readiness", async () => reachable(host.url(deploymentId)));
     } catch (error) {
-      listener.withdraw(deploymentId);
-      await stopStaticSite({
-        toolsDirectory,
-        instanceDirectory: appDirectory(deploymentId),
-        port,
-      }).catch(() => undefined);
+      await host.withdraw(deploymentId).catch(() => undefined);
       throw error;
     }
   };
 
   /**
-   * Undo a publish, whatever the next step did. It is addressed by what this
-   * server is running, so it is a no-op when the publish cleaned up after
-   * itself, and runs before any record is rewritten: a deployment that is no
-   * longer ready must not keep a route or a process either way.
+   * Undo a publish, whatever the next step did. It runs before any record is
+   * rewritten: a deployment that is no longer ready must not keep a route or a
+   * process either way.
    */
   const unpublish = async (deploymentId: string) => {
-    const site = running.get(deploymentId);
-    if (site === undefined) {
-      return;
-    }
-    running.delete(deploymentId);
-    listener.withdraw(deploymentId);
-    await stopStaticSite({
-      toolsDirectory: site.toolsDirectory,
-      instanceDirectory: appDirectory(deploymentId),
-      port: site.port,
-    }).catch(() => undefined);
+    await host.withdraw(deploymentId).catch(() => undefined);
   };
 
   const deploy = async (input: {
@@ -238,7 +143,6 @@ export async function openDeployer(name: string) {
     readonly commit: string;
   }) => {
     const deploymentId = randomUUID();
-    const toolsDirectory = await attempt("server", packagedToolsDirectory);
     const source = await attempt("source", async () =>
       verifiedSource(input.source, input.commit)
     );
@@ -270,16 +174,14 @@ export async function openDeployer(name: string) {
           commit: input.commit,
         })
       );
-      store.markReady(
-        deploymentId,
-        await publish(deploymentId, added, toolsDirectory)
-      );
+      await publish(deploymentId, added);
+      store.markReady(deploymentId);
       return {
         deploymentId,
         repositoryId: source.repositoryId,
         commit: input.commit,
         parentDeploymentId: null,
-        url: appUrl(deploymentId),
+        url: host.url(deploymentId),
       };
     } catch (error) {
       await unpublish(deploymentId);
@@ -296,17 +198,15 @@ export async function openDeployer(name: string) {
   };
 
   /**
-   * Match persisted intent to reality once, at startup. A static site
-   * supervised by a killed server can still be running, so the recorded one is
-   * stopped, and proven gone by its own port, before this server starts its
-   * own: exactly one process and one route per deployment. Whatever cannot be
-   * served again becomes degraded with no route, so it answers at its own
-   * address and nowhere else.
+   * Match persisted intent to reality once, at startup. Every recorded
+   * deployment is withdrawn first, so a daemon an earlier run left behind is
+   * stopped before this run publishes its own: exactly one process and one
+   * route per deployment. Whatever cannot be served again becomes degraded
+   * with no route, so it answers at its own address and nowhere else.
    *
-   * A record this server cannot read, or whose recorded site it cannot prove
-   * is gone, stops it here, like any other unsafe instance state: that record
-   * is left exactly as found, with the port a later start needs to clean it
-   * up, and nothing is published beside a backend that may still be serving.
+   * A record this server cannot read stops it here, like any other unsafe
+   * instance state: that record is left exactly as found, and nothing is
+   * published beside a backend that may still be serving.
    */
   const reconcile = async () => {
     const { deployments, unreadable } = store.list();
@@ -315,50 +215,26 @@ export async function openDeployer(name: string) {
         "Deployment records hold entries this server cannot read; they were not replaced"
       );
     }
-    const tools = await packagedToolsDirectory().catch(() => undefined);
     for (const deployment of deployments) {
-      const { deploymentId, sitePort, status } = deployment;
+      const { deploymentId, status } = deployment;
       if (status === "failed" || status === "degraded") {
         continue;
       }
-      // Retiring a record needs the packaged tools as much as recovering one:
-      // without them the site it may have left running cannot be stopped, and
-      // its recorded port is the only address left to stop it with.
-      if (tools === undefined) {
-        throw new Error(
-          "This server installation has no packaged static toolchain to reconcile recorded deployments with; they were left as they are"
-        );
-      }
-      if (sitePort !== null) {
-        await stopStaticSite({
-          toolsDirectory: tools,
-          instanceDirectory: appDirectory(deploymentId),
-          port: sitePort,
-        }).catch(() => undefined);
-        if (!(await stopped(sitePort))) {
-          throw new Error(
-            "A static site recorded by an earlier run is still serving on its port; no deployment was republished"
-          );
-        }
-      }
-      // An interrupted deploy never finished its worktree, and a record with no
-      // port cannot show that the site an earlier run started is gone: neither
-      // is recovered, because neither may end up served twice.
-      if (status === "preparing" || sitePort === null) {
+      await host.withdraw(deploymentId).catch(() => undefined);
+      // An interrupted deploy never finished its worktree, so it is not
+      // recovered: it may not end up served from a half-written checkout.
+      if (status === "preparing") {
         store.markDegraded(deploymentId, "server");
         continue;
       }
       try {
-        store.markReady(
+        // The worktree of a deployment is where this server puts it, never a
+        // path read back from a record.
+        await publish(
           deploymentId,
-          // The worktree of a deployment is where this server puts it, never a
-          // path read back from a record.
-          await publish(
-            deploymentId,
-            join(instanceDirectory, "worktrees", deploymentId),
-            tools
-          )
+          join(instanceDirectory, "worktrees", deploymentId)
         );
+        store.markReady(deploymentId);
       } catch (error) {
         await unpublish(deploymentId);
         store.markDegraded(
@@ -370,13 +246,10 @@ export async function openDeployer(name: string) {
   };
 
   const deployer = {
-    appPort: listener.port,
+    appPort: host.proxyPort,
     deploy,
     close: async () => {
-      for (const deploymentId of running.keys()) {
-        await unpublish(deploymentId);
-      }
-      await listener.close();
+      await host.close();
       store.close();
     },
   };
@@ -387,9 +260,9 @@ export async function openDeployer(name: string) {
     throw error;
   }
   // Only a startup that got this far may replace the port the printed URLs of
-  // healthy deployments carry: a refused one leaves that record as found.
-  if (store.appPort() !== listener.port) {
-    store.setAppPort(listener.port);
+  // healthy deployments carry.
+  if (store.appPort() !== host.proxyPort) {
+    store.setAppPort(host.proxyPort);
   }
   return deployer;
 }

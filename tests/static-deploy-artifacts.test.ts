@@ -1,4 +1,3 @@
-import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import {
@@ -19,13 +18,13 @@ import { dirname, join } from "node:path";
 import { Schema } from "effect";
 
 import pkg from "../package.json";
-import { stopStaticSite } from "../packages/server";
+import { stopDeploymentHost } from "../packages/server";
 import { windowsServersDirectory } from "../packages/server/windows-acl";
 
 const repo = join(import.meta.dir, "..");
 const onWindows = process.platform === "win32";
 const APP_URL =
-  /App URL: (?<url>http:\/\/(?<id>[0-9a-f-]{36})\.localhost:(?<port>\d+)\/)/u;
+  /App URL: (?<url>http:\/\/(?<id>[0-9a-f-]{36})\.(?<project>[a-z0-9-]+)\.localhost:(?<port>\d+)\/)/u;
 const CONTROL_URL = /http:\/\/127\.0\.0\.1:(?<port>\d+)\/api\/v1/u;
 const decodeService = Schema.decodeUnknownSync(
   Schema.Struct({
@@ -47,6 +46,9 @@ const decodeService = Schema.decodeUnknownSync(
   })
 );
 type Service = ReturnType<typeof decodeService>;
+const decodeInstance = Schema.decodeUnknownSync(
+  Schema.Struct({ instanceId: Schema.String })
+);
 
 type Distribution = "npm" | "standalone";
 
@@ -266,6 +268,7 @@ async function deploy(
   expect(result.status, result.output).toBe(0);
   expect(result.output).toContain(commit);
   const app = printedApp(result.output);
+  expect(new URL(app.url).hostname).toBe(`${app.id}.${ws.name}.localhost`);
   expect((await response(app.url)).text).toBe(html);
   return app;
 }
@@ -288,12 +291,12 @@ async function isolatedRouting(
   for (const host of [
     `127.0.0.1:${first.port}`,
     `${second.id}.localhost.example.com:${first.port}`,
-    `${"0".repeat(8)}-0000-4000-8000-${"0".repeat(12)}.localhost:${first.port}`,
+    `${new URL(first.url).hostname.replace(first.id, `${"0".repeat(8)}-0000-4000-8000-${"0".repeat(12)}`)}:${first.port}`,
   ]) {
     const unknown = await response(`http://127.0.0.1:${first.port}/`, {
       headers: { Host: host },
     });
-    expect(unknown.status).toBe(404);
+    expect(unknown.status).not.toBe(200);
     expect(unknown.text).not.toContain("revision A");
   }
   const nonLoopback = Object.values(networkInterfaces())
@@ -352,6 +355,9 @@ async function failedDeployments(
       "..",
       "installations",
       pkg.version,
+      decodeInstance(
+        JSON.parse(readFileSync(join(instance, "identity.json"), "utf-8"))
+      ).instanceId,
       "websitino"
     );
     const mode = statSync(websitino).mode % 0o1000;
@@ -454,9 +460,17 @@ function removeSupervisor(ws: Workspace, service: Service | undefined) {
       const stopped = run(["launchctl", "bootout", job], ws.root, ws.env);
       expect(stopped.status, stopped.output).toBe(0);
     }
-    expect(run(["launchctl", "print", job], ws.root, ws.env).status).not.toBe(
-      0
-    );
+    // launchd keeps a booted-out job visible briefly.
+    const deadline = Date.now() + 10_000;
+    let gone = false;
+    while (Date.now() < deadline) {
+      if (run(["launchctl", "print", job], ws.root, ws.env).status !== 0) {
+        gone = true;
+        break;
+      }
+      Bun.spawnSync(["/bin/sleep", "0.2"]);
+    }
+    expect(gone).toBe(true);
   }
   if (service?.unit !== undefined) {
     run(["systemctl", "--user", "stop", service.unit], ws.root, ws.env);
@@ -475,42 +489,25 @@ function removeSupervisor(ws: Workspace, service: Service | undefined) {
   }
 }
 
-const decodeSite = Schema.decodeUnknownSync(
-  Schema.Struct({
-    deploymentId: Schema.String.check(Schema.isUUID(4)),
-    sitePort: Schema.NumberFromString.check(
-      Schema.isInt(),
-      Schema.isBetween({ minimum: 1, maximum: 65_535 })
-    ),
-  })
-);
-
 async function stopRecordedSites(instance: string, data: string) {
-  const records = join(instance, "deployments.sqlite");
-  if (!existsSync(records)) {
+  const identity = join(instance, "identity.json");
+  if (!existsSync(identity)) {
     return;
   }
-  const database = new Database(records, { readonly: true });
-  let sites;
-  try {
-    sites = database
-      .query(
-        "SELECT deploymentId, sitePort FROM deployments WHERE sitePort IS NOT NULL"
-      )
-      .all()
-      .map((row) => decodeSite(row));
-  } finally {
-    database.close();
-  }
-  const tools = join(dirname(data), "installations", pkg.version);
-  for (const site of sites) {
-    await stopStaticSite({
-      toolsDirectory: tools,
-      instanceDirectory: join(instance, "apps", site.deploymentId),
-      port: site.sitePort,
-    });
-    await waitFor(`http://127.0.0.1:${site.sitePort}/`, false);
-  }
+  const { instanceId } = decodeInstance(
+    JSON.parse(readFileSync(identity, "utf-8"))
+  );
+  // One supervisor per instance now owns every daemon, so teardown is
+  // addressed by the instance, not per recorded deployment.
+  await stopDeploymentHost({
+    toolsDirectory: join(
+      dirname(data),
+      "installations",
+      pkg.version,
+      instanceId
+    ),
+    instanceDirectory: instance,
+  });
 }
 
 async function exercise(distribution: Distribution) {

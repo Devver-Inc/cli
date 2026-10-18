@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { staticSourceDirectory } from "../static-source";
+import { staticSourceDirectory } from "../src/workloads/static";
 
 const roots: string[] = [];
 
@@ -97,7 +97,7 @@ describe("static source", () => {
     }
     expect(failure).toHaveProperty(
       "message",
-      "Invalid static configuration in .devver.yaml"
+      "The static configuration is not usable"
     );
   });
 });

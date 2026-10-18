@@ -60,7 +60,7 @@ export async function create(name: string) {
   try {
     const instance = await loadInstance(name);
     const port = await availablePort();
-    const pinned = await pinServer(parent);
+    const pinned = await pinServer(parent, instance.instanceId);
     const data =
       process.env.XDG_DATA_HOME !== undefined &&
       process.env.XDG_DATA_HOME !== ""

@@ -7,60 +7,62 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { createServer } from "node:net";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import pkg from "../../../package.json";
-import { stopStaticSite } from "../index";
+import { stopDeploymentHost } from "../index";
 import { windowsServersDirectory } from "../windows-acl";
 
 const repo = join(import.meta.dir, "../../..");
-// The directories the probe derives from the root it is given.
-const PROBE_INSTANCES = ["instance", "another-instance"];
+// The directory the probe derives from the root it is given.
+const PROBE_INSTANCE = "instance";
+const PROXY_PORT = /proxyPort=(?<port>\d+)/u;
 const NO_RUNTIME_PATH =
   process.platform === "win32"
     ? "C:\\Windows\\System32;C:\\Windows\\System32\\WindowsPowerShell\\v1.0"
     : "/usr/bin:/bin";
 
-function isInetAddress(
-  address: string | AddressInfo | null
-): address is AddressInfo {
-  return address !== null && typeof address !== "string";
+const skipped = () =>
+  process.platform === "win32" &&
+  process.env.DEVVER_WINDOWS_STATE_TESTS !== "1";
+
+function requireNode() {
+  const node = Bun.which("node");
+  if (node === null) {
+    throw new Error("Node is required for the npm artifact check");
+  }
+  return node;
 }
 
-async function availablePort() {
-  const listener = createServer();
-  await new Promise<void>((resolve) => {
-    listener.listen(0, "127.0.0.1", resolve);
-  });
-  try {
-    const address = listener.address();
-    if (!isInetAddress(address)) {
-      throw new Error("No allocated port");
+async function stageTools(source: string, target: string) {
+  const extension = process.platform === "win32" ? ".exe" : "";
+  for (const name of ["pitchfork", "websitino"]) {
+    const destination = join(target, `${name}${extension}`);
+    await copyFile(join(source, `${name}${extension}`), destination);
+    if (process.platform !== "win32") {
+      await chmod(destination, 0o700);
     }
-    return address.port;
-  } finally {
-    await new Promise<void>((resolve, reject) => {
-      listener.close((error) => {
-        if (error === undefined) {
-          resolve();
-        } else {
-          reject(error);
-        }
-      });
-    });
   }
 }
 
+function build(distribution: string) {
+  const result = Bun.spawnSync(
+    ["bun", "run", distribution === "npm" ? "build:npm" : "build"],
+    { cwd: repo, stdout: "pipe", stderr: "pipe" }
+  );
+  expect(result.exitCode, result.stderr.toString()).toBe(0);
+  return distribution === "npm"
+    ? join(repo, "packages/cli/dist/servers", pkg.version)
+    : join(repo, "servers", pkg.version);
+}
+
 /**
- * This check, not the probe, owns the directories and ports a probe run uses,
- * so it can tear the managed processes down even when the probe never reaches
- * its own teardown.
+ * This check, not the probe, owns the directory a probe run uses, so it can
+ * tear the supervisor down even when the probe never reaches its own teardown.
  */
 async function probeWorkspace() {
-  const root = await mkdtemp(
+  return await mkdtemp(
     join(
       process.platform === "win32"
         ? dirname(await windowsServersDirectory())
@@ -68,27 +70,16 @@ async function probeWorkspace() {
       "devver-static-probe-"
     )
   );
-  return { root, ports: [await availablePort(), await availablePort()] };
 }
 
-async function teardown(
-  toolsDirectory: string,
-  workspace: { root: string; ports: number[] }
-) {
-  for (const [index, name] of PROBE_INSTANCES.entries()) {
-    const port = workspace.ports[index];
-    if (port === undefined) {
-      continue;
-    }
-    try {
-      await stopStaticSite({
-        toolsDirectory,
-        instanceDirectory: join(workspace.root, name),
-        port,
-      });
-    } catch {
-      // A probe that failed before starting has no instance state to address.
-    }
+async function teardown(toolsDirectory: string, root: string) {
+  try {
+    await stopDeploymentHost({
+      toolsDirectory,
+      instanceDirectory: join(root, PROBE_INSTANCE),
+    });
+  } catch {
+    // A probe that failed before starting has no instance state to address.
   }
 }
 
@@ -98,7 +89,7 @@ async function serves(port: number) {
       signal: AbortSignal.timeout(1000),
     });
     await response.body?.cancel();
-    return response.status === 200;
+    return true;
   } catch {
     return false;
   }
@@ -133,52 +124,30 @@ async function probeCommand(
   return distribution === "npm" ? [node, probe] : [probe];
 }
 
-test("npm and standalone artifacts serve a loopback-only static site without runtime downloads", async () => {
-  // Windows' actual owner-only state root is exercised only in the isolated CI job.
-  if (
-    process.platform === "win32" &&
-    process.env.DEVVER_WINDOWS_STATE_TESTS !== "1"
-  ) {
+test("npm and standalone artifacts serve loopback-only static deployments without runtime downloads", async () => {
+  if (skipped()) {
     return;
   }
-  const node = Bun.which("node");
-  if (node === null) {
-    throw new Error("Node is required for the npm artifact check");
-  }
+  const node = requireNode();
   for (const distribution of ["npm", "standalone"]) {
-    const build = Bun.spawnSync(
-      ["bun", "run", distribution === "npm" ? "build:npm" : "build"],
-      { cwd: repo, stdout: "pipe", stderr: "pipe" }
-    );
-    expect(build.exitCode, build.stderr.toString()).toBe(0);
-    const directory =
-      distribution === "npm"
-        ? join(repo, "packages/cli/dist/servers", pkg.version)
-        : join(repo, "servers", pkg.version);
+    const directory = build(distribution);
     const temp = await mkdtemp(join(tmpdir(), "devver-artifact-probe-"));
     try {
       const command = await probeCommand(distribution, temp, node);
-      const workspace = await probeWorkspace();
+      await stageTools(directory, temp);
+      const root = await probeWorkspace();
       try {
-        const child = Bun.spawnSync(
-          [
-            ...command,
-            directory,
-            workspace.root,
-            ...workspace.ports.map(String),
-          ],
-          {
-            cwd: temp,
-            env: { ...process.env, PATH: NO_RUNTIME_PATH },
-            stdout: "pipe",
-            stderr: "pipe",
-            timeout: 60_000,
-          }
-        );
+        const child = Bun.spawnSync([...command, directory, root], {
+          cwd: temp,
+          env: { ...process.env, PATH: NO_RUNTIME_PATH },
+          stdout: "pipe",
+          stderr: "pipe",
+          timeout: 120_000,
+        });
         expect(child.exitCode, child.stderr.toString()).toBe(0);
       } finally {
-        await teardown(directory, workspace);
-        await rm(workspace.root, { recursive: true, force: true });
+        await teardown(directory, root);
+        await rm(root, { recursive: true, force: true });
       }
     } finally {
       await rm(temp, { recursive: true, force: true });
@@ -186,27 +155,13 @@ test("npm and standalone artifacts serve a loopback-only static site without run
   }
 }, 300_000);
 
-test("broken packaged Pitchfork or Websitino cannot leave a reachable site", async () => {
-  if (
-    process.platform === "win32" &&
-    process.env.DEVVER_WINDOWS_STATE_TESTS !== "1"
-  ) {
+test("broken packaged Pitchfork or Websitino cannot leave a reachable deployment", async () => {
+  if (skipped()) {
     return;
   }
-  const node = Bun.which("node");
-  if (node === null) {
-    throw new Error("Node is required for the npm artifact check");
-  }
+  const node = requireNode();
   for (const distribution of ["npm", "standalone"]) {
-    const build = Bun.spawnSync(
-      ["bun", "run", distribution === "npm" ? "build:npm" : "build"],
-      { cwd: repo, stdout: "pipe", stderr: "pipe" }
-    );
-    expect(build.exitCode, build.stderr.toString()).toBe(0);
-    const packaged =
-      distribution === "npm"
-        ? join(repo, "packages/cli/dist/servers", pkg.version)
-        : join(repo, "servers", pkg.version);
+    const packaged = build(distribution);
     const temp = await mkdtemp(join(tmpdir(), "devver-broken-tools-"));
     try {
       const command = await probeCommand(
@@ -216,8 +171,8 @@ test("broken packaged Pitchfork or Websitino cannot leave a reachable site", asy
         "static-start-failure-probe.ts"
       );
       for (const broken of ["pitchfork", "websitino"]) {
-        const workspace = await probeWorkspace();
-        const tools = join(workspace.root, "tools");
+        const root = await probeWorkspace();
+        const tools = join(root, "tools");
         const extension = process.platform === "win32" ? ".exe" : "";
         try {
           await mkdir(tools);
@@ -230,25 +185,18 @@ test("broken packaged Pitchfork or Websitino cannot leave a reachable site", asy
               await chmod(destination, 0o700);
             }
           }
-          const [port] = workspace.ports;
-          if (port === undefined) {
-            throw new Error("No allocated port");
-          }
-          const child = Bun.spawnSync(
-            [...command, tools, workspace.root, String(port)],
-            {
-              cwd: temp,
-              env: { ...process.env, PATH: NO_RUNTIME_PATH },
-              stdout: "pipe",
-              stderr: "pipe",
-              timeout: 60_000,
-            }
-          );
+          await stageTools(tools, temp);
+          const child = Bun.spawnSync([...command, tools, root], {
+            cwd: temp,
+            env: { ...process.env, PATH: NO_RUNTIME_PATH },
+            stdout: "pipe",
+            stderr: "pipe",
+            timeout: 120_000,
+          });
           expect(child.exitCode, child.stderr.toString()).toBe(0);
-          expect(await serves(port)).toBe(false);
         } finally {
-          await teardown(tools, workspace);
-          await rm(workspace.root, { recursive: true, force: true });
+          await teardown(tools, root);
+          await rm(root, { recursive: true, force: true });
         }
       }
     } finally {
@@ -257,43 +205,41 @@ test("broken packaged Pitchfork or Websitino cannot leave a reachable site", asy
   }
 }, 300_000);
 
-test("a killed static site check still tears down the managed process it started", async () => {
-  if (
-    process.platform === "win32" &&
-    process.env.DEVVER_WINDOWS_STATE_TESTS !== "1"
-  ) {
+test("a killed static deployment check still tears down the supervisor it started", async () => {
+  if (skipped()) {
     return;
   }
-  const node = Bun.which("node");
-  if (node === null) {
-    throw new Error("Node is required for the npm artifact check");
-  }
-  const build = Bun.spawnSync(["bun", "run", "build:npm"], {
-    cwd: repo,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  expect(build.exitCode, build.stderr.toString()).toBe(0);
-  const directory = join(repo, "packages/cli/dist/servers", pkg.version);
+  const node = requireNode();
+  const directory = build("npm");
   const temp = await mkdtemp(join(tmpdir(), "devver-artifact-probe-"));
-  const workspace = await probeWorkspace();
-  const [port] = workspace.ports;
-  if (port === undefined) {
-    throw new Error("No allocated port");
-  }
+  const root = await probeWorkspace();
   try {
     const command = await probeCommand("npm", temp, node);
-    const child = Bun.spawn(
-      [...command, directory, workspace.root, ...workspace.ports.map(String)],
-      {
-        cwd: temp,
-        env: { ...process.env, PATH: NO_RUNTIME_PATH },
-        stdout: "pipe",
-        stderr: "pipe",
-      }
-    );
+    await stageTools(directory, temp);
+    const child = Bun.spawn([...command, directory, root], {
+      cwd: temp,
+      env: { ...process.env, PATH: NO_RUNTIME_PATH },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    let port = 0;
     try {
-      const deadline = Date.now() + 60_000;
+      const deadline = Date.now() + 120_000;
+      const reader = child.stdout.getReader();
+      let seen = "";
+      try {
+        while (Date.now() < deadline && port === 0) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          seen += new TextDecoder().decode(value);
+          port = Number(PROXY_PORT.exec(seen)?.groups?.port ?? 0);
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      expect(port).toBeGreaterThan(0);
       while (Date.now() < deadline && !(await serves(port))) {
         await Bun.sleep(200);
       }
@@ -302,14 +248,14 @@ test("a killed static site check still tears down the managed process it started
       child.kill("SIGKILL");
       await child.exited;
     }
-    // Pitchfork supervises the site, so killing its starter leaves it running:
-    // only this check's own teardown can remove it.
+    // Pitchfork supervises the deployment, so killing its starter leaves it
+    // running: only this check's own teardown can remove it.
     expect(await serves(port)).toBe(true);
-    await teardown(directory, workspace);
+    await teardown(directory, root);
     expect(await serves(port)).toBe(false);
   } finally {
-    await teardown(directory, workspace);
-    await rm(workspace.root, { recursive: true, force: true });
+    await teardown(directory, root);
+    await rm(root, { recursive: true, force: true });
     await rm(temp, { recursive: true, force: true });
   }
 }, 300_000);

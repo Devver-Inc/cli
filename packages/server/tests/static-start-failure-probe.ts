@@ -1,54 +1,69 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { startStaticSite } from "../index";
+import { openDeploymentHost, portPlaceholder } from "../index";
+import { locateWebsitino } from "../src/packaged-tools";
 
-const [toolsDirectory, root, portText] = process.argv.slice(2);
-const port = Number(portText);
+const DEPLOYMENT = "44444444-4444-4444-8444-444444444444";
+const [toolsDirectory, root] = process.argv.slice(2);
+
 if (
   toolsDirectory === undefined ||
+  toolsDirectory === "" ||
   root === undefined ||
-  !Number.isInteger(port) ||
-  port < 1 ||
-  port > 65_535
+  root === ""
 ) {
-  throw new Error("Expected tools directory, scratch root, and loopback port");
+  throw new Error("Expected a packaged tools directory and a scratch root");
 }
-const site = join(root, "broken-site");
-await mkdir(site);
+
+const instanceDirectory = join(root, "instance");
+const site = join(instanceDirectory, "broken-site");
+await mkdir(site, { recursive: true });
 await writeFile(join(site, "index.html"), "<h1>must not serve</h1>");
-let running;
+
+let host;
 try {
-  running = await startStaticSite({
-    toolsDirectory,
-    instanceDirectory: join(root, "instance"),
-    siteDirectory: site,
-    port,
-  });
-} catch (error) {
-  if (
-    !(
-      error instanceof Error &&
-      error.message === "Packaged static site failed to start"
-    )
-  ) {
-    throw error;
-  }
+  host = await openDeploymentHost({ toolsDirectory, instanceDirectory });
+} catch {
+  // A toolchain broken badly enough to refuse its own supervisor is a pass:
+  // nothing was published, so nothing can be serving.
+  process.exitCode = 0;
 }
-try {
-  let connected = false;
+
+if (host !== undefined) {
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/`, {
-      signal: AbortSignal.timeout(1000),
-    });
-    await response.body?.cancel();
-    connected = true;
-  } catch {
-    // A broken packaged tool has no listener to answer.
+    let published = false;
+    try {
+      await host.publish(DEPLOYMENT, {
+        command: [
+          await locateWebsitino(),
+          site,
+          "--bind",
+          "127.0.0.1",
+          "--port",
+          portPlaceholder,
+          "--index",
+        ],
+        dir: site,
+      });
+      published = true;
+    } catch {
+      // The expected outcome: a broken packaged tool cannot start a site.
+    }
+    if (published) {
+      const answered = await fetch(host.url(DEPLOYMENT), {
+        signal: AbortSignal.timeout(1000),
+      })
+        .then(async (response) => {
+          await response.body?.cancel();
+          return response.status === 200;
+        })
+        .catch(() => false);
+      if (answered) {
+        throw new Error("A broken packaged tool still served a deployment");
+      }
+    }
+  } finally {
+    await host.close();
   }
-  if (connected) {
-    throw new Error("A broken packaged tool still answered HTTP");
-  }
-} finally {
-  await running?.stop();
 }

@@ -47,3 +47,13 @@ export async function packagedToolsDirectory() {
     "This server installation has no packaged static toolchain to deploy with"
   );
 }
+
+/** The packaged static file server, beside the supervisor in the toolchain. */
+export async function locateWebsitino() {
+  const toolsDirectory = await packagedToolsDirectory();
+  const websitino = join(toolsDirectory, `websitino${EXECUTABLE}`);
+  if (!(await lstat(websitino)).isFile()) {
+    throw new Error("Packaged static server is not a regular file");
+  }
+  return websitino;
+}

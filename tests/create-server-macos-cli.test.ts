@@ -285,6 +285,8 @@ test("macOS launchd keeps named servers ready after CLI exits and attachment is 
             "devver",
             "installations",
             pkg.version,
+            decodeIdentity(await (await fetch(`${url}/identity`)).json())
+              .instanceId,
             "server.mjs"
           )
         ).mode % 0o1000

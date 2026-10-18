@@ -36,11 +36,14 @@ async function privateDirectory(path: string) {
   }
 }
 
-export async function pinServer(parent: string) {
+export async function pinServer(parent: string, instanceId: string) {
   const installations = join(dirname(parent), "installations");
   await privateDirectory(installations);
   const version = join(installations, pkg.version);
   await privateDirectory(version);
+  // shortcut: failed creations can leave an unused pin; collect it when server removal owns teardown.
+  const pinnedInstance = join(version, instanceId);
+  await privateDirectory(pinnedInstance);
   const npm = process.versions.bun === undefined;
   // The npm CLI is split into ESM chunks beside dist/servers; argv[1] may
   // be the extensionless npm bin symlink rather than dist/cli.mjs.
@@ -57,8 +60,8 @@ export async function pinServer(parent: string) {
     if (!(await lstat(source)).isFile()) {
       throw new Error("Packaged server tool must be a regular file");
     }
-    const destination = join(version, name);
-    const staging = join(version, `.server-${randomUUID()}`);
+    const destination = join(pinnedInstance, name);
+    const staging = join(pinnedInstance, `.server-${randomUUID()}`);
     const handle = await open(staging, "wx", FILE_MODE);
     try {
       await handle.writeFile(await readFile(source));
@@ -84,7 +87,7 @@ export async function pinServer(parent: string) {
       throw new Error("Pinned server tool must be an owner-only regular file");
     }
   }
-  const destination = join(version, serverName);
+  const destination = join(pinnedInstance, serverName);
   return {
     command: npm ? process.execPath : destination,
     args: npm ? [destination] : [],
