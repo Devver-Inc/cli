@@ -1,0 +1,9 @@
+# Devver CLI verification map
+
+This map lists the CLI flows covered by the isolated foreground-server harness. Run the command from the repository root. Each run builds the npm artifact, starts its own server, and retains evidence in the printed `devver-verify-proof.*` directory. A feature passes only when `actions.txt` ends with `PASS <feature>` and its separate observations agree. Do not treat an unrun entry point as verified.
+
+- [Attach and detach](attach.md). Select a verified local server, inspect status, then clear the target.
+- [Deploy a static page](deploy.md). Deploy committed HEAD through the attached target and fetch the actual app URL.
+- [Switch to cloud](switch.md). Replace a local target with the official cloud selection without contacting cloud.
+
+The helper uses isolated XDG state on macOS and Linux. Windows state uses `%LOCALAPPDATA%`, so use Windows CI and packaged artifact tests for Windows coverage. It does not cover supervised `devver new server`, npm without Bun, standalone without Node or Bun, the TUI, or Logto cloud deployment. For release acceptance, run `tests/static-deploy-artifacts.test.ts` and `packages/server/tests/static-artifacts.test.ts` on macOS and Linux, plus the isolated Windows distribution jobs in `.github/workflows/ci.yml`. The source CLI proof here does not replace them.
