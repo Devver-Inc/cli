@@ -51,7 +51,7 @@ jobs:
           node-version: "26.5.0"
       - run: bun run sync:version && bun install --frozen-lockfile && bun run check:version
         if: steps.changes.outputs.changed == 'true'
-      - run: bun run check && bun run typecheck && bun test
+      - run: bun run check && bun run typecheck && bun run test
         if: steps.changes.outputs.changed == 'true'
       - name: Choose an unused prerelease version from develop's plan
         if: steps.changes.outputs.changed == 'true'
