@@ -82,6 +82,29 @@ jobs:
           DEVVER_WINDOWS_STATE_TESTS: "1"
         run: bun test tests/windows-server.test.ts tests/server-identity.test.ts packages/server/tests/static-artifacts.test.ts
 
+  static-deploy-windows:
+    name: Static deploy Windows (${{ matrix.distribution }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distribution: [npm, standalone]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.5.0"
+      - run: bun run sync:version
+      - run: bun install --frozen-lockfile
+      - name: Verify packaged static deployment in isolated Windows state
+        env:
+          DEVVER_WINDOWS_STATE_TESTS: "1"
+          DEVVER_ARTIFACT_DISTRIBUTION: ${{ matrix.distribution }}
+        run: bun test tests/static-deploy-artifacts.test.ts --timeout 300000
+
   build:
     name: Build Check
     runs-on: ubuntu-latest
