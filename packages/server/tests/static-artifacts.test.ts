@@ -1,5 +1,12 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  mkdir,
+  mkdtemp,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:net";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -97,7 +104,12 @@ async function serves(port: number) {
   }
 }
 
-async function probeCommand(distribution: string, temp: string, node: string) {
+async function probeCommand(
+  distribution: string,
+  temp: string,
+  node: string,
+  source = "static-artifact-probe.ts"
+) {
   const probe = join(
     temp,
     distribution === "npm"
@@ -105,7 +117,7 @@ async function probeCommand(distribution: string, temp: string, node: string) {
       : `probe${process.platform === "win32" ? ".exe" : ""}`
   );
   const result = await Bun.build({
-    entrypoints: [join(repo, "packages/server/tests/static-artifact-probe.ts")],
+    entrypoints: [join(repo, "packages/server/tests", source)],
     ...(distribution === "npm"
       ? {
           target: "node",
@@ -167,6 +179,77 @@ test("npm and standalone artifacts serve a loopback-only static site without run
       } finally {
         await teardown(directory, workspace);
         await rm(workspace.root, { recursive: true, force: true });
+      }
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  }
+}, 300_000);
+
+test("broken packaged Pitchfork or Websitino cannot leave a reachable site", async () => {
+  if (
+    process.platform === "win32" &&
+    process.env.DEVVER_WINDOWS_STATE_TESTS !== "1"
+  ) {
+    return;
+  }
+  const node = Bun.which("node");
+  if (node === null) {
+    throw new Error("Node is required for the npm artifact check");
+  }
+  for (const distribution of ["npm", "standalone"]) {
+    const build = Bun.spawnSync(
+      ["bun", "run", distribution === "npm" ? "build:npm" : "build"],
+      { cwd: repo, stdout: "pipe", stderr: "pipe" }
+    );
+    expect(build.exitCode, build.stderr.toString()).toBe(0);
+    const packaged =
+      distribution === "npm"
+        ? join(repo, "packages/cli/dist/servers", pkg.version)
+        : join(repo, "servers", pkg.version);
+    const temp = await mkdtemp(join(tmpdir(), "devver-broken-tools-"));
+    try {
+      const command = await probeCommand(
+        distribution,
+        temp,
+        node,
+        "static-start-failure-probe.ts"
+      );
+      for (const broken of ["pitchfork", "websitino"]) {
+        const workspace = await probeWorkspace();
+        const tools = join(workspace.root, "tools");
+        const extension = process.platform === "win32" ? ".exe" : "";
+        try {
+          await mkdir(tools);
+          for (const name of ["pitchfork", "websitino"]) {
+            const destination = join(tools, `${name}${extension}`);
+            await (name === broken
+              ? writeFile(destination, "not an executable")
+              : copyFile(join(packaged, `${name}${extension}`), destination));
+            if (process.platform !== "win32") {
+              await chmod(destination, 0o700);
+            }
+          }
+          const [port] = workspace.ports;
+          if (port === undefined) {
+            throw new Error("No allocated port");
+          }
+          const child = Bun.spawnSync(
+            [...command, tools, workspace.root, String(port)],
+            {
+              cwd: temp,
+              env: { ...process.env, PATH: NO_RUNTIME_PATH },
+              stdout: "pipe",
+              stderr: "pipe",
+              timeout: 60_000,
+            }
+          );
+          expect(child.exitCode, child.stderr.toString()).toBe(0);
+          expect(await serves(port)).toBe(false);
+        } finally {
+          await teardown(tools, workspace);
+          await rm(workspace.root, { recursive: true, force: true });
+        }
       }
     } finally {
       await rm(temp, { recursive: true, force: true });
