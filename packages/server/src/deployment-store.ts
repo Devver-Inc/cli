@@ -35,7 +35,6 @@ const identity = {
 
 const NewDeploymentSchema = Schema.Struct(identity);
 
-/** Ports are TEXT on the way in and out, like every other column. */
 const PortSchema = Schema.NumberFromString.check(
   Schema.isInt(),
   Schema.isBetween({ minimum: 1, maximum: 65_535 })
@@ -60,7 +59,6 @@ const decodePort = Schema.decodeUnknownSync(PortSchema);
 
 const APP_PORT = "appPort";
 
-/** Every column is TEXT, so a row carries only strings and SQL nulls. */
 type SqlValue = string | null;
 type SqlRow = Readonly<Record<string, SqlValue>>;
 

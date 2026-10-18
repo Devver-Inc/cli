@@ -58,8 +58,6 @@ export const withApi = <A, E, R>(effect: Effect.Effect<A, E, R | ApiClient>) =>
       Layer.provide(Layer.succeed(AuthToken, { token })),
       Layer.provide(Layer.succeed(ApiBaseUrl, { url }))
     );
-    // AGENTS.md: one authenticated API layer per command, scoped by the
-    // surrounding Effect.scoped, not composed at the process entry point.
     // @effect-diagnostics-next-line strictEffectProvide:off
     return yield* effect.pipe(Effect.provide(layer));
   }).pipe(Effect.scoped);

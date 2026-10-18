@@ -196,8 +196,6 @@ const cloudDeploy = Effect.gen(function* () {
 
 export const deploy = Command.make("deploy", {}, () =>
   Effect.gen(function* () {
-    // An explicitly attached local server deploys locally; every other target
-    // keeps the cloud path, and no target still fails closed inside it.
     const target = (yield* Effect.tryPromise(readConfig))["local-target"];
     return target === undefined
       ? yield* withApi(cloudDeploy)

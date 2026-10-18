@@ -73,7 +73,6 @@ export async function startAppListener(preferred?: number) {
         port: target,
         method: incoming.method,
         path: incoming.url,
-        // The backend only ever serves this one deployment's files.
         headers: { ...incoming.headers, host: `${HOST}:${target}` },
       },
       (upstream) => {

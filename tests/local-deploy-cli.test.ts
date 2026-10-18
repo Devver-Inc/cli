@@ -264,11 +264,9 @@ test("deploy serves the committed HEAD of an attached local target at a loopback
     const index = await body(url);
     expect(index.status).toBe(200);
     expect(index.text).toBe("<h1>committed site</h1>");
-    // Root-relative assets resolve under the deployment hostname.
     const asset = await body(`${url}assets/app.css`);
     expect(asset.status).toBe(200);
     expect(asset.text).toBe("body{color:#0f0}");
-    // Uncommitted work is never published.
     expect((await body(`${url}secret.txt`)).status).not.toBe(200);
     expect(index.text).not.toContain("uncommitted");
 
@@ -283,7 +281,6 @@ test("deploy serves the committed HEAD of an attached local target at a loopback
       expect(unknown.status, host).not.toBe(200);
       expect(unknown.text, host).not.toContain("committed site");
     }
-    // The control API never serves application files.
     const control = new URL(running.url).origin;
     expect((await body(`${control}/index.html`)).status).not.toBe(200);
     expect((await body(`${control}/api/v1/identity`)).status).toBe(200);
@@ -559,7 +556,6 @@ test("two committed revisions keep independent URLs across a server restart", as
     expect((await ws.run(["attach", running.url])).status).toBe(0);
     const a = await deployRevision(ws, source.directory);
 
-    // A second explicit deploy of a later commit is its own root deployment.
     writeFileSync(join(source.directory, "index.html"), "<h1>revision b</h1>");
     git(source.directory, "add", ".");
     git(source.directory, "commit", "-q", "-m", "revision b");
