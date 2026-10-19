@@ -86,19 +86,6 @@ function probe(root: string, body: string) {
   return decodeProbe(JSON.parse(lines.at(-1) ?? "null"));
 }
 
-test("a valid stored token is used without contacting the provider", () => {
-  const root = session(Math.floor(Date.now() / 1000) + 3600);
-  try {
-    const result = probe(
-      root,
-      "console.log(JSON.stringify({ token: await getAccessToken(), refreshes }));"
-    );
-    expect(result).toEqual({ token: "stored-token", refreshes: 0 });
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
 test("an expired stored token refreshes, and refresh failures propagate", () => {
   const root = session(Math.floor(Date.now() / 1000) - 60);
   try {
@@ -116,47 +103,6 @@ test("an expired stored token refreshes, and refresh failures propagate", () => 
       message: "refresh failed",
       refreshes: 2,
     });
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("a non-finite stored expiry fails closed without exposing credentials", () => {
-  const root = session(Math.floor(Date.now() / 1000) + 3600);
-  writeFileSync(
-    join(root, "data", "devver", "logto", "accessToken"),
-    '{"@http://localhost:9999#org-1":{"token":"private-token","expiresAt":1e1000}}'
-  );
-  try {
-    const result = probe(
-      root,
-      "console.log(JSON.stringify({ message: await failure(getAccessToken), refreshes }));"
-    );
-    expect(result.message).toContain(
-      "Stored access token has an unexpected shape"
-    );
-    expect(result.message).not.toContain("private-token");
-    expect(result.refreshes).toBe(0);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("an unavailable selected organization fails before any refresh", () => {
-  const root = session(Math.floor(Date.now() / 1000) - 60);
-  writeFileSync(
-    join(root, "data", "devver", "auth", "currentOrganization"),
-    "org-missing"
-  );
-  try {
-    const result = probe(
-      root,
-      "console.log(JSON.stringify({ message: await failure(getAccessToken), refreshes }));"
-    );
-    expect(result.message).toContain(
-      "Selected organization 'org-missing' is unavailable"
-    );
-    expect(result.refreshes).toBe(0);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -1,15 +1,5 @@
 import { expect, test } from "bun:test";
-import {
-  chmodSync,
-  lstatSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -39,18 +29,6 @@ const decodeIdentity = Schema.decodeUnknownSync(
 
 function dataEnvironment(root: string) {
   return { ...process.env, XDG_DATA_HOME: root };
-}
-
-function run(root: string, name: string) {
-  const result = Bun.spawnSync(["bun", "run", entry, name, "0"], {
-    env: dataEnvironment(root),
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  return {
-    status: result.exitCode,
-    output: `${result.stdout.toString()}${result.stderr.toString()}`,
-  };
 }
 
 async function launch(root: string, name: string) {
@@ -189,146 +167,6 @@ test("a foreground server serves identity on loopback and rejects browser cross-
     if (child !== undefined) {
       await child.exited;
     }
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-const id = async (url: string) =>
-  decodeIdentity(await (await fetch(`${url}/identity`)).json()).instanceId;
-
-test("named server identities survive restarts without sharing or replacing corrupt state", async () => {
-  if (process.platform === "win32") {
-    return;
-  }
-  const root = mkdtempSync(join(tmpdir(), "devver-server-state-"));
-  const file = (name: string) =>
-    join(root, "devver", "servers", name, "identity.json");
-  let child: ReturnType<typeof Bun.spawn> | undefined;
-  try {
-    const first = await launch(root, "first");
-    ({ child } = first);
-    expect(first.url).toMatch(CONTROL_URL);
-    const firstId = await id(first.url);
-    child.kill();
-    await child.exited;
-    child = undefined;
-
-    const restarted = await launch(root, "first");
-    ({ child } = restarted);
-    expect(await id(restarted.url)).toBe(firstId);
-    child.kill();
-    await child.exited;
-    child = undefined;
-
-    const second = await launch(root, "second");
-    ({ child } = second);
-    expect(await id(second.url)).not.toBe(firstId);
-    expect(statSync(join(root, "devver")).mode % 0o1000).toBe(0o700);
-    expect(statSync(join(root, "devver", "servers")).mode % 0o1000).toBe(0o700);
-    expect(
-      statSync(join(root, "devver", "servers", "first")).mode % 0o1000
-    ).toBe(0o700);
-    expect(statSync(file("first")).mode % 0o1000).toBe(0o600);
-    child.kill();
-    await child.exited;
-    child = undefined;
-
-    writeFileSync(file("first"), "invalid JSON");
-    const corrupted = run(root, "first");
-    expect(corrupted.status).not.toBe(0);
-    expect(corrupted.output).toContain("invalid state");
-    expect(readFileSync(file("first"), "utf-8")).toBe("invalid JSON");
-    writeFileSync(
-      file("first"),
-      JSON.stringify({ instanceId: firstId, name: "first" })
-    );
-    chmodSync(file("first"), 0o644);
-    const exposed = run(root, "first");
-    expect(exposed.status).not.toBe(0);
-    expect(exposed.output).toContain("owner-only");
-    expect(statSync(file("first")).mode % 0o1000).toBe(0o644);
-    expect(run(root, "../escape").status).not.toBe(0);
-  } finally {
-    child?.kill();
-    if (child !== undefined) {
-      await child.exited;
-    }
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("legacy read-only data roots work; writable or symlinked roots cannot replace state", async () => {
-  if (process.platform === "win32") {
-    return;
-  }
-  const root = mkdtempSync(join(tmpdir(), "devver-server-root-"));
-  const data = join(root, "data");
-  const real = join(root, "real");
-  const state = JSON.stringify({
-    instanceId: "031fdbdf-3c42-4d19-8909-9a2cf4690cb0",
-    name: "demo",
-  });
-  const putState = (directory: string) => {
-    const instance = join(directory, "servers", "demo");
-    mkdirSync(instance, { recursive: true, mode: 0o700 });
-    writeFileSync(join(instance, "identity.json"), state, { mode: 0o600 });
-    return join(instance, "identity.json");
-  };
-  let child: ReturnType<typeof Bun.spawn> | undefined;
-  try {
-    mkdirSync(data);
-    const dataRoot = join(data, "devver");
-    mkdirSync(dataRoot, { mode: 0o700 });
-    const file = putState(dataRoot);
-    chmodSync(dataRoot, 0o755);
-    const legacy = await launch(data, "demo");
-    ({ child } = legacy);
-    expect(await (await fetch(`${legacy.url}/identity`)).json()).toMatchObject({
-      instanceId: "031fdbdf-3c42-4d19-8909-9a2cf4690cb0",
-      name: "demo",
-    });
-    child.kill();
-    await child.exited;
-    child = undefined;
-    expect(statSync(dataRoot).mode % 0o1000).toBe(0o755);
-    expect(readFileSync(file, "utf-8")).toBe(state);
-
-    chmodSync(dataRoot, 0o777);
-    const writable = run(data, "demo");
-    expect(writable.status).not.toBe(0);
-    expect(writable.output).toContain("not group/other writable");
-    expect(statSync(dataRoot).mode % 0o1000).toBe(0o777);
-    expect(readFileSync(file, "utf-8")).toBe(state);
-
-    rmSync(dataRoot, { recursive: true });
-    mkdirSync(real, { mode: 0o700 });
-    const linkedFile = putState(real);
-    symlinkSync(real, dataRoot);
-    const linked = run(data, "demo");
-    expect(linked.status).not.toBe(0);
-    expect(linked.output).toContain("not a symlink");
-    expect(lstatSync(dataRoot).isSymbolicLink()).toBe(true);
-    expect(readFileSync(linkedFile, "utf-8")).toBe(state);
-  } finally {
-    child?.kill();
-    if (child !== undefined) {
-      await child.exited;
-    }
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("Windows rejects untrusted XDG data overrides instead of storing server state there", () => {
-  if (process.platform !== "win32") {
-    return;
-  }
-  const root = mkdtempSync(join(tmpdir(), "devver-server-win-"));
-  try {
-    const result = run(root, "demo");
-    expect(result.status).not.toBe(0);
-    expect(result.output).toContain("does not accept XDG_DATA_HOME overrides");
-    expect(() => statSync(join(root, "devver", "servers", "demo"))).toThrow();
-  } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });

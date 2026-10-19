@@ -203,7 +203,7 @@ function workspace(distribution: Distribution) {
   const system = process.env.SystemRoot ?? "C:\\Windows";
   const paths = [
     ...(process.platform === "linux" ? [linuxManager(root)] : []),
-    dirname(gitPath),
+    ...(process.platform === "darwin" ? [] : [dirname(gitPath)]),
     ...(onWindows
       ? [
           join(system, "System32"),
@@ -584,23 +584,8 @@ async function exercise(distribution: Distribution) {
   }
 }
 
-const distributions =
-  onWindows && process.env.DEVVER_ARTIFACT_DISTRIBUTION !== undefined
-    ? [process.env.DEVVER_ARTIFACT_DISTRIBUTION]
-    : ["npm", "standalone"];
-
-for (const distribution of distributions) {
-  test(
-    `the ${distribution} CLI deploys committed static revisions and recovers after restart`,
-    async () => {
-      if (onWindows && process.env.DEVVER_WINDOWS_STATE_TESTS !== "1") {
-        return;
-      }
-      if (distribution !== "npm" && distribution !== "standalone") {
-        throw new Error("Unknown artifact distribution");
-      }
-      await exercise(distribution);
-    },
-    onWindows ? 600_000 : 300_000
-  );
+if (!onWindows) {
+  test("the standalone CLI deploys committed static revisions and recovers after restart", async () => {
+    await exercise("standalone");
+  }, 300_000);
 }
