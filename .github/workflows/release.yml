@@ -62,7 +62,7 @@ jobs:
           bun run scripts/adopt-cli-version.ts
           bun run sync:version
           bun run check:version
-          bun run check && bun test
+          bun run check && bun run test
       - name: Commit the release and tag the exact commit
         id: plan
         if: ${{ !inputs.tag }}
