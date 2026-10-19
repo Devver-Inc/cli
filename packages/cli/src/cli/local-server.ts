@@ -1,5 +1,6 @@
-import { Console, Effect, Schema } from "effect";
+import { Console, Data, Effect, Schema, Stream } from "effect";
 import { Argument, Command } from "effect/cli";
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 
 import pkg from "../../../../package.json" with { type: "json" };
 import { listInstances, readInstanceService } from "../../../server/identity";
@@ -22,55 +23,57 @@ const decodeIdentity = Schema.decodeUnknownSync(IdentitySchema);
 const decodeTarget = Schema.decodeUnknownSync(LocalTargetSchema);
 const MAX_IDENTITY_BYTES = 8192;
 
-async function probe(url: string) {
-  const response = await fetch(`${url}/identity`, {
-    redirect: "manual",
-    signal: AbortSignal.timeout(2000),
-    headers: { Accept: "application/json" },
-  });
-  if (response.status !== 200) {
-    await response.body?.cancel();
-    throw new Error(`Identity probe returned HTTP ${response.status}`);
-  }
-  const reader = response.body?.getReader();
-  if (reader === undefined) {
-    throw new Error("Identity response has no body");
-  }
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      size += value.length;
-      if (size > MAX_IDENTITY_BYTES) {
-        throw new Error("Identity response is too large");
-      }
-      chunks.push(value);
+class IdentityProbeError extends Data.TaggedError("IdentityProbeError")<{
+  message: string;
+}> {}
+
+function probe(url: string) {
+  return Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient;
+    const response = yield* client.execute(
+      HttpClientRequest.get(`${url}/identity`).pipe(
+        HttpClientRequest.setHeader("Accept", "application/json")
+      )
+    );
+    if (response.status !== 200) {
+      return yield* new IdentityProbeError({
+        message: `Identity probe returned HTTP ${response.status}`,
+      });
     }
-  } finally {
-    await reader.cancel().catch(() => undefined);
-  }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.length;
-  }
-  let data: unknown;
-  try {
-    data = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-    return decodeIdentity(data);
-  } catch {
-    throw new Error("Server identity response is invalid");
-  }
+    const bytes = yield* Stream.runFoldEffect(
+      response.stream,
+      () => Buffer.alloc(0),
+      (acc, chunk) =>
+        acc.length + chunk.length > MAX_IDENTITY_BYTES
+          ? Effect.fail(
+              new IdentityProbeError({
+                message: "Identity response is too large",
+              })
+            )
+          : Effect.succeed(Buffer.concat([acc, chunk]))
+    );
+    return yield* Effect.try({
+      try: () =>
+        decodeIdentity(
+          JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
+        ),
+      catch: () =>
+        new IdentityProbeError({
+          message: "Server identity response is invalid",
+        }),
+    });
+  }).pipe(
+    Effect.timeout(2000),
+    Effect.provideService(FetchHttpClient.RequestInit, { redirect: "manual" }),
+    // @effect-diagnostics-next-line strictEffectProvide:off
+    Effect.provide(FetchHttpClient.layer),
+    Effect.scoped
+  );
 }
 
 export async function verifyIdentity(url: string) {
   validateControlUrl(url);
-  const identity = await probe(url);
+  const identity = await Effect.runPromise(probe(url));
   if (identity.serverVersion !== pkg.version) {
     throw new Error(`Incompatible server version (expected ${pkg.version})`);
   }

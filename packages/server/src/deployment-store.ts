@@ -1,16 +1,7 @@
-/**
- * Durable deployment records.
- *
- * SQLite reaches both distributions through the runtime that loads this
- * module: the npm server bundle runs under Node and uses `node:sqlite`, the
- * compiled server runs under Bun and uses `bun:sqlite`. Neither bundler
- * resolves the computed specifier, so each artifact keeps only its own
- * built-in driver and no SQLite dependency ships with either.
- */
-
 import { lstat, open } from "node:fs/promises";
 
-import { Schema } from "effect";
+import { Context, Data, Effect, Exit, Layer, Schema } from "effect";
+import { SqlClient } from "effect/sql";
 
 const PRIVATE_FILE = 0o600;
 
@@ -34,12 +25,10 @@ const identity = {
 };
 
 const NewDeploymentSchema = Schema.Struct(identity);
-
 const PortSchema = Schema.NumberFromString.check(
   Schema.isInt(),
   Schema.isBetween({ minimum: 1, maximum: 65_535 })
 );
-
 const DeploymentSchema = Schema.Struct({
   ...identity,
   status: Schema.Literals(["preparing", "ready", "failed", "degraded"]),
@@ -48,48 +37,13 @@ const DeploymentSchema = Schema.Struct({
 });
 
 export type Deployment = typeof DeploymentSchema.Type;
-
 export type NewDeployment = typeof NewDeploymentSchema.Type;
-
-const decodeNewDeployment = Schema.decodeUnknownSync(NewDeploymentSchema);
-const decodeDeployment = Schema.decodeUnknownSync(DeploymentSchema);
-const encodePort = Schema.encodeUnknownSync(PortSchema);
-const decodePort = Schema.decodeUnknownSync(PortSchema);
 
 const APP_PORT = "appPort";
 
-type SqlValue = string | null;
-type SqlRow = Readonly<Record<string, SqlValue>>;
-
-interface SqliteStatement {
-  readonly run: (...parameters: SqlValue[]) => void;
-  readonly all: (...parameters: SqlValue[]) => readonly SqlRow[];
-}
-
-interface SqliteDatabase {
-  readonly exec: (sql: string) => void;
-  readonly prepare: (sql: string) => SqliteStatement;
-  readonly close: () => void;
-}
-
-type SqliteConstructor = new (path: string) => SqliteDatabase;
-
-/** `node:sqlite` names the class `DatabaseSync`; `bun:sqlite` names it `Database`. */
-interface SqliteModule {
-  readonly DatabaseSync?: SqliteConstructor;
-  readonly Database?: SqliteConstructor;
-}
-
-/**
- * Which SQLite class a runtime offers is the only variable part: both are
- * built in, so their documented synchronous API is as trusted as `node:fs`,
- * while the rows they return are decoded like any other external input.
- */
-const isSqliteModule = (value: unknown): value is SqliteModule =>
-  typeof value === "object" &&
-  value !== null &&
-  (("DatabaseSync" in value && typeof value.DatabaseSync === "function") ||
-    ("Database" in value && typeof value.Database === "function"));
+class DeploymentStoreError extends Data.TaggedError("DeploymentStoreError")<{
+  message: string;
+}> {}
 
 async function privateFile(path: string) {
   const handle = await open(path, "a", PRIVATE_FILE);
@@ -107,107 +61,131 @@ async function privateFile(path: string) {
   }
 }
 
-export async function openDeploymentStore(path: string) {
-  await privateFile(path);
-  const loaded: unknown = await import(
-    process.versions.bun === undefined ? "node:sqlite" : "bun:sqlite"
-  );
-  const construct = isSqliteModule(loaded)
-    ? (loaded.DatabaseSync ?? loaded.Database)
-    : undefined;
-  if (construct === undefined) {
-    throw new Error("No SQLite driver is available in this runtime");
-  }
-  const database = new construct(path);
-  database.exec(`CREATE TABLE IF NOT EXISTS deployments (
-    deploymentId TEXT PRIMARY KEY NOT NULL,
-    repositoryId TEXT NOT NULL,
-    commitSha TEXT NOT NULL,
-    parentDeploymentId TEXT REFERENCES deployments(deploymentId),
-    worktree TEXT NOT NULL,
-    status TEXT NOT NULL,
-    stage TEXT,
-    createdAt TEXT NOT NULL
-  ) STRICT`);
-  if (
-    database
-      .prepare("PRAGMA table_info(deployments)")
-      .all()
-      .some((column) => column.name === "sitePort")
-  ) {
-    database.exec("ALTER TABLE deployments DROP COLUMN sitePort");
-  }
-  database.exec(`CREATE TABLE IF NOT EXISTS instance (
-    key TEXT PRIMARY KEY NOT NULL,
-    value TEXT NOT NULL
-  ) STRICT`);
-  const statement = (sql: string) => database.prepare(sql);
-  const insert = statement(
-    `INSERT INTO deployments
-     (deploymentId, repositoryId, commitSha, parentDeploymentId, worktree, status, stage, createdAt)
-     VALUES (?, ?, ?, ?, ?, 'preparing', NULL, ?)`
-  );
-  const setStatus = statement(
-    "UPDATE deployments SET status = ?, stage = ? WHERE deploymentId = ?"
-  );
-  const columns = `deploymentId, repositoryId, commitSha AS "commit", parentDeploymentId,
-            worktree, status, stage, createdAt`;
-  const select = statement(
-    `SELECT ${columns} FROM deployments WHERE deploymentId = ?`
-  );
-  const selectAll = statement(
-    `SELECT ${columns} FROM deployments ORDER BY createdAt, deploymentId`
-  );
-  const setSetting = statement(
-    "INSERT INTO instance (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
-  );
-  const selectSetting = statement("SELECT value FROM instance WHERE key = ?");
-  return {
-    record: (input: NewDeployment) => {
-      const deployment = decodeNewDeployment(input);
-      insert.run(
-        deployment.deploymentId,
-        deployment.repositoryId,
-        deployment.commit,
-        deployment.parentDeploymentId,
-        deployment.worktree,
-        new Date().toISOString()
-      );
-    },
-    markReady: (deploymentId: string) => {
-      setStatus.run("ready", null, deploymentId);
-    },
-    markFailed: (deploymentId: string, stage: DeployStage) => {
-      setStatus.run("failed", stage, deploymentId);
-    },
-    markDegraded: (deploymentId: string, stage: DeployStage) => {
-      setStatus.run("degraded", stage, deploymentId);
-    },
-    read: (deploymentId: string): Deployment | undefined => {
-      const [row] = select.all(deploymentId);
-      return row === undefined ? undefined : decodeDeployment(row);
-    },
-    list: () => {
-      const deployments: Deployment[] = [];
-      let unreadable = 0;
-      for (const row of selectAll.all()) {
-        try {
-          deployments.push(decodeDeployment(row));
-        } catch {
-          unreadable += 1;
+// A build defines the runtime so its offline server bundles only that driver.
+declare const DEVVER_NODE_SQLITE: boolean;
+const useNodeSqlite =
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Build-only constant is absent when the server runs from source.
+  typeof DEVVER_NODE_SQLITE === "boolean"
+    ? DEVVER_NODE_SQLITE
+    : process.versions.bun === undefined;
+
+export const openDeploymentStore = (path: string) =>
+  Effect.gen(function* () {
+    yield* Effect.tryPromise({
+      try: async () => {
+        await privateFile(path);
+      },
+      catch: () =>
+        new DeploymentStoreError({
+          message: "Deployment records must be owner-only",
+        }),
+    });
+    const sql = useNodeSqlite
+      ? yield* Effect.gen(function* () {
+          const { layer } = yield* Effect.promise(
+            async () => await import("@effect/sql-sqlite-node/SqliteClient")
+          );
+          const context = yield* Layer.build(
+            layer({ filename: path, disableWAL: true, busyTimeout: 0 })
+          );
+          return Context.get(context, SqlClient.SqlClient);
+        })
+      : yield* Effect.gen(function* () {
+          const { layer } = yield* Effect.promise(
+            async () => await import("@effect/sql-sqlite-bun/SqliteClient")
+          );
+          const context = yield* Layer.build(
+            layer({ filename: path, disableWAL: true, busyTimeout: 0 })
+          );
+          return Context.get(context, SqlClient.SqlClient);
+        });
+    yield* sql.unsafe(`CREATE TABLE IF NOT EXISTS deployments (
+      deploymentId TEXT PRIMARY KEY NOT NULL,
+      repositoryId TEXT NOT NULL,
+      commitSha TEXT NOT NULL,
+      parentDeploymentId TEXT REFERENCES deployments(deploymentId),
+      worktree TEXT NOT NULL,
+      status TEXT NOT NULL,
+      stage TEXT,
+      createdAt TEXT NOT NULL
+    ) STRICT`);
+    const columns = yield* Schema.decodeUnknownEffect(
+      Schema.Array(Schema.Struct({ name: Schema.String }))
+    )(yield* sql.unsafe("PRAGMA table_info(deployments)"));
+    if (columns.some((column) => column.name === "sitePort")) {
+      yield* sql.unsafe("ALTER TABLE deployments DROP COLUMN sitePort");
+    }
+    yield* sql.unsafe(`CREATE TABLE IF NOT EXISTS instance (
+      key TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL
+    ) STRICT`);
+    const select = `SELECT deploymentId, repositoryId, commitSha AS "commit", parentDeploymentId,
+      worktree, status, stage, createdAt FROM deployments`;
+    const markStatus = (
+      deploymentId: string,
+      status: string,
+      stage: DeployStage | null
+    ) =>
+      sql`UPDATE deployments SET status = ${status}, stage = ${stage} WHERE deploymentId = ${deploymentId}`;
+    return {
+      record: (input: NewDeployment) =>
+        Effect.gen(function* () {
+          const deployment =
+            yield* Schema.decodeEffect(NewDeploymentSchema)(input);
+          yield* sql`INSERT INTO deployments
+            (deploymentId, repositoryId, commitSha, parentDeploymentId, worktree, status, stage, createdAt)
+            VALUES (${deployment.deploymentId}, ${deployment.repositoryId}, ${deployment.commit},
+              ${deployment.parentDeploymentId}, ${deployment.worktree}, 'preparing', NULL, ${new Date().toISOString()})`;
+        }),
+      markReady: (deploymentId: string) =>
+        markStatus(deploymentId, "ready", null),
+      markFailed: (deploymentId: string, stage: DeployStage) =>
+        markStatus(deploymentId, "failed", stage),
+      markDegraded: (deploymentId: string, stage: DeployStage) =>
+        markStatus(deploymentId, "degraded", stage),
+      read: (deploymentId: string) =>
+        Effect.gen(function* () {
+          const [row] = yield* sql.unsafe(`${select} WHERE deploymentId = ?`, [
+            deploymentId,
+          ]);
+          return row === undefined
+            ? undefined
+            : yield* Schema.decodeUnknownEffect(DeploymentSchema)(row);
+        }),
+      list: Effect.gen(function* () {
+        const rows = yield* sql.unsafe(
+          `${select} ORDER BY createdAt, deploymentId`
+        );
+        const deployments: Deployment[] = [];
+        let unreadable = 0;
+        for (const row of rows) {
+          const decoded = yield* Effect.exit(
+            Schema.decodeUnknownEffect(DeploymentSchema)(row)
+          );
+          if (Exit.isSuccess(decoded)) {
+            deployments.push(decoded.value);
+          } else {
+            unreadable += 1;
+          }
         }
-      }
-      return { deployments, unreadable };
-    },
-    appPort: (): number | undefined => {
-      const [row] = selectSetting.all(APP_PORT);
-      return row === undefined ? undefined : decodePort(row.value);
-    },
-    setAppPort: (port: number) => {
-      setSetting.run(APP_PORT, encodePort(port));
-    },
-    close: () => {
-      database.close();
-    },
-  };
-}
+        return { deployments, unreadable };
+      }),
+      appPort: Effect.gen(function* () {
+        const [row] =
+          yield* sql`SELECT value FROM instance WHERE key = ${APP_PORT}`;
+        if (row === undefined) {
+          return undefined;
+        }
+        const decoded = yield* Schema.decodeUnknownEffect(
+          Schema.Struct({ value: Schema.String })
+        )(row);
+        return yield* Schema.decodeEffect(PortSchema)(decoded.value);
+      }),
+      setAppPort: (port: number) =>
+        Effect.gen(function* () {
+          const value = yield* Schema.encodeUnknownEffect(PortSchema)(port);
+          yield* sql`INSERT INTO instance (key, value) VALUES (${APP_PORT}, ${value})
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value`;
+        }),
+    };
+  });

@@ -139,7 +139,7 @@ export const resolveDbLinks = (projectId: string) =>
 
 const cloudDeploy = Effect.gen(function* () {
   yield* Effect.tryPromise(checkForConfigFile);
-  yield* Effect.tryPromise(checkForGitRepo);
+  yield* checkForGitRepo;
   const config = yield* Effect.try(() => readConfigFile());
   if (config === null) {
     return yield* new DeploymentError({
@@ -147,14 +147,10 @@ const cloudDeploy = Effect.gen(function* () {
     });
   }
   const { projectId, repoName, pushUrl } = yield* resolveRepository;
-  const branch = yield* Effect.tryPromise(getCurrentBranch);
-  const remoteBranchExists = yield* Effect.tryPromise(async () =>
-    checkRemoteBranch(pushUrl, branch)
-  );
-  yield* Effect.tryPromise(async () =>
-    checkForConflicts(pushUrl, branch, remoteBranchExists)
-  );
-  const commit = yield* Effect.tryPromise(getCurrentCommit);
+  const branch = yield* getCurrentBranch;
+  const remoteBranchExists = yield* checkRemoteBranch(pushUrl, branch);
+  yield* checkForConflicts(pushUrl, branch, remoteBranchExists);
+  const commit = yield* getCurrentCommit;
   yield* Console.log(
     `\n  Deployment Summary:\n    Repository: ${repoName}\n    Branch: ${branch}\n    Commit: ${commit.slice(0, 7)}\n    Push URL: ${pushUrl}`
   );
@@ -167,7 +163,7 @@ const cloudDeploy = Effect.gen(function* () {
     // oxlint-disable-next-line typescript/consistent-return
     return;
   }
-  yield* Effect.tryPromise(async () => pushBranch(pushUrl, branch));
+  yield* pushBranch(pushUrl, branch);
   yield* Console.log(`Successfully pushed to ${repoName}`);
   const env = mergeEnv(config.env ?? {}, getDeploymentEnv(repoName));
   const dbLinks = yield* resolveDbLinks(projectId);

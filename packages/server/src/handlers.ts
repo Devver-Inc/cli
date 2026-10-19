@@ -7,7 +7,7 @@ import type { openDeployer } from "./deploy";
 import type { loadInstance } from "./identity";
 
 type Instance = Awaited<ReturnType<typeof loadInstance>>;
-type Deployer = Awaited<ReturnType<typeof openDeployer>>;
+type Deployer = Effect.Success<ReturnType<typeof openDeployer>>;
 
 export const instanceHandlers = (instance: Instance) =>
   HttpApiBuilder.group(api, "instance", (handlers) =>
@@ -29,15 +29,15 @@ export const instanceHandlers = (instance: Instance) =>
 export const deploymentHandlers = (deployer: Deployer) =>
   HttpApiBuilder.group(api, "deployments", (handlers) =>
     handlers.handle("create", ({ payload }) =>
-      Effect.tryPromise({
-        try: async () => deployer.deploy(payload),
-        catch: (error) =>
+      deployer.deploy(payload).pipe(
+        Effect.mapError((error) =>
           error instanceof DeployFailure
             ? error
             : new DeployFailure({
                 stage: "server",
                 message: "server: the deployment could not be completed",
-              }),
-      })
+              })
+        )
+      )
     )
   );

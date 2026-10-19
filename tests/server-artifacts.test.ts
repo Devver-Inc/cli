@@ -37,6 +37,10 @@ test("compiled standalone entrypoints run even when import.meta.main is false", 
           "import.meta.main=false",
           "--define",
           "DEVVER_STANDALONE_ENTRY=true",
+          "--define",
+          "DEVVER_NODE_SQLITE=false",
+          "--minify-syntax",
+          "--external=@effect/sql-sqlite-node/SqliteClient",
         ],
         { cwd: repo, stdout: "pipe", stderr: "pipe" }
       );

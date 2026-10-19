@@ -1,203 +1,235 @@
 import { spawn } from "node:child_process";
 
+import { Console, Data, Effect } from "effect";
+
 import { Prompt } from "../prompts";
 
-export class DeployAbortError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "DeployAbortError";
-  }
-}
+export class DeployAbortError extends Data.TaggedError("DeployAbortError")<{
+  message: string;
+}> {}
 
 const commitHash = /^[a-f0-9]{40,64}$/iu;
 const aheadBehind = /^(?<ahead>\d+)\s+(?<behind>\d+)$/u;
 
-async function git(...args: string[]): Promise<{
-  code: number | null;
-  stdout: string;
-  stderr: string;
-}> {
-  return new Promise((resolve, reject) => {
-    const child = spawn("git", args, { cwd: process.cwd() });
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    child.stdout.on("data", (chunk: Buffer) => {
-      stdout.push(chunk);
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderr.push(chunk);
-    });
-    child.once("error", reject);
-    child.once("close", (code) => {
-      resolve({
-        code,
-        stdout: Buffer.concat(stdout).toString("utf-8").trim(),
-        stderr: Buffer.concat(stderr).toString("utf-8").trim(),
-      });
-    });
+const git = (...args: string[]) =>
+  Effect.tryPromise({
+    try: async (signal) =>
+      await new Promise<{
+        code: number | null;
+        stdout: string;
+        stderr: string;
+      }>((resolve, reject) => {
+        const child = spawn("git", args, { cwd: process.cwd(), signal });
+        const stdout: Buffer[] = [];
+        const stderr: Buffer[] = [];
+        child.stdout.on("data", (chunk: Buffer) => {
+          stdout.push(chunk);
+        });
+        child.stderr.on("data", (chunk: Buffer) => {
+          stderr.push(chunk);
+        });
+        child.once("error", reject);
+        child.once("close", (code) => {
+          resolve({
+            code,
+            stdout: Buffer.concat(stdout).toString("utf-8").trim(),
+            stderr: Buffer.concat(stderr).toString("utf-8").trim(),
+          });
+        });
+      }),
+    catch: () =>
+      new DeployAbortError({ message: "Git subprocess could not start" }),
   });
-}
 
-function requireSuccess(
-  result: Awaited<ReturnType<typeof git>>,
-  command: string
-): string {
-  if (result.code !== 0) {
-    throw new DeployAbortError(
-      `Git ${command} failed (exit ${result.code ?? "signal"})`
-    );
-  }
-  return result.stdout;
-}
+const requireSuccess = (command: string, ...args: string[]) =>
+  Effect.gen(function* () {
+    const result = yield* git(...args);
+    if (result.code !== 0) {
+      return yield* new DeployAbortError({
+        message: `Git ${command} failed (exit ${result.code ?? "signal"})`,
+      });
+    }
+    return result.stdout;
+  });
 
-export async function checkForGitRepo() {
-  const result = await git("rev-parse", "--is-inside-work-tree");
+export const checkForGitRepo = Effect.gen(function* () {
+  const result = yield* git("rev-parse", "--is-inside-work-tree");
   if (result.code !== 0) {
     if (!result.stderr.includes("not a git repository")) {
-      requireSuccess(result, "rev-parse");
+      return yield* new DeployAbortError({
+        message: `Git rev-parse failed (exit ${result.code ?? "signal"})`,
+      });
     }
-    console.log("✗ No git repository found in current directory");
-    if (
-      !(await Prompt.promptYesNo(
-        "Would you like to initialize a git repository?"
-      ))
-    ) {
-      throw new DeployAbortError(
-        "Deployment requires a git repository. Aborting."
-      );
+    yield* Console.log("✗ No git repository found in current directory");
+    const initialize = yield* Prompt.select({
+      message: "Would you like to initialize a git repository?",
+      options: Prompt.Questions.YNOpts,
+    });
+    if (initialize !== "Yes") {
+      return yield* new DeployAbortError({
+        message: "Deployment requires a git repository. Aborting.",
+      });
     }
-    requireSuccess(await git("init"), "init");
-    console.log("  ✓ Git repository initialized");
+    yield* requireSuccess("init", "init");
+    yield* Console.log("  ✓ Git repository initialized");
   } else if (result.stdout !== "true") {
-    throw new DeployAbortError(
-      "Current directory is not inside a Git work tree"
-    );
+    return yield* new DeployAbortError({
+      message: "Current directory is not inside a Git work tree",
+    });
   }
 
-  const head = await git("rev-parse", "--verify", "HEAD");
+  const head = yield* git("rev-parse", "--verify", "HEAD");
   if (head.code !== 0) {
     if (!head.stderr.includes("Needed a single revision")) {
-      requireSuccess(head, "rev-parse HEAD");
+      return yield* new DeployAbortError({
+        message: `Git rev-parse HEAD failed (exit ${head.code ?? "signal"})`,
+      });
     }
-    console.log("✗ No commits found in this repository");
-    if (
-      !(await Prompt.promptYesNo("Would you like to create an initial commit?"))
-    ) {
-      throw new DeployAbortError(
-        "Deployment requires at least one commit. Aborting."
-      );
+    yield* Console.log("✗ No commits found in this repository");
+    const commit = yield* Prompt.select({
+      message: "Would you like to create an initial commit?",
+      options: Prompt.Questions.YNOpts,
+    });
+    if (commit !== "Yes") {
+      return yield* new DeployAbortError({
+        message: "Deployment requires at least one commit. Aborting.",
+      });
     }
-    requireSuccess(await git("add", "."), "add");
-    requireSuccess(await git("commit", "-m", "Initial commit"), "commit");
-    console.log("  ✓ Initial commit created");
+    yield* requireSuccess("add", "add", ".");
+    yield* requireSuccess("commit", "commit", "-m", "Initial commit");
+    yield* Console.log("  ✓ Initial commit created");
   } else if (head.stdout === "") {
-    throw new DeployAbortError("Git rev-parse HEAD returned an empty commit");
+    return yield* new DeployAbortError({
+      message: "Git rev-parse HEAD returned an empty commit",
+    });
   }
-}
+  return undefined;
+});
 
-export async function getCurrentBranch(): Promise<string> {
-  const branch = requireSuccess(
-    await git("rev-parse", "--abbrev-ref", "HEAD"),
-    "rev-parse branch"
+export const getCurrentBranch = Effect.gen(function* () {
+  const branch = yield* requireSuccess(
+    "rev-parse branch",
+    "rev-parse",
+    "--abbrev-ref",
+    "HEAD"
   );
   if (branch === "" || branch === "HEAD") {
-    throw new DeployAbortError("Cannot deploy without a named Git branch");
+    return yield* new DeployAbortError({
+      message: "Cannot deploy without a named Git branch",
+    });
   }
-  console.log(`  Current branch: ${branch}`);
+  yield* Console.log(`  Current branch: ${branch}`);
   return branch;
-}
+});
 
-export async function getRepositoryRoot(): Promise<string> {
-  const root = requireSuccess(
-    await git("rev-parse", "--show-toplevel"),
-    "rev-parse --show-toplevel"
+export const getRepositoryRoot = Effect.gen(function* () {
+  const root = yield* requireSuccess(
+    "rev-parse --show-toplevel",
+    "rev-parse",
+    "--show-toplevel"
   );
   if (root === "") {
-    throw new DeployAbortError("Cannot deploy outside a Git work tree");
+    return yield* new DeployAbortError({
+      message: "Cannot deploy outside a Git work tree",
+    });
   }
   return root;
-}
+});
 
-export async function getCurrentCommit(): Promise<string> {
-  const commit = requireSuccess(
-    await git("rev-parse", "--verify", "HEAD"),
-    "rev-parse HEAD"
+export const getCurrentCommit = Effect.gen(function* () {
+  const commit = yield* requireSuccess(
+    "rev-parse HEAD",
+    "rev-parse",
+    "--verify",
+    "HEAD"
   );
   if (!commitHash.test(commit)) {
-    throw new DeployAbortError("Git rev-parse returned an invalid commit");
+    return yield* new DeployAbortError({
+      message: "Git rev-parse returned an invalid commit",
+    });
   }
   return commit;
-}
+});
 
-export async function checkRemoteBranch(
-  pushUrl: string,
-  branch: string,
-  confirm: (message: string) => Promise<boolean> = Prompt.promptYesNo
-): Promise<boolean> {
-  const output = requireSuccess(
-    await git("ls-remote", "--heads", pushUrl, `refs/heads/${branch}`),
-    "ls-remote"
-  );
-  if (output !== "") {
-    console.log(`  ✓ Branch '${branch}' exists on remote`);
-    return true;
-  }
-  console.log(`  Branch '${branch}' does not exist on remote yet`);
-  if (
-    !(await confirm(
-      `Would you like to create branch '${branch}' on the remote?`
-    ))
-  ) {
-    throw new DeployAbortError(
-      "Deployment requires the branch to exist. Aborting."
+export const checkRemoteBranch = (pushUrl: string, branch: string) =>
+  Effect.gen(function* () {
+    const output = yield* requireSuccess(
+      "ls-remote",
+      "ls-remote",
+      "--heads",
+      pushUrl,
+      `refs/heads/${branch}`
     );
-  }
-  console.log(`  ✓ Branch '${branch}' will be created with the deployment`);
-  return false;
-}
-
-export async function pushBranch(
-  pushUrl: string,
-  branch: string
-): Promise<void> {
-  const result = await git("push", pushUrl, `${branch}:${branch}`);
-  if (result.code !== 0) {
-    throw new DeployAbortError(
-      `Failed to push to remote: ${result.stderr || `git push exited ${result.code ?? "on a signal"}`}`
+    if (output !== "") {
+      yield* Console.log(`  ✓ Branch '${branch}' exists on remote`);
+      return true;
+    }
+    yield* Console.log(`  Branch '${branch}' does not exist on remote yet`);
+    const choice = yield* Prompt.select({
+      message: `Would you like to create branch '${branch}' on the remote?`,
+      options: Prompt.Questions.YNOpts,
+    });
+    if (choice !== "Yes") {
+      return yield* new DeployAbortError({
+        message: "Deployment requires the branch to exist. Aborting.",
+      });
+    }
+    yield* Console.log(
+      `  ✓ Branch '${branch}' will be created with the deployment`
     );
-  }
-}
+    return false;
+  });
 
-export async function checkForConflicts(
+export const pushBranch = (pushUrl: string, branch: string) =>
+  Effect.gen(function* () {
+    const result = yield* git("push", pushUrl, `${branch}:${branch}`);
+    if (result.code !== 0) {
+      return yield* new DeployAbortError({
+        message: `Failed to push to remote (exit ${result.code ?? "signal"})`,
+      });
+    }
+    return undefined;
+  });
+
+export const checkForConflicts = (
   pushUrl: string,
   branch: string,
   remoteBranchExists: boolean
-): Promise<void> {
-  if (!remoteBranchExists) {
-    return;
-  }
-  requireSuccess(await git("fetch", pushUrl, `refs/heads/${branch}`), "fetch");
-  requireSuccess(await git("merge-base", "HEAD", "FETCH_HEAD"), "merge-base");
-  const counts = aheadBehind.exec(
-    requireSuccess(
-      await git("rev-list", "--left-right", "--count", "HEAD...FETCH_HEAD"),
-      "rev-list"
-    )
-  );
-  if (counts === null) {
-    throw new DeployAbortError(
-      "Git rev-list returned invalid ahead/behind counts"
+) =>
+  Effect.gen(function* () {
+    if (!remoteBranchExists) {
+      return undefined;
+    }
+    yield* requireSuccess("fetch", "fetch", pushUrl, `refs/heads/${branch}`);
+    yield* requireSuccess("merge-base", "merge-base", "HEAD", "FETCH_HEAD");
+    const counts = aheadBehind.exec(
+      yield* requireSuccess(
+        "rev-list",
+        "rev-list",
+        "--left-right",
+        "--count",
+        "HEAD...FETCH_HEAD"
+      )
     );
-  }
-  const behind = Number(counts.groups?.behind);
-  if (!Number.isSafeInteger(behind)) {
-    throw new DeployAbortError("Git rev-list returned invalid behind count");
-  }
-  if (behind > 0) {
-    console.log(`  ⚠ Your branch is ${behind} commit(s) behind the remote`);
-    throw new DeployAbortError(
-      "Please pull and resolve conflicts before deploying."
-    );
-  }
-  console.log(`  ✓ No conflicts with remote ${branch}`);
-}
+    if (counts === null) {
+      return yield* new DeployAbortError({
+        message: "Git rev-list returned invalid ahead/behind counts",
+      });
+    }
+    const behind = Number(counts.groups?.behind);
+    if (!Number.isSafeInteger(behind)) {
+      return yield* new DeployAbortError({
+        message: "Git rev-list returned invalid behind count",
+      });
+    }
+    if (behind > 0) {
+      yield* Console.log(
+        `  ⚠ Your branch is ${behind} commit(s) behind the remote`
+      );
+      return yield* new DeployAbortError({
+        message: "Please pull and resolve conflicts before deploying.",
+      });
+    }
+    yield* Console.log(`  ✓ No conflicts with remote ${branch}`);
+    return undefined;
+  });

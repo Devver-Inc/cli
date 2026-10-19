@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
+
+import { Cause, Data, Effect, Exit, Option } from "effect";
+import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { DeployFailure } from "./api";
 import { openDeploymentHost } from "./deployment-host";
@@ -22,6 +24,28 @@ const READINESS_INTERVAL = 200;
 const READINESS_TIMEOUT = 1000;
 const SAFE_DETAIL = /^(?=[^\n]* )[A-Za-z0-9 ,.'()-]{1,120}$/u;
 
+class DeploymentStartupError extends Data.TaggedError(
+  "DeploymentStartupError"
+)<{
+  message: string;
+}> {}
+
+const startup = <A>(step: () => Promise<A>) =>
+  Effect.tryPromise({
+    try: async () => await step(),
+    catch: () =>
+      new DeploymentStartupError({
+        message: "Deployment state could not be opened",
+      }),
+  });
+
+const failureStage = (exit: Exit.Exit<unknown, unknown>): DeployStage => {
+  const error = Exit.isFailure(exit)
+    ? Option.getOrUndefined(Cause.findErrorOption(exit.cause))
+    : undefined;
+  return error instanceof DeployFailure ? error.stage : "server";
+};
+
 const stageMessage: Record<DeployStage, string> = {
   server: "server: this installation cannot deploy this workload",
   source: "source: the checkout or commit cannot be deployed",
@@ -31,190 +55,222 @@ const stageMessage: Record<DeployStage, string> = {
   readiness: "readiness: the app URL did not serve the deployment",
 };
 
-const attempt = async <A>(stage: DeployStage, step: () => Promise<A>) => {
-  try {
-    return await step();
-  } catch (error) {
-    if (error instanceof DeployFailure) {
-      throw error;
-    }
-    throw new DeployFailure({
-      stage,
-      message:
-        error instanceof Error && SAFE_DETAIL.test(error.message)
-          ? `${stage}: ${error.message}`
-          : stageMessage[stage],
-    });
-  }
-};
+const attempt = <A>(stage: DeployStage, step: () => Promise<A>) =>
+  Effect.tryPromise({
+    try: async () => await step(),
+    catch: (error) =>
+      error instanceof DeployFailure
+        ? error
+        : new DeployFailure({
+            stage,
+            message:
+              error instanceof Error && SAFE_DETAIL.test(error.message)
+                ? `${stage}: ${error.message}`
+                : stageMessage[stage],
+          }),
+  });
 
-async function reachable(url: string) {
-  const deadline = Date.now() + READINESS_DEADLINE;
-  let answered = 0;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(url, {
-        redirect: "manual",
-        signal: AbortSignal.timeout(READINESS_TIMEOUT),
-      });
-      await response.body?.cancel();
-      const { status } = response;
+const reachable = (url: string) =>
+  Effect.gen(function* () {
+    const client = HttpClient.withScope(yield* HttpClient.HttpClient);
+    const deadline = Date.now() + READINESS_DEADLINE;
+    let answered = 0;
+    while (Date.now() < deadline) {
+      const status = yield* client.execute(HttpClientRequest.get(url)).pipe(
+        Effect.map((response) => response.status),
+        Effect.timeout(READINESS_TIMEOUT),
+        Effect.scoped,
+        Effect.orElseSucceed(() => 0)
+      );
       if (status >= 200 && status < 400) {
-        return;
+        return undefined;
       }
-      answered = status;
-    } catch {
-      await delay(READINESS_INTERVAL);
-      continue;
+      if (status !== 0) {
+        answered = status;
+      }
+      yield* Effect.sleep(READINESS_INTERVAL);
     }
-    await delay(READINESS_INTERVAL);
-  }
-  throw new Error(
-    answered === 0
-      ? "the app URL did not answer before the readiness deadline"
-      : `the app URL answered with status ${answered}`
-  );
-}
-
-export async function openDeployer(name: string) {
-  const instanceDirectory = join(await instanceParent(name), name);
-  const store = await openDeploymentStore(
-    join(instanceDirectory, "deployments.sqlite")
-  );
-  let host;
-  try {
-    host = await openDeploymentHost({
-      toolsDirectory: await packagedToolsDirectory(),
-      instanceDirectory,
-      proxyPort: store.appPort(),
+    return yield* new DeployFailure({
+      stage: "readiness",
+      message:
+        answered === 0
+          ? "readiness: the app URL did not answer before the readiness deadline"
+          : `readiness: the app URL answered with status ${answered}`,
     });
-  } catch (error) {
-    store.close();
-    throw error;
-  }
-  const publish = async (deploymentId: string, worktree: string) => {
-    const spec = await attempt("config", async () => prepareDaemon(worktree));
-    try {
-      await attempt("process", async () => host.publish(deploymentId, spec));
-      await attempt("readiness", async () => reachable(host.url(deploymentId)));
-    } catch (error) {
-      await host.withdraw(deploymentId).catch(() => undefined);
-      throw error;
-    }
-  };
+  });
 
-  const unpublish = async (deploymentId: string) => {
-    await host.withdraw(deploymentId).catch(() => undefined);
-  };
-
-  const deploy = async (input: {
-    readonly source: string;
-    readonly commit: string;
-  }) => {
-    const deploymentId = randomUUID();
-    const source = await attempt("source", async () =>
-      verifiedSource(input.source, input.commit)
+export const openDeployer = (name: string) =>
+  Effect.gen(function* () {
+    const instanceDirectory = join(
+      yield* startup(async () => await instanceParent(name)),
+      name
     );
-    const worktree = join(instanceDirectory, "worktrees", deploymentId);
-    store.record({
-      deploymentId,
-      repositoryId: source.repositoryId,
-      commit: input.commit,
-      parentDeploymentId: null,
-      worktree,
+    const store = yield* openDeploymentStore(
+      join(instanceDirectory, "deployments.sqlite")
+    );
+    const appPort = yield* store.appPort;
+    const host = yield* Effect.acquireRelease(
+      startup(
+        async () =>
+          await openDeploymentHost({
+            toolsDirectory: await packagedToolsDirectory(),
+            instanceDirectory,
+            proxyPort: appPort,
+          })
+      ),
+      (opened) =>
+        Effect.promise(async () => {
+          await opened.close();
+        })
+    );
+    const unpublish = (deploymentId: string) =>
+      Effect.promise(async () => {
+        await host.withdraw(deploymentId).catch(() => undefined);
+      });
+    const publish = (deploymentId: string, worktree: string) =>
+      Effect.gen(function* () {
+        const spec = yield* attempt(
+          "config",
+          async () => await prepareDaemon(worktree)
+        );
+        yield* Effect.uninterruptible(
+          attempt("process", async () => {
+            await host.publish(deploymentId, spec);
+          })
+        );
+        yield* reachable(host.url(deploymentId));
+      }).pipe(
+        Effect.onExit((exit) =>
+          Exit.isSuccess(exit) ? Effect.void : unpublish(deploymentId)
+        )
+      );
+
+    const deploy = (input: {
+      readonly source: string;
+      readonly commit: string;
+    }) =>
+      Effect.gen(function* () {
+        const deploymentId = randomUUID();
+        const source = yield* attempt(
+          "source",
+          async () => await verifiedSource(input.source, input.commit)
+        );
+        const worktree = join(instanceDirectory, "worktrees", deploymentId);
+        let bare: string | undefined;
+        let recorded = false;
+        return yield* Effect.gen(function* () {
+          yield* store.record({
+            deploymentId,
+            repositoryId: source.repositoryId,
+            commit: input.commit,
+            parentDeploymentId: null,
+            worktree,
+          });
+          recorded = true;
+          const synced = yield* Effect.uninterruptible(
+            Effect.gen(function* () {
+              const repository = yield* attempt(
+                "git",
+                async () =>
+                  await syncCommit({
+                    repositories: join(instanceDirectory, "repositories"),
+                    repositoryId: source.repositoryId,
+                    source: source.path,
+                    commit: input.commit,
+                    deploymentId,
+                  })
+              );
+              bare = repository;
+              return repository;
+            })
+          );
+          const added = yield* Effect.uninterruptible(
+            attempt(
+              "git",
+              async () =>
+                await addWorktree({
+                  bare: synced,
+                  worktrees: join(instanceDirectory, "worktrees"),
+                  deploymentId,
+                  commit: input.commit,
+                })
+            )
+          );
+          yield* publish(deploymentId, added);
+          yield* store.markReady(deploymentId);
+          return {
+            deploymentId,
+            repositoryId: source.repositoryId,
+            commit: input.commit,
+            parentDeploymentId: null,
+            url: host.url(deploymentId),
+          };
+        }).pipe(
+          Effect.onExit((exit) =>
+            Exit.isSuccess(exit)
+              ? Effect.void
+              : Effect.gen(function* () {
+                  if (recorded) {
+                    yield* unpublish(deploymentId);
+                    yield* Effect.promise(async () => {
+                      if (bare !== undefined) {
+                        await removeWorktree(bare, worktree).catch(
+                          () => undefined
+                        );
+                        await removeDeploymentRef(bare, deploymentId);
+                      }
+                    }).pipe(
+                      Effect.onExit(() =>
+                        store.markFailed(deploymentId, failureStage(exit))
+                      )
+                    );
+                  }
+                })
+          )
+        );
+      });
+
+    const reconcile = Effect.gen(function* () {
+      const { deployments, unreadable } = yield* store.list;
+      if (unreadable > 0) {
+        return yield* new DeploymentStartupError({
+          message:
+            "Deployment records hold entries this server cannot read; they were not replaced",
+        });
+      }
+      for (const deployment of deployments) {
+        const { deploymentId, status } = deployment;
+        if (status === "failed" || status === "degraded") {
+          continue;
+        }
+        yield* unpublish(deploymentId);
+        if (status === "preparing") {
+          yield* store.markDegraded(deploymentId, "server");
+          continue;
+        }
+        const exit = yield* Effect.exit(
+          publish(
+            deploymentId,
+            join(instanceDirectory, "worktrees", deploymentId)
+          )
+        );
+        yield* Exit.isSuccess(exit)
+          ? store.markReady(deploymentId)
+          : store.markDegraded(deploymentId, failureStage(exit));
+      }
+      return undefined;
     });
-    let bare: string | undefined;
-    try {
-      const synced = await attempt("git", async () =>
-        syncCommit({
-          repositories: join(instanceDirectory, "repositories"),
-          repositoryId: source.repositoryId,
-          source: source.path,
-          commit: input.commit,
-          deploymentId,
-        })
-      );
-      bare = synced;
-      const added = await attempt("git", async () =>
-        addWorktree({
-          bare: synced,
-          worktrees: join(instanceDirectory, "worktrees"),
-          deploymentId,
-          commit: input.commit,
-        })
-      );
-      await publish(deploymentId, added);
-      store.markReady(deploymentId);
-      return {
-        deploymentId,
-        repositoryId: source.repositoryId,
-        commit: input.commit,
-        parentDeploymentId: null,
-        url: host.url(deploymentId),
-      };
-    } catch (error) {
-      await unpublish(deploymentId);
-      if (bare !== undefined) {
-        await removeWorktree(bare, worktree).catch(() => undefined);
-        await removeDeploymentRef(bare, deploymentId);
-      }
-      store.markFailed(
-        deploymentId,
-        error instanceof DeployFailure ? error.stage : "server"
-      );
-      throw error;
+    yield* Effect.uninterruptible(reconcile);
+    if (appPort !== host.proxyPort) {
+      yield* store.setAppPort(host.proxyPort);
     }
-  };
-
-  const reconcile = async () => {
-    const { deployments, unreadable } = store.list();
-    if (unreadable > 0) {
-      throw new Error(
-        "Deployment records hold entries this server cannot read; they were not replaced"
-      );
-    }
-    for (const deployment of deployments) {
-      const { deploymentId, status } = deployment;
-      if (status === "failed" || status === "degraded") {
-        continue;
-      }
-      await host.withdraw(deploymentId).catch(() => undefined);
-      if (status === "preparing") {
-        store.markDegraded(deploymentId, "server");
-        continue;
-      }
-      try {
-        await publish(
-          deploymentId,
-          join(instanceDirectory, "worktrees", deploymentId)
-        );
-        store.markReady(deploymentId);
-      } catch (error) {
-        await unpublish(deploymentId);
-        store.markDegraded(
-          deploymentId,
-          error instanceof DeployFailure ? error.stage : "server"
-        );
-      }
-    }
-  };
-
-  const deployer = {
-    appPort: host.proxyPort,
-    deploy,
-    close: async () => {
-      await host.close();
-      store.close();
-    },
-  };
-  try {
-    await reconcile();
-  } catch (error) {
-    await deployer.close();
-    throw error;
-  }
-  if (store.appPort() !== host.proxyPort) {
-    store.setAppPort(host.proxyPort);
-  }
-  return deployer;
-}
+    return { appPort: host.proxyPort, deploy };
+  }).pipe(
+    Effect.mapError((error) =>
+      error instanceof DeploymentStartupError
+        ? error
+        : new DeploymentStartupError({
+            message: "Deployment state could not be opened",
+          })
+    )
+  );

@@ -11,8 +11,8 @@ export const localDeploy = (target: typeof LocalTargetSchema.Type) =>
   withLocalApi(
     target,
     Effect.gen(function* () {
-      const source = yield* Effect.tryPromise(getRepositoryRoot);
-      const commit = yield* Effect.tryPromise(getCurrentCommit);
+      const source = yield* getRepositoryRoot;
+      const commit = yield* getCurrentCommit;
       yield* Console.log(
         `\n  Deploying to ${target.name} (${target.instanceId})\n    Repository: ${source}\n    Commit: ${commit}`
       );

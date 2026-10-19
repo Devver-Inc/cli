@@ -47,6 +47,9 @@ const server = await Bun.build({
   target: "node",
   format: "esm",
   packages: "bundle",
+  define: { DEVVER_NODE_SQLITE: "true" },
+  external: ["@effect/sql-sqlite-bun/SqliteClient"],
+  minify: { syntax: true },
 });
 if (!server.success) {
   console.error("npm server build failed:");

@@ -30,7 +30,9 @@ const server = await Bun.build({
   compile: {
     outfile: `servers/${pkg.version}/devver-server${process.platform === "win32" ? ".exe" : ""}`,
   },
-  define: { DEVVER_STANDALONE_ENTRY: "true" },
+  define: { DEVVER_STANDALONE_ENTRY: "true", DEVVER_NODE_SQLITE: "false" },
+  external: ["@effect/sql-sqlite-node/SqliteClient"],
+  minify: { syntax: true },
 });
 if (!server.success) {
   console.error("Standalone server build failed:");

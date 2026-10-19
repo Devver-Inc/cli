@@ -5,6 +5,7 @@ import type { IncomingMessage } from "node:http";
 import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
 import { Data, Effect, Layer } from "effect";
 import {
+  FetchHttpClient,
   HttpRouter,
   HttpServer,
   HttpServerRequest,
@@ -63,10 +64,7 @@ const serveOnListener = (name: string) =>
       });
     }
     const origin = `http://${HOST}:${address.port}`;
-    const deployer = yield* Effect.acquireRelease(
-      Effect.tryPromise(async () => openDeployer(name)),
-      (open) => Effect.promise(async () => open.close())
-    );
+    const deployer = yield* openDeployer(name);
 
     const requestPolicy = HttpRouter.middleware(
       (next) =>
@@ -115,7 +113,11 @@ export const serve = (name: string, port: number) =>
     const listener = yield* Layer.build(
       NodeHttpServer.layer(() => createServer(), { host: HOST, port })
     );
-    return yield* serveOnListener(name).pipe(Effect.provide(listener));
+    return yield* serveOnListener(name).pipe(
+      Effect.provide(listener),
+      // @effect-diagnostics-next-line strictEffectProvide:off
+      Effect.provide(FetchHttpClient.layer)
+    );
   });
 
 function parsePort(input: string | undefined) {
