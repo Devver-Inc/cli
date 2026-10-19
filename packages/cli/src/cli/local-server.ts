@@ -51,11 +51,7 @@ async function probe(url: string) {
       chunks.push(value);
     }
   } finally {
-    try {
-      await reader.cancel();
-    } catch {
-      // The peer may have already closed the response stream.
-    }
+    await reader.cancel().catch(() => undefined);
   }
   const bytes = new Uint8Array(size);
   let offset = 0;
@@ -86,7 +82,6 @@ export const attach = Command.make(
   { url: Argument.String("url") },
   ({ url }) =>
     Effect.tryPromise(async () => {
-      // Read first: malformed stored state must never be overwritten by a new attachment.
       const config = await readConfig();
       const target = await verifyIdentity(url);
       const { "cloud-target": _removed, ...rest } = config;
@@ -129,7 +124,7 @@ const status = Command.make("status", {}, () =>
         reachability = "reachable";
       }
     } catch {
-      // A stopped or changed server does not remove the saved selection.
+      return `${target.name} (${target.instanceId}) at ${target.url} — version ${target.serverVersion}: ${reachability}`;
     }
     return `${target.name} (${target.instanceId}) at ${target.url} — version ${target.serverVersion}: ${reachability}`;
   }).pipe(Effect.flatMap((message) => Console.log(message)))

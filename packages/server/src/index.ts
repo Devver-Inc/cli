@@ -63,8 +63,6 @@ const serveOnListener = (name: string) =>
       });
     }
     const origin = `http://${HOST}:${address.port}`;
-    // Deployments live on their own listener, released with this scope so no
-    // supervised app process outlives the server that published it.
     const deployer = yield* Effect.acquireRelease(
       Effect.tryPromise(async () => openDeployer(name)),
       (open) => Effect.promise(async () => open.close())
@@ -112,7 +110,6 @@ const serveOnListener = (name: string) =>
     return `${origin}${API_PATH}`;
   });
 
-// Build in the caller's scope so returning the URL does not close the listener.
 export const serve = (name: string, port: number) =>
   Effect.gen(function* () {
     const listener = yield* Layer.build(

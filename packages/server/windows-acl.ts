@@ -1,4 +1,3 @@
-// These named exports form the owner-only state entry point.
 export {
   verifyWindowsPrivate,
   windowsPrivateDirectories,

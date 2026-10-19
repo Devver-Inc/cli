@@ -31,7 +31,6 @@ export const deploymentHandlers = (deployer: Deployer) =>
     handlers.handle("create", ({ payload }) =>
       Effect.tryPromise({
         try: async () => deployer.deploy(payload),
-        // A fault outside the staged steps must still name a stage, not leak one.
         catch: (error) =>
           error instanceof DeployFailure
             ? error

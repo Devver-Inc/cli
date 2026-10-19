@@ -7,11 +7,6 @@ import { withLocalApi } from "./api";
 
 const MILLISECONDS = 1000;
 
-/**
- * Deploy the checkout's exact committed HEAD to the attached local server.
- * Only the server's own readiness check can report a URL, so everything this
- * prints after the request describes a deployment that already answers.
- */
 export const localDeploy = (target: typeof LocalTargetSchema.Type) =>
   withLocalApi(
     target,

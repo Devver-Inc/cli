@@ -1,7 +1,5 @@
 import { openDeploymentStore } from "../deployments";
 
-// Proves the durable deployment record in the runtime that loads this probe:
-// the npm bundle runs under Node, the compiled artifact under Bun.
 const [mode, file] = process.argv.slice(2);
 if (file === undefined || file === "") {
   throw new Error("Missing deployment store path");

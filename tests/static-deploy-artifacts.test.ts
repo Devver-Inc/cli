@@ -93,13 +93,10 @@ async function response(url: string, options?: RequestInit) {
 }
 
 async function refuses(url: string) {
-  let connected = false;
-  try {
-    await response(url);
-    connected = true;
-  } catch {
-    // A non-loopback connection must fail before HTTP routing.
-  }
+  const connected = await response(url).then(
+    () => true,
+    () => false
+  );
   expect(connected).toBe(false);
 }
 
@@ -460,7 +457,6 @@ function removeSupervisor(ws: Workspace, service: Service | undefined) {
       const stopped = run(["launchctl", "bootout", job], ws.root, ws.env);
       expect(stopped.status, stopped.output).toBe(0);
     }
-    // launchd keeps a booted-out job visible briefly.
     const deadline = Date.now() + 10_000;
     let gone = false;
     while (Date.now() < deadline) {
@@ -497,8 +493,6 @@ async function stopRecordedSites(instance: string, data: string) {
   const { instanceId } = decodeInstance(
     JSON.parse(readFileSync(identity, "utf-8"))
   );
-  // One supervisor per instance now owns every daemon, so teardown is
-  // addressed by the instance, not per recorded deployment.
   await stopDeploymentHost({
     toolsDirectory: join(
       dirname(data),
@@ -566,7 +560,6 @@ async function exercise(distribution: Distribution) {
         JSON.parse(readFileSync(join(instance, "service.json"), "utf-8"))
       );
     }
-    // An instance without a readable service record may still own a supervisor.
     if (recorded !== undefined || !existsSync(instance)) {
       removeSupervisor(ws, recorded);
       if (recorded !== undefined) {

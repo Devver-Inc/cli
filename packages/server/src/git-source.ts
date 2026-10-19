@@ -1,13 +1,3 @@
-/**
- * The instance-owned Git store.
- *
- * A developer's checkout is untrusted input: it is only ever read, through
- * `git` in that directory, and the committed objects a deployment needs are
- * copied into a bare repository this instance owns. Deployments then run from
- * detached worktrees of that bare repository, never from the checkout, so a
- * later commit, branch move or working-copy edit cannot change what is served.
- */
-
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat, mkdir, realpath, rm } from "node:fs/promises";
@@ -23,7 +13,6 @@ const execute = promisify(execFile);
 const COMMIT = /^[0-9a-f]{40}$/u;
 const PRIVATE_DIRECTORY = 0o700;
 
-/** Git failures never carry their output: it can quote untrusted local paths. */
 async function git(cwd: string, operation: string, args: string[]) {
   try {
     const { stdout } = await execute("git", args, {
@@ -35,7 +24,6 @@ async function git(cwd: string, operation: string, args: string[]) {
     });
     return stdout.trim();
   } catch {
-    // oxlint-disable-next-line eslint/preserve-caught-error -- A cause would expose local paths and command output.
     throw new Error(`Git ${operation} failed`);
   }
 }
@@ -71,14 +59,6 @@ async function contains(repository: string, commit: string) {
   }
 }
 
-/**
- * Accept a checkout only if it is a work tree root this user owns, and only
- * for a commit it actually contains.
- *
- * `repositoryId` identifies the checkout by its resolved path, which is stable
- * while the checkout stays where it is. shortcut: a moved checkout gets a
- * second bare repository; upgrade when #73 registers checkouts by identity.
- */
 export async function verifiedSource(source: string, commit: string) {
   if (!(isAbsolute(source) && COMMIT.test(commit))) {
     throw new Error(
@@ -106,11 +86,6 @@ export async function verifiedSource(source: string, commit: string) {
   };
 }
 
-/**
- * Copy the selected commit into the instance's bare repository if it is not
- * there yet, then pin it so later branch movement or deletion in the checkout
- * cannot discard the deployed revision.
- */
 export async function syncCommit(options: {
   readonly repositories: string;
   readonly repositoryId: string;
@@ -144,7 +119,6 @@ export async function syncCommit(options: {
   return bare;
 }
 
-/** A detached worktree of one immutable commit, outside the checkout. */
 export async function addWorktree(options: {
   readonly bare: string;
   readonly worktrees: string;
@@ -164,11 +138,6 @@ export async function addWorktree(options: {
   return worktree;
 }
 
-/**
- * Drop the pin of a deployment that will never be served. Best effort: an
- * unremoved ref only retains an object, while failing here would replace the
- * deployment failure the caller is already reporting.
- */
 export async function removeDeploymentRef(bare: string, deploymentId: string) {
   await git(bare, "update-ref", [
     "update-ref",
@@ -184,7 +153,6 @@ export async function removeWorktree(bare: string, worktree: string) {
     "--force",
     worktree,
   ]).catch(async () => {
-    // A worktree git never registered still has to leave no files behind.
     await rm(worktree, { recursive: true, force: true });
   });
 }

@@ -59,7 +59,6 @@ const list = Command.make("list", {}, () =>
         }
         const repo = repositories.find((item) => item.name === choice);
         if (repo === undefined) {
-          // Effect's never-success branch preserves narrowing for repo.
           // oxlint-disable-next-line typescript/consistent-return
           return yield* new RepositorySelectionError({
             message: "Repository selection is no longer valid",

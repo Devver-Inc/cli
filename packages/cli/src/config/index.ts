@@ -104,12 +104,10 @@ export function ensureGitignore(targetDir?: string): void {
   let content = "";
   if (fs.existsSync(gitignorePath)) {
     content = fs.readFileSync(gitignorePath, "utf-8");
-    // Already present — nothing to do
     const lines = content.split(regex);
     if (lines.some((line) => line.trim() === ENTRY)) {
       return;
     }
-    // Ensure trailing newline before appending
     if (content !== "" && !content.endsWith("\n")) {
       content += "\n";
     }

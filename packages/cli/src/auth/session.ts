@@ -67,7 +67,6 @@ export async function getOrganizations(): Promise<readonly Organization[]> {
   if (!(await client.isAuthenticated())) {
     return [];
   }
-  // Missing access claims fall back to the ID token's organization IDs.
   const claims = await client
     .getAccessTokenClaims(API_RESOURCE)
     .catch(() => null);
@@ -143,7 +142,6 @@ export const serveCallback = (handle: (requestUrl: string) => Promise<void>) =>
               Connection: "close",
             })
             .end(CallbackPage.success);
-          // Deferred completion requires an explicit undefined value.
           runFork(Deferred.succeed(completed, undefined));
         } catch (error) {
           response
@@ -201,7 +199,6 @@ export const serveCallback = (handle: (requestUrl: string) => Promise<void>) =>
       });
     }
 
-    // Return the completion Effect to the caller; login must open the browser first.
     // @effect-diagnostics-next-line returnEffectInGen:off
     return Deferred.await(completed);
   });

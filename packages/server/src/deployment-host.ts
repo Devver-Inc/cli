@@ -1,20 +1,3 @@
-/**
- * The deployment host of one server instance.
- *
- * A deployment is a supervised process reachable at a stable URL. That is the
- * whole contract: a static site, an application server, a database or anything
- * else is just a different command. Nothing here knows which.
- *
- * Pitchfork manages a fleet, so one supervisor serves every deployment of an
- * instance and each deployment is one daemon under it. Daemons are already
- * separate processes, so one crashing cannot take its siblings with it.
- *
- * Pitchfork also owns the two things a caller would otherwise decide. It
- * assigns each daemon a port, bumping until one is free, and its reverse proxy
- * routes a stable hostname to whichever port the process actually bound. So no
- * port is allocated here and no deployment URL depends on one.
- */
-
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -42,8 +25,6 @@ const PROXY_ATTEMPTS = 5;
 const PROXY_DEADLINE = 10_000;
 const PROXY_INTERVAL = 200;
 const PROXY_TIMEOUT = 1000;
-// A deployment is published under its own name, so the name must be exactly a
-// UUID: it reaches a generated config file, a hostname and a command line.
 const DEPLOYMENT_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 // Arguments are double-quoted inside a TOML literal string, so a quote of
@@ -92,12 +73,6 @@ async function invokeTool(
   });
 }
 
-/**
- * Stopping and starting the same instance finds the state directory it already
- * created, so an existing one is adopted instead of failing. Only a real
- * directory we own qualifies: a symlink or another user's directory on the
- * predictable path under shared /tmp is refused.
- */
 async function privateDirectory(directory: string) {
   try {
     await mkdir(directory, { mode: PRIVATE_DIRECTORY });
@@ -123,7 +98,6 @@ async function privateDirectory(directory: string) {
   }
 }
 
-/** One supervisor per server instance, so the key is the instance alone. */
 async function stateDirectories(instanceDirectory: string) {
   // Unix sockets have a ~104-byte path limit; long XDG instance paths need a
   // short private state root.
@@ -182,14 +156,6 @@ function shellArgument(argument: string) {
   return `"${argument}"`;
 }
 
-/**
- * The proxy listens on loopback only, over plain HTTP on an unprivileged port.
- * Trust store, hosts file and DNS stay untouched: `*.localhost` already
- * resolves to loopback, so none of that is needed to reach a deployment.
- *
- * The settings are written in the manifest and in the isolated config
- * directory: the supervisor reads the former, the proxy reads the latter.
- */
 function proxySettings(port: number) {
   return `[settings.proxy]
 enable = true
@@ -259,7 +225,8 @@ async function proxyAnswers(port: number) {
         await response.body?.cancel();
       }
     } catch {
-      // The supervisor may not have bound the proxy yet.
+      await delay(PROXY_INTERVAL);
+      continue;
     }
     await delay(PROXY_INTERVAL);
   }
@@ -279,8 +246,6 @@ function projectLabel(instanceDirectory: string) {
 
 function toolInvoker(toolsDirectory: string, instanceDirectory: string) {
   const pitchfork = join(toolsDirectory, `pitchfork${EXECUTABLE}`);
-  // Both directories isolate this instance's supervisor and project
-  // registration from the user's own Pitchfork.
   return async (state: string, config: string, args: string[]) => {
     await invokeTool(pitchfork, args, instanceDirectory, {
       ...process.env,
@@ -290,13 +255,6 @@ function toolInvoker(toolsDirectory: string, instanceDirectory: string) {
   };
 }
 
-/**
- * Stop the supervisor of one instance without starting one.
- *
- * A process that opened a deployment host and died before closing it leaves
- * its supervisor behind, and only its own state directory addresses that
- * supervisor. Tolerant by contract, because there may be nothing to stop.
- */
 export async function stopDeploymentHost(options: {
   readonly toolsDirectory: string;
   readonly instanceDirectory: string;
@@ -306,11 +264,6 @@ export async function stopDeploymentHost(options: {
   await invoke(state, config, ["supervisor", "stop"]).catch(() => undefined);
 }
 
-/**
- * Open the deployment host of one server instance: its supervisor, its reverse
- * proxy and the generated configuration both read. Deployments are published
- * into it as daemons and addressed by their own hostname.
- */
 export async function openDeploymentHost(options: {
   readonly toolsDirectory: string;
   readonly instanceDirectory: string;
@@ -343,7 +296,6 @@ export async function openDeploymentHost(options: {
   const run = async (args: string[]) => {
     await invoke(state, config, args);
   };
-  /** The proxy settings of the isolated configuration directory. */
   let writtenProxyPort = 0;
   let manifestProxyPort = 0;
   const writeProxySettings = async (proxyPort: number) => {
@@ -376,9 +328,6 @@ port = { expect = [${PORT_BASE}], bump = true }
       await writeProxySettings(proxyPort);
     }
     const settings = proxyPort === 0 ? "" : proxySettings(proxyPort);
-    // Atomic swap: the supervisor watches this file, and an in-place rewrite
-    // can be read mid-truncate (observed as a lost configuration and a failed
-    // daemon start). A same-directory rename is one atomic operation.
     const staged = `${manifest}.staging`;
     await writeFile(staged, `${settings}\n${entries.join("\n")}`, {
       mode: PRIVATE_FILE,
@@ -426,7 +375,6 @@ port = { expect = [${PORT_BASE}], bump = true }
     proxyPort,
     url: (deploymentId: string) =>
       `http://${safeDeploymentId(deploymentId)}.${label}.localhost:${proxyPort}/`,
-    /** Run one deployment's process and route its hostname to it. */
     publish: async (deploymentId: string, spec: DaemonSpec) => {
       daemons.set(safeDeploymentId(deploymentId), spec);
       await writeManifest();

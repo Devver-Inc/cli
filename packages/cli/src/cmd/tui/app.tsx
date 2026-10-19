@@ -15,7 +15,6 @@ function App({ version }: { version: string }): ReactNode {
         try {
           await exit();
         } catch {
-          // onExit has already rejected tui()'s promise; avoid a second rejection.
           process.exitCode = 1;
         }
       })();

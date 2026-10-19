@@ -56,7 +56,6 @@ function configured(value: string | undefined) {
   return value === undefined || value === "" ? undefined : value;
 }
 
-/** Verified build-time downloads, reused across builds but never shipped. */
 function cacheDirectory() {
   const override = configured(process.env.DEVVER_STATIC_TOOLS_CACHE);
   if (override !== undefined) {
@@ -76,12 +75,10 @@ function cacheDirectory() {
   return join(xdg ?? join(homedir(), ".cache"), "devver", "static-tools");
 }
 
-/** Concurrent builds target the same paths, so a reader sees all or nothing. */
 async function writeAtomic(path: string, bytes: Buffer, mode: number) {
   const staged = `${path}.${randomUUID()}.partial`;
   try {
     await writeFile(staged, bytes);
-    // writeFile's own mode is masked by umask; chmod sets the shipped bits.
     await chmod(staged, mode);
     await rename(staged, path);
   } catch (error) {
@@ -102,12 +99,6 @@ async function downloadVerified(url: string, expected: string) {
   return bytes;
 }
 
-/**
- * One test suite run drives a dozen builds, so re-fetching ~28 MB per build
- * made GitHub answer with 504s. Only the pinned bytes are cached: every build
- * verifies the pin again, an entry that fails that check is discarded and
- * re-fetched, and a miss without network fails instead of packaging nothing.
- */
 async function cachedVerified(key: string, url: string, expected: string) {
   const directory = cacheDirectory();
   const path = join(directory, key);
@@ -136,7 +127,6 @@ async function installFile(path: string, bytes: Buffer, mode: number) {
   await writeAtomic(path, bytes, mode);
 }
 
-/** Build-time only; never called from a shipped executable. */
 export async function packageStaticTools(destination: string) {
   const { platform, arch } = process;
   if (

@@ -1,13 +1,3 @@
-/**
- * The `.devver.yaml` format boundary.
- *
- * Only the file's format decisions live here: where it is read from, how large
- * it may be, that it must be a regular file, and that sections this server
- * does not know are tolerated so workloads can coexist. The meaning of each
- * section belongs to the workload module that claims it; this module returns
- * the raw decoded sections untouched.
- */
-
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -16,7 +6,6 @@ import { load } from "js-yaml";
 
 const MAX_CONFIG_BYTES = 65_536;
 
-/** Sections this module never interprets. A workload decodes its own. */
 export const DevverFileSchema = Schema.Record(Schema.String, Schema.Unknown);
 
 export type DevverFile = typeof DevverFileSchema.Type;

@@ -2,10 +2,6 @@ import { spawn } from "node:child_process";
 
 import { Prompt } from "../prompts";
 
-/**
- * Raised when the repository state cannot support a deployment, including when
- * a subprocess result is unknown. Every check here fails closed with one.
- */
 export class DeployAbortError extends Error {
   constructor(message: string) {
     super(message);
@@ -78,8 +74,6 @@ export async function checkForGitRepo() {
     );
   }
 
-  // An unborn branch has no commits; other rev-parse failures must not be
-  // mistaken for permission/transport success.
   const head = await git("rev-parse", "--verify", "HEAD");
   if (head.code !== 0) {
     if (!head.stderr.includes("Needed a single revision")) {
@@ -113,7 +107,6 @@ export async function getCurrentBranch(): Promise<string> {
   return branch;
 }
 
-/** The work tree root a local deployment reads committed objects from. */
 export async function getRepositoryRoot(): Promise<string> {
   const root = requireSuccess(
     await git("rev-parse", "--show-toplevel"),
@@ -136,7 +129,6 @@ export async function getCurrentCommit(): Promise<string> {
   return commit;
 }
 
-/** True only if the remote has this branch; network/auth errors always fail. */
 export async function checkRemoteBranch(
   pushUrl: string,
   branch: string,

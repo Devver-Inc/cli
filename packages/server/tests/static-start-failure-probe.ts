@@ -25,8 +25,6 @@ let host;
 try {
   host = await openDeploymentHost({ toolsDirectory, instanceDirectory });
 } catch {
-  // A toolchain broken badly enough to refuse its own supervisor is a pass:
-  // nothing was published, so nothing can be serving.
   process.exitCode = 0;
 }
 
@@ -48,7 +46,7 @@ if (host !== undefined) {
       });
       published = true;
     } catch {
-      // The expected outcome: a broken packaged tool cannot start a site.
+      published = false;
     }
     if (published) {
       const answered = await fetch(host.url(DEPLOYMENT), {

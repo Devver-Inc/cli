@@ -14,19 +14,9 @@ import {
 } from "./errors";
 import type { BackendErrorBody } from "./errors";
 
-/**
- * Effect-based HTTP client built on top of Effect's HTTP modules.
- *
- * Provides ApiClient (via Effect Context) so that any request function
- * can `yield* ApiClient` to get an authenticated, schema-validated client.
- * Auth is injected through the AuthToken service at the Layer level.
- * The API base URL is injected through the ApiBaseUrl service.
- */
-
 export class ApiError extends Data.TaggedError("ApiError")<{
   readonly status: number;
   readonly message: string;
-  /** Machine-readable error code from the backend (e.g. "PROJECT_NOT_FOUND"). */
   readonly code?: string;
 }> {}
 
@@ -52,8 +42,6 @@ interface ApiClientService {
     schema: Schema.Codec<A, unknown, never, unknown>
   ) => Effect.Effect<A, ApiRequestError>;
 
-  // Request bodies are decoded by their owning module before they reach the
-  // transport, which only serializes them; `bodyJson` takes an unknown value.
   readonly post: <A>(
     path: string,
     // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Already decoded by its owning module; this seam only serializes it.
@@ -78,10 +66,6 @@ export class ApiClient extends Context.Service<ApiClient, ApiClientService>()(
   "@devver/cli/api/client/ApiClient"
 ) {}
 
-/**
- * Check HTTP response status. On failure, reads the response body to extract
- * the backend error code and details so the CLI can show actionable messages.
- */
 const checkStatus = (
   response: HttpClientResponse.HttpClientResponse
 ): Effect.Effect<HttpClientResponse.HttpClientResponse, ApiError> =>
@@ -90,7 +74,6 @@ const checkStatus = (
     : Effect.gen(function* () {
         const body: BackendErrorBody | undefined = yield* response.json.pipe(
           Effect.flatMap(Schema.decodeUnknownEffect(BackendErrorBodySchema)),
-          // No backend error body is different from a malformed one; both use the status.
           Effect.orElseSucceed(() => undefined)
         );
 

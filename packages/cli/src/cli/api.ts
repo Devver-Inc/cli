@@ -11,10 +11,6 @@ class ApiTargetError extends Data.TaggedError("ApiTargetError")<{
   message: string;
 }> {}
 
-/**
- * Supply one client for a verified local target for the entire command. The
- * loopback control gate authorizes these requests, so they carry no token.
- */
 export const withLocalApi = <A, E, R>(
   target: typeof LocalTargetSchema.Type,
   effect: Effect.Effect<A, E, R | ApiClient>
@@ -27,7 +23,6 @@ export const withLocalApi = <A, E, R>(
   return effect.pipe(Effect.provide(layer), Effect.scoped);
 };
 
-/** Supply one authenticated client for the entire command. */
 export const withApi = <A, E, R>(effect: Effect.Effect<A, E, R | ApiClient>) =>
   Effect.gen(function* () {
     const { apiUrl } = yield* root;

@@ -91,7 +91,6 @@ const isSqliteModule = (value: unknown): value is SqliteModule =>
   (("DatabaseSync" in value && typeof value.DatabaseSync === "function") ||
     ("Database" in value && typeof value.Database === "function"));
 
-/** The record file is created owner-only before any driver can widen it. */
 async function privateFile(path: string) {
   const handle = await open(path, "a", PRIVATE_FILE);
   await handle.close();
@@ -108,11 +107,6 @@ async function privateFile(path: string) {
   }
 }
 
-/**
- * Open (creating if absent) the deployment records of one server instance.
- * Rows are decoded on the way out, so a corrupt row fails instead of becoming
- * a half-known deployment.
- */
 export async function openDeploymentStore(path: string) {
   await privateFile(path);
   const loaded: unknown = await import(
@@ -135,9 +129,6 @@ export async function openDeploymentStore(path: string) {
     stage TEXT,
     createdAt TEXT NOT NULL
   ) STRICT`);
-  // State written before teardown stopped addressing daemons by name carried
-  // a per-deployment site port. No port is recorded any more: the deployment
-  // host owns every port decision, so a stale column is dropped when present.
   if (
     database
       .prepare("PRAGMA table_info(deployments)")
@@ -189,7 +180,6 @@ export async function openDeploymentStore(path: string) {
     markFailed: (deploymentId: string, stage: DeployStage) => {
       setStatus.run("failed", stage, deploymentId);
     },
-    /** Recorded intent the server could not serve again: no route. */
     markDegraded: (deploymentId: string, stage: DeployStage) => {
       setStatus.run("degraded", stage, deploymentId);
     },
@@ -197,11 +187,6 @@ export async function openDeploymentStore(path: string) {
       const [row] = select.all(deploymentId);
       return row === undefined ? undefined : decodeDeployment(row);
     },
-    /**
-     * Every record this runtime can trust, plus how many it cannot. A row that
-     * fails to decode is counted, never rewritten: a half-known deployment
-     * must not overwrite the record of an earlier one.
-     */
     list: () => {
       const deployments: Deployment[] = [];
       let unreadable = 0;
@@ -214,7 +199,6 @@ export async function openDeploymentStore(path: string) {
       }
       return { deployments, unreadable };
     },
-    /** The loopback port every deployment URL of this instance is published on. */
     appPort: (): number | undefined => {
       const [row] = selectSetting.all(APP_PORT);
       return row === undefined ? undefined : decodePort(row.value);

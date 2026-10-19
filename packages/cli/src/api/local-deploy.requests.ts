@@ -5,7 +5,6 @@ import { ApiClient } from "./client";
 const DeploymentId = Schema.String.check(Schema.isUUID(4));
 const Commit = Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/u));
 
-/** The checkout root and the exact committed revision the server must serve. */
 export const LocalDeploymentRequestSchema = Schema.Struct({
   source: Schema.String.check(Schema.isMinLength(1)),
   commit: Commit,

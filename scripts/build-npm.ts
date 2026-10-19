@@ -19,7 +19,6 @@ import { packageStaticTools } from "./static-tools";
 const outfile = "packages/cli/dist/cli.mjs";
 const serverOutfile = `packages/cli/dist/servers/${pkg.version}/server.mjs`;
 
-// Do not pack a server from a previous build/version alongside this one.
 rmSync("packages/cli/dist", { recursive: true, force: true });
 
 const result = await Bun.build({
@@ -47,7 +46,6 @@ const server = await Bun.build({
   naming: { entry: "server.mjs" },
   target: "node",
   format: "esm",
-  // The pinned copy runs outside node_modules and must retain its dependencies offline.
   packages: "bundle",
 });
 if (!server.success) {

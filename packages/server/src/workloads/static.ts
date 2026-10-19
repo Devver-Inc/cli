@@ -1,13 +1,3 @@
-/**
- * The static-site workload.
- *
- * Everything static-specific lives here: the `static:` section of
- * `.devver.yaml`, directory containment and symlink rejection, the Websitino
- * command and its macOS 14 requirement. If every static line disappeared from
- * the rest of the subsystem, this module plus one registry entry is all that
- * would remain when another workload is added.
- */
-
 import { lstat, readdir, realpath } from "node:fs/promises";
 import { release } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -19,7 +9,6 @@ import { locateWebsitino } from "../packaged-tools";
 import { readDevverFile } from "./config";
 import type { DaemonSpec, WorkloadKind } from "./types";
 
-/** Only the `static:` section. Sections of other workloads are ignored here. */
 const StaticSection = Schema.Struct({
   workload: Schema.optional(Schema.String),
   static: Schema.optional(
@@ -60,7 +49,6 @@ async function verifyStaticTree(root: string) {
   }
 }
 
-/** Resolve only static files from the selected, committed worktree. */
 export async function staticSourceDirectory(worktree: string): Promise<string> {
   const root = await realpath(worktree);
   const file = await readDevverFile(worktree);

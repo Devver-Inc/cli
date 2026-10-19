@@ -164,8 +164,6 @@ const cloudDeploy = Effect.gen(function* () {
   });
   if (confirm !== "Yes") {
     yield* Console.log("Deployment cancelled.");
-    // Stop before push or deployment creation. The success path falls out of
-    // the generator instead of returning, which `consistent-return` reports.
     // oxlint-disable-next-line typescript/consistent-return
     return;
   }

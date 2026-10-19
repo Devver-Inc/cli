@@ -18,7 +18,6 @@ const CONTROL_URL = /^http:\/\/127\.0\.0\.1:\d+\/api\/v1$/u;
 const APP_URL =
   /App URL: (?<url>http:\/\/(?<id>[0-9a-f-]{36})\.(?<project>[a-z0-9-]+)\.localhost:(?<port>\d+)\/)/u;
 
-/** The server finds its packaged Pitchfork/Websitino beside a built artifact. */
 function packagedTools() {
   const tools = join(repo, "packages", "cli", "dist", "servers", pkg.version);
   if (
@@ -78,7 +77,6 @@ function git(cwd: string, ...args: string[]) {
   return result.stdout.toString().trim();
 }
 
-/** A committed static site plus edits that must never reach a deployment. */
 function checkout(root: string) {
   const directory = join(root, "site-checkout");
   mkdirSync(join(directory, "assets"), { recursive: true });
@@ -175,7 +173,6 @@ test("deploy serves the committed HEAD of an attached local target at a loopback
     expect((await body(`${url}secret.txt`)).status).not.toBe(200);
     expect(index.text).not.toContain("uncommitted");
 
-    // Unknown and malformed project hostnames cannot reach the deployment.
     for (const host of [
       `${"0".repeat(8)}-0000-4000-8000-${"0".repeat(12)}.deployer.localhost:${port}`,
       `127.0.0.1:${port}`,
@@ -189,7 +186,6 @@ test("deploy serves the committed HEAD of an attached local target at a loopback
     expect((await body(`${control}/index.html`)).status).not.toBe(200);
     expect((await body(`${control}/api/v1/identity`)).status).toBe(200);
 
-    // A later commit moves the branch; the deployment keeps its own revision.
     writeFileSync(join(source.directory, "index.html"), "<h1>later</h1>");
     git(source.directory, "add", ".");
     git(source.directory, "commit", "-q", "-m", "later revision");
@@ -199,7 +195,6 @@ test("deploy serves the committed HEAD of an attached local target at a loopback
     rmSync(ws.root, { recursive: true, force: true });
   }
   if (appUrl !== undefined) {
-    // The stopped server leaves no supervised app process behind.
     const orphan = await body(appUrl).catch(() => ({ status: 0, text: "" }));
     expect(orphan.status).not.toBe(200);
   }

@@ -7,17 +7,9 @@ import { LocalStorageAdapter } from "@flystorage/local-fs";
 
 import { Global } from "./global";
 
-/**
- * Thin wrapper around flystorage scoped to the XDG data dir (~/.local/share/devver).
- * All paths are relative to that root -- NOT the user's project cwd.
- * Use this for CLI-internal persisted state (tokens, repo links, project prefs, etc.).
- */
 const storage = new FileStorage(new LocalStorageAdapter(Global.Path.data));
 
 async function write(filePath: string, contents: string): Promise<void> {
-  // The local adapter does not create a missing parent on every platform:
-  // writing a nested key such as "config/cli" into a fresh data directory
-  // failed with ENOENT on Windows. Secrets keep their own owner-only writer.
   await mkdir(dirname(join(Global.Path.data, filePath)), { recursive: true });
   await storage.write(filePath, contents);
 }

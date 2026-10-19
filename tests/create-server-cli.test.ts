@@ -56,9 +56,6 @@ function workspace() {
     };
   };
   const run = (...args: string[]) => invoke([], args);
-  // Reports the platform the CLI dispatches on before its entry point runs.
-  // This proves which creator a platform reaches; it proves nothing about
-  // whether that platform's service manager works on this host.
   const runAs = (platform: string, ...args: string[]) => {
     const preload = join(root, `platform-${platform}.mjs`);
     writeFileSync(
@@ -301,7 +298,7 @@ test("installed npm bin pins and starts its server after the CLI exits", async (
           process.kill(pid);
         }
       } catch {
-        // Creation may have failed or the test may have stopped this server.
+        continue;
       }
     }
     rmSync(ws.root, { recursive: true, force: true });

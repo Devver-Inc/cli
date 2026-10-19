@@ -1,10 +1,3 @@
-/**
- * Persistent CLI configuration stored in the XDG data directory.
- *
- * Config stores the selected local or official cloud target and the legacy
- * api-url setting. Neither the stored api-url nor DEVVER_API_URL selects a target.
- */
-
 import { Schema } from "effect";
 
 import { Storage } from "../storage";

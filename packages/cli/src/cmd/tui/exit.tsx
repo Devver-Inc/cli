@@ -1,11 +1,6 @@
 import { createContext, useCallback, useContext, useRef } from "react";
 import type { ReactNode } from "react";
 
-/**
- * Shutting the view down is the only thing the TUI decides for itself. Failures
- * stay in the Effect that started it, where `NodeRuntime.runMain` renders the
- * cause and sets the exit status.
- */
 type Exit = () => Promise<void>;
 const ExitContext = createContext<Exit | undefined>(undefined);
 

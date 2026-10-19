@@ -8,9 +8,6 @@ import pkg from "../package.json";
 const repo = join(import.meta.dir, "..");
 const cli = join(repo, "devver");
 const packaged = join(repo, "servers", pkg.version, "devver-server");
-// The standalone distribution carries its own runtime, so every process below
-// runs with a PATH that holds neither Node nor Bun. /bin keeps launchctl
-// reachable for the supervised creation path.
 const NO_RUNTIME = "/usr/bin:/bin";
 const CONTROL_URL = /http:\/\/127\.0\.0\.1:\d+\/api\/v1/u;
 
@@ -119,7 +116,6 @@ test("the standalone CLI switches between its packaged servers with no runtime i
 
     expect(ws.run("detach").status).toBe(0);
     expect(ws.run("server", "status").output).toContain("No server attached");
-    // Detaching selects nothing: both packaged servers keep answering.
     expect((await fetch(`${first.url}/identity`)).status).toBe(200);
     expect((await fetch(`${second.url}/identity`)).status).toBe(200);
   } finally {

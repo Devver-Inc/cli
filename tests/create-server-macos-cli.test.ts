@@ -10,8 +10,6 @@ import pkg from "../package.json";
 const repo = join(import.meta.dir, "..");
 const cli = join(repo, "packages/cli/dist", "cli.mjs");
 const node = Bun.which("node");
-// The npm distribution must create and supervise its packaged server on Node
-// alone, so the CLI under test runs with Bun absent from PATH.
 const NODE_ONLY = node === null ? "" : `${dirname(node)}:/usr/bin:/bin`;
 const CONTROL_URL = /http:\/\/127\.0\.0\.1:\d+\/api\/v1/u;
 const decodeIdentity = Schema.decodeUnknownSync(
@@ -57,7 +55,6 @@ function launchctl(...args: string[]) {
   return { status: result.exitCode, output: result.stdout.toString() };
 }
 
-// Supervision needs a reachable per-user launchd domain; headless CI may lack one.
 function supervisableDomain() {
   if (process.platform !== "darwin") {
     return null;
@@ -70,7 +67,6 @@ function supervisableDomain() {
   return launchctl("print", domain).status === 0 ? domain : null;
 }
 
-// Empty output means the job is not registered, which every caller asserts against.
 function describeJob(domain: string, label: string) {
   return launchctl("print", `${domain}/${label}`).output;
 }
@@ -124,7 +120,7 @@ test("macOS launchd keeps named servers ready after CLI exits and attachment is 
           decodeService(JSON.parse(readFileSync(service, "utf-8"))).label
         );
       } catch {
-        /* no registration */
+        throw new Error("Could not read service label");
       }
       expect(created.status, created.output).toBe(0);
       const url = CONTROL_URL.exec(created.output)?.[0];
@@ -159,7 +155,6 @@ test("macOS launchd keeps named servers ready after CLI exits and attachment is 
           )
         ).mode % 0o1000
       ).toBe(0o700);
-      // Readiness is only truthful if launchd, not the exited CLI, owns the process.
       expect(describeJob(domain, labels.at(-1) ?? "")).toContain(
         "state = running"
       );

@@ -1,12 +1,3 @@
-/**
- * Windows named-instance creation supervised by the native Task Scheduler.
- *
- * The task is registered without any trigger, so it starts only on demand:
- * creation never installs logon or boot startup. Restart on failure is bounded
- * by RestartCount/RestartInterval, and readiness is reported only after the
- * registered task is confirmed running with those settings.
- */
-
 import { randomUUID } from "node:crypto";
 import { link, lstat, mkdir, open, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -22,8 +13,6 @@ import { isAlreadyExists } from "../util/fs-errors";
 import { verifyIdentity } from "./local-server";
 import { availablePort } from "./loopback";
 
-// Each owner/ACL verification spawns a PowerShell command, so a supervised
-// server needs a longer readiness budget than a POSIX one.
 const READINESS_MS = 20_000;
 // Windows command-line quoting: double any backslashes that precede a quote or
 // end the value, and escape embedded quotes.
@@ -83,8 +72,6 @@ async function task(action: string, name: string, command = "", args = "") {
     ["-NoProfile", "-NonInteractive", "-Command", TASK_SCRIPT],
     {
       timeout: 30_000,
-      // A failing task report names the task and its settings; truncating that
-      // to ENOBUFS would replace the real reason with a spurious one.
       maxBuffer: 4 * 1024 * 1024,
       windowsHide: true,
       env: {
@@ -99,7 +86,6 @@ async function task(action: string, name: string, command = "", args = "") {
   return result.stdout.trim();
 }
 
-/** Never throws: it only explains a readiness failure that already happened. */
 async function diagnose(name: string) {
   try {
     return await task("diagnose", name);
@@ -108,13 +94,6 @@ async function diagnose(name: string) {
   }
 }
 
-/**
- * Waits for the named instance to answer on its own control URL. Returns true
- * once it does, otherwise the last probe outcome: a readiness failure must say
- * whether nothing ever listened or something listened under another identity,
- * because the second means the supervised process resolved its instance state
- * somewhere the creating CLI did not.
- */
 async function waitForIdentity(
   url: string,
   name: string,
@@ -168,7 +147,6 @@ async function pinServer(parent: string, instanceId: string) {
       await handle.writeFile(await readFile(source));
       await handle.sync();
       try {
-        // A complete, fsynced copy becomes visible atomically; never replace a pin.
         await link(staging, destination);
       } catch (error) {
         if (!isAlreadyExists(error)) {
@@ -199,15 +177,10 @@ function quote(value: string) {
 
 export async function create(name: string) {
   if (process.platform !== "win32") {
-    // Nothing below is a security boundary off Windows: refuse before any state
-    // exists rather than fall back to POSIX mode bits.
     throw new Error("Task Scheduler supervision requires Windows");
   }
   const parent = await instanceParent(name);
   const directory = join(parent, name);
-  // Exclusive creation is the duplicate-name gate: nothing belonging to that
-  // name is touched. The parent's DACL is already verified owner-only, so the
-  // new directory inherits that single rule at creation.
   try {
     await mkdir(directory);
   } catch (error) {
@@ -246,8 +219,6 @@ export async function create(name: string) {
     const url = `http://127.0.0.1:${port}/api/v1`;
     const reached = await waitForIdentity(url, name, instance.instanceId);
     if (reached === true) {
-      // Outside the probe's own error handling: a broken supervision contract
-      // must surface its reason, not be retried until the budget expires.
       await task("supervised", taskName);
       return url;
     }
@@ -255,8 +226,6 @@ export async function create(name: string) {
       `Server did not return its expected identity while supervised (${await diagnose(taskName)}; last probe: ${reached})`
     );
   } catch (error) {
-    // Even if registration failed, stop the unique task before discarding its
-    // state. If that fails, keep service.json so the user can stop it by hand.
     try {
       await task("remove", taskName);
       await rm(directory, { recursive: true });

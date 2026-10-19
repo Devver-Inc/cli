@@ -46,7 +46,6 @@ if (
 ) {
   NodeRuntime.runMain(
     Command.run(cli, { version: versionLine(pkg.version) }).pipe(
-      // This is the process entry point, the one place layers are provided.
       // @effect-diagnostics-next-line strictEffectProvide:off
       Effect.provide(NodeServices.layer)
     )

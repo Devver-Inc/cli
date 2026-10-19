@@ -18,12 +18,6 @@ async function isToolchain(directory: string) {
   return true;
 }
 
-/**
- * The pinned toolchain ships beside the server artifact: next to `server.mjs`
- * for npm and next to the compiled executable for standalone, in both the
- * distribution and the per-version installation a supervisor pins. A source
- * checkout has no artifact of its own, so it uses the one a build produced.
- */
 export async function packagedToolsDirectory() {
   for (const candidate of [
     import.meta.dirname,
@@ -48,7 +42,6 @@ export async function packagedToolsDirectory() {
   );
 }
 
-/** The packaged static file server, beside the supervisor in the toolchain. */
 export async function locateWebsitino() {
   const toolsDirectory = await packagedToolsDirectory();
   const websitino = join(toolsDirectory, `websitino${EXECUTABLE}`);

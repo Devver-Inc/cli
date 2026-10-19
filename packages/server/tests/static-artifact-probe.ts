@@ -7,8 +7,6 @@ import { join } from "node:path";
 import { openDeploymentHost, portPlaceholder } from "../index";
 import { locateWebsitino } from "../src/packaged-tools";
 
-// Every request is bounded so the probe cannot outlive its supervising check,
-// which owns the directory below and tears the managed processes down itself.
 const DEADLINE = 5000;
 const FIRST = "11111111-1111-4111-8111-111111111111";
 const SECOND = "22222222-2222-4222-8222-222222222222";
@@ -42,8 +40,6 @@ async function unreachable(url: string, timeout = 1000) {
 }
 
 const instanceDirectory = join(root, "instance");
-// The host requires the instance directory itself to be owner-only; create it
-// before any site below it, which would otherwise create it world-readable.
 await mkdir(instanceDirectory, { recursive: true, mode: 0o700 });
 for (const deploymentId of [FIRST, SECOND]) {
   const site = join(instanceDirectory, "sites", deploymentId);
@@ -108,7 +104,6 @@ try {
     });
   });
 }
-// The supervising check owns teardown, so it needs the port this run chose.
 console.log(`proxyPort=${host.proxyPort}`);
 try {
   await host.publish(FIRST, {
@@ -125,13 +120,11 @@ try {
   if ((await request(`${host.url(FIRST)}listing/`)).status === 200) {
     throw new Error("Directory listing was served");
   }
-  // A hostname with no published deployment reaches nothing.
   const unknown = await request(host.url(UNKNOWN));
   if (unknown.status >= 200 && unknown.status < 400) {
     throw new Error("An unpublished deployment hostname was routed");
   }
 
-  // A second deployment is served beside the first, on the same proxy port.
   await host.publish(SECOND, {
     command: command(join(instanceDirectory, "sites", SECOND)),
     dir: join(instanceDirectory, "sites", SECOND),
@@ -171,7 +164,6 @@ try {
     throw new Error("Non-loopback interface accepted a connection");
   }
 
-  // Withdrawing one deployment leaves its sibling serving.
   await host.withdraw(FIRST);
   if ((await request(host.url(FIRST))).status === 200) {
     throw new Error("A withdrawn deployment is still routed");
@@ -187,7 +179,6 @@ if (!(await unreachable(`http://127.0.0.1:${host.proxyPort}/`))) {
   throw new Error("The proxy remained reachable after close");
 }
 
-// Reopening the same instance adopts the state the closed host left behind.
 const restarted = await openDeploymentHost({
   toolsDirectory,
   instanceDirectory,

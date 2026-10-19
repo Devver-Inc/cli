@@ -18,7 +18,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        # Windows CI resumes after its server and deployment paths are verified.
     steps:
       - uses: actions/checkout@v4
 
@@ -47,8 +46,6 @@ jobs:
 
       - name: Run tests
         run: bun run test
-
-  # Windows jobs remain paused until instance state can be tested in isolation.
 
   build:
     name: Build Check

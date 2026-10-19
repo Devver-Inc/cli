@@ -1,11 +1,3 @@
-/**
- * Owner-only creation steps shared by the POSIX supervisors.
- *
- * POSIX mode bits are the whole access boundary here, so the pinned server and
- * its installation directories are created with them and verified afterwards.
- * Windows instance state cannot use them and keeps its own ACL-backed copy.
- */
-
 import { randomUUID } from "node:crypto";
 import { link, lstat, mkdir, open, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -41,7 +33,6 @@ export async function pinServer(parent: string, instanceId: string) {
   await privateDirectory(installations);
   const version = join(installations, pkg.version);
   await privateDirectory(version);
-  // shortcut: failed creations can leave an unused pin; collect it when server removal owns teardown.
   const pinnedInstance = join(version, instanceId);
   await privateDirectory(pinnedInstance);
   const npm = process.versions.bun === undefined;
@@ -67,7 +58,6 @@ export async function pinServer(parent: string, instanceId: string) {
       await handle.writeFile(await readFile(source));
       await handle.sync();
       try {
-        // A complete, fsynced copy becomes visible atomically; never replace a pin.
         await link(staging, destination);
       } catch (error) {
         if (!isAlreadyExists(error)) {

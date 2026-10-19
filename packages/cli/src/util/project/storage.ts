@@ -19,9 +19,5 @@ export async function setCurrentProjectId(projectId: string): Promise<void> {
 }
 
 export async function clearCurrentProject(): Promise<void> {
-  try {
-    await Storage.deleteFile(CURRENT_PROJECT_KEY);
-  } catch {
-    // Ignore if file doesn't exist
-  }
+  await Storage.deleteFile(CURRENT_PROJECT_KEY).catch(() => undefined);
 }
