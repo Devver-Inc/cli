@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "bun build src/index.ts --target=node --packages=bundle --outfile=dist/server.mjs",
-    "test": "bun test tests/*.test.ts"
+    "test": "bun test ../../tests/server-identity.test.ts"
   },
   "dependencies": {
     "@effect/platform-node": "4.0.0",
