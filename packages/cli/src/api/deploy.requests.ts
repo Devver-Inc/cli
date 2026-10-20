@@ -2,10 +2,6 @@ import { Effect, Schema } from "effect";
 
 import { ApiClient } from "./client";
 
-// ---------------------------------------------------------------------------
-// Schemas (request & response validation via Effect Schema)
-// ---------------------------------------------------------------------------
-
 export const CreateRepositorySchema = Schema.Struct({
   name: Schema.String.check(Schema.isMinLength(1)),
 });
@@ -109,10 +105,6 @@ export const MongoDatabaseSchema = Schema.Struct({
   empty: Schema.Boolean,
 });
 
-// ---------------------------------------------------------------------------
-// Derived types
-// ---------------------------------------------------------------------------
-
 export type CreateRepositoryDto = Schema.Schema.Type<
   typeof CreateRepositorySchema
 >;
@@ -132,10 +124,6 @@ export type ControlPm2ProcessResultDto = Schema.Schema.Type<
   typeof ControlPm2ProcessResultSchema
 >;
 export type MongoDatabaseDto = Schema.Schema.Type<typeof MongoDatabaseSchema>;
-
-// ---------------------------------------------------------------------------
-// Effect-based API request functions
-// ---------------------------------------------------------------------------
 
 export const listRepos = (projectId: string) =>
   Effect.gen(function* () {

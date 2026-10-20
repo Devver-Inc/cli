@@ -4,13 +4,25 @@ import { ApiBaseUrl, ApiClientLayer, AuthToken } from "../api/client";
 import type { ApiClient } from "../api/client";
 import { getAccessToken } from "../auth/client";
 import { CLOUD_API_URL, readConfig } from "../config/api";
+import type { LocalTargetSchema } from "../config/api";
 import { root } from "./root";
 
 class ApiTargetError extends Data.TaggedError("ApiTargetError")<{
   message: string;
 }> {}
 
-/** Supply one authenticated client for the entire command. */
+export const withLocalApi = <A, E, R>(
+  target: typeof LocalTargetSchema.Type,
+  effect: Effect.Effect<A, E, R | ApiClient>
+) => {
+  const layer = ApiClientLayer.pipe(
+    Layer.provide(Layer.succeed(AuthToken, { token: null })),
+    Layer.provide(Layer.succeed(ApiBaseUrl, { url: target.url }))
+  );
+  // @effect-diagnostics-next-line strictEffectProvide:off
+  return effect.pipe(Effect.provide(layer), Effect.scoped);
+};
+
 export const withApi = <A, E, R>(effect: Effect.Effect<A, E, R | ApiClient>) =>
   Effect.gen(function* () {
     const { apiUrl } = yield* root;
@@ -41,8 +53,6 @@ export const withApi = <A, E, R>(effect: Effect.Effect<A, E, R | ApiClient>) =>
       Layer.provide(Layer.succeed(AuthToken, { token })),
       Layer.provide(Layer.succeed(ApiBaseUrl, { url }))
     );
-    // AGENTS.md: one authenticated API layer per command, scoped by the
-    // surrounding Effect.scoped, not composed at the process entry point.
     // @effect-diagnostics-next-line strictEffectProvide:off
     return yield* effect.pipe(Effect.provide(layer));
   }).pipe(Effect.scoped);

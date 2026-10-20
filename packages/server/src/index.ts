@@ -5,6 +5,7 @@ import type { IncomingMessage } from "node:http";
 import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
 import { Data, Effect, Layer } from "effect";
 import {
+  FetchHttpClient,
   HttpRouter,
   HttpServer,
   HttpServerRequest,
@@ -13,7 +14,8 @@ import {
 import { HttpApiBuilder } from "effect/http-api";
 
 import { API_PATH, api } from "./api";
-import { instanceHandlers } from "./handlers";
+import { openDeployer } from "./deploy";
+import { deploymentHandlers, instanceHandlers } from "./handlers";
 import { loadInstance } from "./identity";
 
 const HOST = "127.0.0.1";
@@ -62,6 +64,7 @@ const serveOnListener = (name: string) =>
       });
     }
     const origin = `http://${HOST}:${address.port}`;
+    const deployer = yield* openDeployer(name);
 
     const requestPolicy = HttpRouter.middleware(
       (next) =>
@@ -94,7 +97,8 @@ const serveOnListener = (name: string) =>
     const handler = yield* HttpRouter.toHttpEffect(
       Layer.mergeAll(
         HttpApiBuilder.layer(api).pipe(
-          Layer.provide(instanceHandlers(instance))
+          Layer.provide(instanceHandlers(instance)),
+          Layer.provide(deploymentHandlers(deployer))
         ),
         requestPolicy
       )
@@ -104,13 +108,16 @@ const serveOnListener = (name: string) =>
     return `${origin}${API_PATH}`;
   });
 
-// Build in the caller's scope so returning the URL does not close the listener.
 export const serve = (name: string, port: number) =>
   Effect.gen(function* () {
     const listener = yield* Layer.build(
       NodeHttpServer.layer(() => createServer(), { host: HOST, port })
     );
-    return yield* serveOnListener(name).pipe(Effect.provide(listener));
+    return yield* serveOnListener(name).pipe(
+      Effect.provide(listener),
+      // @effect-diagnostics-next-line strictEffectProvide:off
+      Effect.provide(FetchHttpClient.layer)
+    );
   });
 
 function parsePort(input: string | undefined) {

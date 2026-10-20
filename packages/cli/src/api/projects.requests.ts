@@ -12,8 +12,6 @@ import type { CreateProjectDto, InvalidProjectInput } from "../domain/project";
 import { ApiClient } from "./client";
 import type { ApiRequestError } from "./client";
 
-// Response schemas share domain constraints with outgoing project settings.
-
 const GetUserLightSchema = Schema.Struct({
   id: Schema.String,
   email: Schema.NullOr(Schema.String),
@@ -34,8 +32,6 @@ export const DatabaseConfigurationResponseSchema = Schema.Struct({
   cpuCores: Schema.optional(Schema.Finite),
   storage: Schema.optional(Schema.Finite),
 });
-
-// -- Project ---------------------------------------------------------------
 
 const ProjectBase = {
   name: ProjectNameField,
@@ -83,8 +79,6 @@ export const PaginatedProjectsSchema = Schema.Struct({
     itemsPerPage: Schema.Finite,
   }),
 });
-
-// Request functions
 
 export const getProjects = Effect.gen(function* () {
   const api = yield* ApiClient;

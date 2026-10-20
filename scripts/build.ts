@@ -4,6 +4,7 @@ import { rmSync } from "node:fs";
 
 import pkg from "../package.json";
 import { buildDefines } from "./stamp";
+import { packageStaticTools } from "./static-tools";
 
 const config: Bun.BuildConfig = {
   entrypoints: ["./packages/cli/src/cli/index.ts"],
@@ -23,14 +24,15 @@ if (!result.success) {
   process.exit(1);
 }
 
-// Archives contain only the server matching this CLI, not previous builds.
 rmSync("servers", { recursive: true, force: true });
 const server = await Bun.build({
   entrypoints: ["./packages/server/src/index.ts"],
   compile: {
     outfile: `servers/${pkg.version}/devver-server${process.platform === "win32" ? ".exe" : ""}`,
   },
-  define: { DEVVER_STANDALONE_ENTRY: "true" },
+  define: { DEVVER_STANDALONE_ENTRY: "true", DEVVER_NODE_SQLITE: "false" },
+  external: ["@effect/sql-sqlite-node/SqliteClient"],
+  minify: { syntax: true },
 });
 if (!server.success) {
   console.error("Standalone server build failed:");
@@ -39,6 +41,8 @@ if (!server.success) {
   }
   process.exit(1);
 }
+
+await packageStaticTools(`servers/${pkg.version}`);
 
 console.log(
   `Built devver and servers/${pkg.version}/devver-server (version ${pkg.version})`

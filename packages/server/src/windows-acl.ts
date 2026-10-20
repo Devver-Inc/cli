@@ -1,24 +1,9 @@
-/**
- * Windows-only owner-only instance state.
- *
- * POSIX mode bits are not a Windows security boundary, so this module never
- * inspects them. Instead the shared `devver` root is created *with* a
- * protected, owner-only DACL in a single operation, which rules out the
- * race-prone pattern of creating a directory and repairing its permissions
- * afterwards. Everything below that root is created with ordinary atomic
- * Node calls, inherits that single owner-only access rule, and is verified
- * (owner SID plus every effective access rule) before it is trusted.
- */
-
-import { execFile } from "node:child_process";
 import { lstat, mkdir } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { promisify } from "node:util";
 
+import { execute } from "./exec";
 import { isAlreadyExists } from "./fs-errors";
 
-// oxlint-disable-next-line typescript/strict-void-return -- Node's execFile overload is supported by promisify and retains its rejection semantics.
-const execute = promisify(execFile);
 const ROOT = "devver";
 
 // Windows PowerShell 5.1 is present on every supported Windows host and its
@@ -31,12 +16,8 @@ async function powershell(script: string, variables: Record<string, string>) {
       ["-NoProfile", "-NonInteractive", "-Command", script],
       {
         timeout: 15_000,
-        // A failing ACL report prints the offending path and its rules, which
-        // does not fit a small buffer; truncating it to ENOBUFS would replace
-        // the real reason with a spurious one.
         maxBuffer: 4 * 1024 * 1024,
         windowsHide: true,
-        // Paths travel in the environment: they are never interpolated into the script.
         env: { ...process.env, ...variables },
       }
     );
@@ -52,8 +33,6 @@ async function powershell(script: string, variables: Record<string, string>) {
   }
 }
 
-// Shared by both scripts: throws unless the path is a real owner-only entry
-// whose every effective access rule grants the current user alone.
 const CHECK_ENTRY = `
 function Confirm-Private([string] $path, [string] $kind, [bool] $protectedAcl) {
   $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
@@ -117,7 +96,6 @@ Confirm-Private $path 'directory' $true
 Write-Output $path
 `;
 
-// Listing state must never create the protected root used by creation.
 const FIND_ROOT = `
 $ErrorActionPreference = 'Stop'
 ${CHECK_ENTRY}
@@ -155,10 +133,6 @@ function requireWindows() {
   }
 }
 
-/**
- * Verifies entries created below the protected root. Each inherits the root's
- * single owner-only rule, so protection is checked on the root alone.
- */
 export async function verifyWindowsPrivate(
   ...entries: { path: string; kind: "directory" | "file" }[]
 ) {
@@ -184,10 +158,6 @@ export async function verifyWindowsPrivate(
   }
 }
 
-/**
- * Creates directories that inherit the verified root's single owner-only rule,
- * then verifies them together.
- */
 export async function windowsPrivateDirectories(...paths: string[]) {
   requireWindows();
   for (const path of paths) {
@@ -204,14 +174,9 @@ export async function windowsPrivateDirectories(...paths: string[]) {
   );
 }
 
-// Verifying the protected root once per process keeps the PowerShell cost of a
-// single command bounded; every path below it is still verified on each use.
 let servers: Promise<string> | undefined;
 
 async function resolveServers() {
-  // LOCALAPPDATA is per-user and resolved from the OS known folder, never from
-  // an overridable variable. An XDG override would place instance state in a
-  // directory whose trust cannot be established here, so it fails closed.
   if (
     process.env.XDG_DATA_HOME !== undefined &&
     process.env.XDG_DATA_HOME !== ""
@@ -237,17 +202,12 @@ async function resolveServers() {
   return directory;
 }
 
-/**
- * The verified owner-only parent of every named instance's state, under
- * `%LOCALAPPDATA%\devver`.
- */
 export async function windowsServersDirectory() {
   requireWindows();
   servers ??= resolveServers();
   return await servers;
 }
 
-/** Resolve existing state without creating the user root or servers directory. */
 export async function existingWindowsServersDirectory(): Promise<
   string | undefined
 > {

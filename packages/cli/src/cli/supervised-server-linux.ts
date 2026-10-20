@@ -25,7 +25,6 @@ async function removeFailedInstance(unit: string, directory: string) {
   try {
     await manager("systemctl", "--user", "stop", unit);
   } catch (stopError) {
-    // A failed registration may never have installed its unique transient unit.
     const state = await manager(
       "systemctl",
       "--user",
@@ -44,7 +43,6 @@ async function removeFailedInstance(unit: string, directory: string) {
 export async function create(name: string) {
   const parent = await instanceParent(name);
   const directory = join(parent, name);
-  // Exclusive creation is the duplicate-name gate: nothing belonging to that name is touched.
   try {
     await mkdir(directory, { mode: DIRECTORY_MODE });
   } catch (error) {
@@ -60,7 +58,7 @@ export async function create(name: string) {
   try {
     const instance = await loadInstance(name);
     const port = await availablePort();
-    const pinned = await pinServer(parent);
+    const pinned = await pinServer(parent, instance.instanceId);
     const data =
       process.env.XDG_DATA_HOME !== undefined &&
       process.env.XDG_DATA_HOME !== ""
@@ -102,7 +100,10 @@ export async function create(name: string) {
           return url;
         }
       } catch {
-        // A starting server can refuse connections; readiness remains bounded.
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 150);
+        });
+        continue;
       }
       await new Promise<void>((resolve) => {
         setTimeout(resolve, 150);
@@ -112,8 +113,6 @@ export async function create(name: string) {
       "Server did not return its expected identity while supervised"
     );
   } catch (error) {
-    // Even if systemd-run failed, stop the unique unit before discarding its state.
-    // If stopping fails, retain service.json so the user can inspect and stop it manually.
     try {
       await removeFailedInstance(unit, directory);
     } catch {

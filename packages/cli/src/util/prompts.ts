@@ -53,14 +53,6 @@ const secretInput = (message: string) =>
     Effect.map((result) => (isCancel(result) ? "Canceled" : result))
   );
 
-const promptYesNo = async (message: string): Promise<boolean> =>
-  Effect.runPromise(
-    select({
-      message,
-      options: YNOpts,
-    }).pipe(Effect.map((result) => result === "Yes"))
-  );
-
 export const Prompt = {
   intro,
   outro,
@@ -69,5 +61,4 @@ export const Prompt = {
   input,
   secretInput,
   Questions,
-  promptYesNo,
 };

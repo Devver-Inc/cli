@@ -55,7 +55,7 @@ const gitFailure = async () => {
   const previous = process.cwd();
   process.chdir(root);
   try {
-    await getCurrentBranch();
+    await Effect.runPromise(getCurrentBranch);
     return null;
   } catch (error) {
     return error instanceof Error ? error.message : String(error);

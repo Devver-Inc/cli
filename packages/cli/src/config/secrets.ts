@@ -1,17 +1,3 @@
-/**
- * Local secrets manager for deployment-specific environment variables.
- *
- * Inspired by Kamal's `.kamal/secrets` pattern:
- *   - Project-level env vars live in `devver.yml` under `env:`.
- *   - Deployment-specific (secret) env vars live in `.devver/.secrets`,
- *     keyed by deployment name or ID.
- *
- * When constructing a deploy request, secrets are merged on top of
- * project-level env — deployment-specific values take priority.
- *
- * The `.secrets` file is a JSON file and MUST be added to `.gitignore`.
- */
-
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";

@@ -1,17 +1,3 @@
-/**
- * Maps backend error codes to user-friendly CLI messages.
- *
- * The NestJS backend throws exceptions like:
- *   new NotFoundException('PROJECT_NOT_FOUND')
- *   new ForbiddenException('PROJECT_ACCESS_DENIED')
- *   new BadRequestException('USER_NOT_IN_ORGANIZATION')
- *
- * These arrive in the response body as:
- *   { statusCode: 404, message: "PROJECT_NOT_FOUND", error: "Not Found" }
- *
- * This module turns those codes into clear, actionable messages.
- */
-
 import { Schema } from "effect";
 
 export const BackendErrorBodySchema = Schema.Struct({
@@ -35,14 +21,11 @@ export const BackendErrorBodySchema = Schema.Struct({
 
 export type BackendErrorBody = typeof BackendErrorBodySchema.Type;
 
-/** The schema decodes `message` as a single code or a list of field messages. */
 const isCode = (message: BackendErrorBody["message"]): message is string =>
   typeof message === "string";
 
-// Indexed by arbitrary backend codes; retain the dictionary contract for unknown codes.
-// oxlint-disable-next-line anti-slop/no-known-value-widening
+// oxlint-disable-next-line anti-slop/no-known-value-widening -- Error codes from the backend are open-ended; this lookup includes known messages only.
 const ERROR_MESSAGES: Record<string, string> = {
-  // ── Deploy Agent ────────────────────────────────────────────────────
   REPO_NOT_FOUND:
     "Repository not found. It may have been deleted or the URL is incorrect.",
   DEPLOYMENT_NOT_FOUND:
@@ -50,7 +33,6 @@ const ERROR_MESSAGES: Record<string, string> = {
   DATABASE_NOT_ENABLED:
     "Database is not enabled for this project. Enable it in your project settings first.",
 
-  // ── Projects ─────────────────────────────────────────────────────────
   USER_NOT_IN_ORGANIZATION:
     "You are not a member of this organization. Contact an admin to be added.",
   PROJECT_NOT_FOUND:
@@ -65,7 +47,6 @@ const ERROR_MESSAGES: Record<string, string> = {
   INVALID_DATABASE_CPU_REQUEST:
     "Invalid database CPU configuration. CPU cores must be at least 0.1.",
 
-  // ── Organizations ────────────────────────────────────────────────────
   CANNOT_DELETE_ORGANIZATION_WITH_MULTIPLE_MEMBERS:
     "Cannot delete this organization because it still has members. Remove all members first.",
   USER_MUST_HAVE_VERIFIED_EMAIL_FOR_INVITATIONS:
@@ -83,16 +64,13 @@ const ERROR_MESSAGES: Record<string, string> = {
   ADMIN_ORGANIZATION_ROLE_NOT_FOUND:
     "The admin role is missing in the identity provider. Contact support.",
 
-  // ── Comments ─────────────────────────────────────────────────────────
   COMMENT_ACCESS_DENIED: "You don't have access to this comment.",
 
-  // ── Logto / Auth ─────────────────────────────────────────────────────
   UNAUTHORIZED: "Authentication required. Run 'devver auth login' to sign in.",
   FORBIDDEN: "You don't have permission to perform this action.",
   INVALID_CREDENTIALS: "Invalid credentials. Please check your login details.",
   EMAIL_ALREADY_IN_USE: "This email is already associated with an account.",
 
-  // ── General ──────────────────────────────────────────────────────────
   NOT_FOUND: "The requested resource was not found.",
   CONFLICT: "A conflict occurred — the resource may already exist.",
   UNIQUE_CONSTRAINT: "A record with this value already exists.",
@@ -108,7 +86,6 @@ const ERROR_MESSAGES: Record<string, string> = {
   POPULATION_ERROR: "An error occurred while loading related data.",
   FILE_UPLOAD_FAILED: "The file upload failed. Please try again.",
 
-  // ── Database / Infrastructure ────────────────────────────────────────
   DOCUMENT_NOT_FOUND: "The requested document does not exist.",
   INVALID_FIELD_TYPE:
     "Invalid value for a field. Check your input and try again.",
@@ -116,7 +93,6 @@ const ERROR_MESSAGES: Record<string, string> = {
   UNKNOWN_DATABASE_ERROR:
     "An unexpected database error occurred. Please contact support.",
 
-  // ── Deploy (PM2 / build / nginx) ────────────────────────────────────
   INSTALL_ERROR:
     "Failed to install dependencies during deployment. Check your install command.",
   BUILD_ERROR:
@@ -139,39 +115,23 @@ const ERROR_MESSAGES: Record<string, string> = {
     "Failed to fetch databases from MongoDB. Try again later.",
 };
 
-/**
- * Look up a user-friendly message for a backend error code.
- *
- * Falls back to `fallback` (or the raw code) when no mapping exists.
- */
 export function getErrorMessage(code: string, fallback?: string): string {
   const entry: string | undefined = ERROR_MESSAGES[code];
 
   return entry ?? fallback ?? code;
 }
 
-/**
- * The machine-readable code the backend puts in `message`, which validation
- * failures send as a list instead of a single string.
- */
 export function errorCode(
   body: BackendErrorBody | undefined
 ): string | undefined {
   return isCode(body?.message) ? body.message : undefined;
 }
 
-/**
- * Format a backend error response into a human-readable string.
- *
- * Accepts the parsed JSON body from the NestJS error response and produces
- * a single-line message suitable for CLI output.
- */
 export function formatBackendError(body: BackendErrorBody): string {
   const code = errorCode(body);
   const statusLabel =
     body.statusCode === undefined ? "" : `(${body.statusCode})`;
 
-  // Validation errors with field details
   if (body.errors !== undefined && body.errors.length > 0) {
     const details = body.errors
       .map(
@@ -182,7 +142,6 @@ export function formatBackendError(body: BackendErrorBody): string {
     return `Validation failed — ${details} ${statusLabel}`.trim();
   }
 
-  // Unique constraint violation with field info
   if (
     code === "UNIQUE_CONSTRAINT_VIOLATION" &&
     body.field !== undefined &&
@@ -192,26 +151,21 @@ export function formatBackendError(body: BackendErrorBody): string {
     return `${friendly} (field: "${body.field}") ${statusLabel}`.trim();
   }
 
-  // Known error code with a friendly message
   if (code !== undefined && code !== "") {
     const friendly = getErrorMessage(code);
-    // If we got a friendly message that differs from the raw code, include both
     if (friendly !== code) {
       return `${friendly} ${statusLabel}`.trim();
     }
-    // No friendly mapping — use the raw code with the HTTP error category
     if (body.error !== undefined && body.error !== "") {
       return `${code} — ${body.error} ${statusLabel}`.trim();
     }
     return `${code} ${statusLabel}`.trim();
   }
 
-  // Array of messages (validation)
   if (Array.isArray(body.message) && body.message.length > 0) {
     return `${body.message.join("; ")} ${statusLabel}`.trim();
   }
 
-  // Fallback: whatever we have
   if (body.error !== undefined && body.error !== "") {
     return `${body.error} ${statusLabel}`.trim();
   }

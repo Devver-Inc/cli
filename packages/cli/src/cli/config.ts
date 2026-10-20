@@ -15,11 +15,6 @@ const configKey = Argument.String("key").pipe(
   Argument.withSchema(Schema.NonEmptyString)
 );
 
-/**
- * A stored `api-url` no longer selects a target: commands need the official
- * cloud selection, an attached local server, or an explicit `--api-url`.
- * Legacy values still decode but must never look like they took effect.
- */
 const INACTIVE_API_URL =
   "Setting 'api-url' no longer selects a target. Run 'devver cloud' for the official cloud, 'devver attach <url>' for a local server, or pass --api-url for one command.";
 const INACTIVE = "(inactive)";
@@ -33,9 +28,7 @@ const invalidKey = (key: string) =>
     new ConfigCommandError({ message: `Invalid config key '${key}'` })
   );
 
-// Both handlers reject an unknown key through a never-succeeding branch, which
-// Effect requires to be `return yield*` so the rest of the body sees `"api-url"`.
-// oxlint-disable typescript/consistent-return
+// oxlint-disable typescript/consistent-return -- Invalid keys return a never-succeeding Effect so subsequent code sees the validated key.
 const get = Command.make("get", { key: configKey }, ({ key }) =>
   Effect.gen(function* () {
     if (key !== "api-url") {

@@ -1,8 +1,10 @@
-import { Console, Effect, Schema } from "effect";
+import { Console, Data, Effect, Result, Schema, Stream } from "effect";
 import { Argument, Command } from "effect/cli";
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 
 import pkg from "../../../../package.json" with { type: "json" };
 import { listInstances, readInstanceService } from "../../../server/identity";
+import { listLocalDeployments } from "../api/local-deploy.requests";
 import {
   InstanceNameSchema,
   LocalTargetSchema,
@@ -11,6 +13,7 @@ import {
   writeConfig,
 } from "../config/api";
 import type { CliConfig } from "../config/api";
+import { withLocalApi } from "./api";
 
 const IdentitySchema = Schema.Struct({
   instanceId: Schema.String.check(Schema.isUUID(4)),
@@ -22,75 +25,81 @@ const decodeIdentity = Schema.decodeUnknownSync(IdentitySchema);
 const decodeTarget = Schema.decodeUnknownSync(LocalTargetSchema);
 const MAX_IDENTITY_BYTES = 8192;
 
-async function probe(url: string) {
-  const response = await fetch(`${url}/identity`, {
-    redirect: "manual",
-    signal: AbortSignal.timeout(2000),
-    headers: { Accept: "application/json" },
-  });
-  if (response.status !== 200) {
-    await response.body?.cancel();
-    throw new Error(`Identity probe returned HTTP ${response.status}`);
-  }
-  const reader = response.body?.getReader();
-  if (reader === undefined) {
-    throw new Error("Identity response has no body");
-  }
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      size += value.length;
-      if (size > MAX_IDENTITY_BYTES) {
-        throw new Error("Identity response is too large");
-      }
-      chunks.push(value);
+class IdentityProbeError extends Data.TaggedError("IdentityProbeError")<{
+  message: string;
+}> {}
+
+function probe(url: string) {
+  return Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient;
+    const response = yield* client.execute(
+      HttpClientRequest.get(`${url}/identity`).pipe(
+        HttpClientRequest.setHeader("Accept", "application/json")
+      )
+    );
+    if (response.status !== 200) {
+      return yield* new IdentityProbeError({
+        message: `Identity probe returned HTTP ${response.status}`,
+      });
     }
-  } finally {
-    try {
-      await reader.cancel();
-    } catch {
-      // The peer may have already closed the response stream.
-    }
-  }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.length;
-  }
-  let data: unknown;
-  try {
-    data = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-    return decodeIdentity(data);
-  } catch {
-    throw new Error("Server identity response is invalid");
-  }
+    const bytes = yield* Stream.runFoldEffect(
+      response.stream,
+      () => Buffer.alloc(0),
+      (acc, chunk) =>
+        acc.length + chunk.length > MAX_IDENTITY_BYTES
+          ? Effect.fail(
+              new IdentityProbeError({
+                message: "Identity response is too large",
+              })
+            )
+          : Effect.succeed(Buffer.concat([acc, chunk]))
+    );
+    return yield* Effect.try({
+      try: () =>
+        decodeIdentity(
+          JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
+        ),
+      catch: () =>
+        new IdentityProbeError({
+          message: "Server identity response is invalid",
+        }),
+    });
+  }).pipe(
+    Effect.timeout(2000),
+    Effect.provideService(FetchHttpClient.RequestInit, { redirect: "manual" }),
+    // @effect-diagnostics-next-line strictEffectProvide:off
+    Effect.provide(FetchHttpClient.layer),
+    Effect.scoped
+  );
 }
 
+const identityAt = (url: string) =>
+  Effect.gen(function* () {
+    yield* Effect.try(() => validateControlUrl(url));
+    const identity = yield* probe(url);
+    if (identity.serverVersion !== pkg.version) {
+      return yield* new IdentityProbeError({
+        message: `Incompatible server version (expected ${pkg.version})`,
+      });
+    }
+    return yield* Effect.try(() => decodeTarget({ url, ...identity }));
+  });
+
 export async function verifyIdentity(url: string) {
-  validateControlUrl(url);
-  const identity = await probe(url);
-  if (identity.serverVersion !== pkg.version) {
-    throw new Error(`Incompatible server version (expected ${pkg.version})`);
-  }
-  return decodeTarget({ url, ...identity });
+  return await Effect.runPromise(identityAt(url));
 }
 
 export const attach = Command.make(
   "attach",
   { url: Argument.String("url") },
   ({ url }) =>
-    Effect.tryPromise(async () => {
-      // Read first: malformed stored state must never be overwritten by a new attachment.
-      const config = await readConfig();
-      const target = await verifyIdentity(url);
+    Effect.gen(function* () {
+      const config = yield* Effect.tryPromise(readConfig);
+      const target = yield* identityAt(url);
       const { "cloud-target": _removed, ...rest } = config;
-      await writeConfig({ ...rest, "local-target": target });
+      yield* Effect.tryPromise(async () =>
+        writeConfig({ ...rest, "local-target": target })
+      );
       return target;
     }).pipe(
       Effect.flatMap((target) =>
@@ -113,62 +122,86 @@ export const detach = Command.make("detach", {}, () =>
 ).pipe(Command.withDescription("Clear the selected target"));
 
 const status = Command.make("status", {}, () =>
-  Effect.tryPromise(async () => {
-    const config: CliConfig = await readConfig();
+  Effect.gen(function* () {
+    const config: CliConfig = yield* Effect.tryPromise(readConfig);
     const target = config["local-target"];
     if (target === undefined) {
-      return "No server attached";
-    }
-    let reachability = "unreachable";
-    try {
-      const current = await verifyIdentity(target.url);
-      if (
-        current.instanceId === target.instanceId &&
-        current.name === target.name
-      ) {
-        reachability = "reachable";
+      yield* Console.log("No server attached");
+    } else {
+      const current = yield* Effect.result(identityAt(target.url));
+      const reachable =
+        Result.isSuccess(current) &&
+        current.success.instanceId === target.instanceId &&
+        current.success.name === target.name;
+      yield* Console.log(
+        `${target.name} (${target.instanceId}) at ${target.url} — version ${target.serverVersion}: ${reachable ? "reachable" : "unreachable"}`
+      );
+      if (reachable) {
+        const deployments = yield* withLocalApi(
+          target,
+          listLocalDeployments
+        ).pipe(
+          Effect.catchTag("ApiError", (error) =>
+            error.status === 404 || error.status === 405
+              ? Effect.succeed(null)
+              : Effect.fail(error)
+          )
+        );
+        if (deployments === null) {
+          yield* Console.log("  Deployment status unavailable on this server");
+        } else {
+          for (const deployment of deployments) {
+            if (deployment.status === "degraded") {
+              yield* Console.log(
+                `  ${deployment.deploymentId}: degraded (${deployment.stage ?? "server"})`
+              );
+            }
+          }
+        }
       }
-    } catch {
-      // A stopped or changed server does not remove the saved selection.
     }
-    return `${target.name} (${target.instanceId}) at ${target.url} — version ${target.serverVersion}: ${reachability}`;
-  }).pipe(Effect.flatMap((message) => Console.log(message)))
+  })
 );
 
-async function instanceReachability(
+const instanceReachability = (
   url: string,
   name: string,
   instanceId: string,
   serverVersion: string
-) {
-  try {
-    const current = await verifyIdentity(url);
-    if (current.name !== name || current.instanceId !== instanceId) {
+) =>
+  Effect.gen(function* () {
+    const current = yield* Effect.result(identityAt(url));
+    if (Result.isFailure(current)) {
+      return current.failure instanceof Error &&
+        current.failure.message.startsWith("Incompatible server version")
+        ? "incompatible"
+        : "unreachable";
+    }
+    if (
+      current.success.name !== name ||
+      current.success.instanceId !== instanceId
+    ) {
       return "mismatched identity";
     }
-    return current.serverVersion === serverVersion
+    return current.success.serverVersion === serverVersion
       ? "reachable"
       : "mismatched version";
-  } catch (error) {
-    return error instanceof Error &&
-      error.message.startsWith("Incompatible server version")
-      ? "incompatible"
-      : "unreachable";
-  }
-}
+  });
 
 const list = Command.make("list", {}, () =>
-  Effect.tryPromise(async () => {
-    const config = await readConfig();
-    const instances = await listInstances();
+  Effect.gen(function* () {
+    const config = yield* Effect.tryPromise(readConfig);
+    const instances = yield* Effect.tryPromise(listInstances);
     if (instances.length === 0) {
-      return "No server instances found";
+      return yield* Console.log("No server instances found");
     }
     const lines: string[] = [];
     for (const instance of instances) {
-      const service = await readInstanceService(instance.name);
+      const service = yield* Effect.tryPromise(async () =>
+        readInstanceService(instance.name)
+      );
       const url = `http://127.0.0.1:${service.port}/api/v1`;
-      const reachability = await instanceReachability(
+      const reachability = yield* instanceReachability(
         url,
         instance.name,
         instance.instanceId,
@@ -185,8 +218,8 @@ const list = Command.make("list", {}, () =>
         `${instance.name} (${instance.instanceId}) at ${url} — version ${service.serverVersion}: ${reachability}${selected}`
       );
     }
-    return lines.join("\n");
-  }).pipe(Effect.flatMap((message) => Console.log(message)))
+    return yield* Console.log(lines.join("\n"));
+  })
 ).pipe(Command.withDescription("List saved local server instances"));
 
 export const server = Command.make("server").pipe(

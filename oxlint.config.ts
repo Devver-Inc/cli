@@ -19,6 +19,9 @@ export default defineConfig({
     "unicorn/import-style": "off",
     // The OAuth callback and loopback allocation wrap Node events in a Promise.
     "promise/avoid-new": "off",
+    // Effect.catch/mapError are compositional Effect APIs, not Promise chains.
+    "promise/prefer-await-to-callbacks": "off",
+    "promise/prefer-await-to-then": "off",
     // `Effect.tryPromise(async () => existingPromise)` is the house style: the
     // async wrapper satisfies `promise-function-async` without a bare `await`.
     "require-await": "off",

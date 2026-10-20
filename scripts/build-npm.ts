@@ -14,11 +14,11 @@ import { chmodSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import pkg from "../package.json";
 import cli from "../packages/cli/package.json";
 import { buildDefines } from "./stamp";
+import { packageStaticTools } from "./static-tools";
 
 const outfile = "packages/cli/dist/cli.mjs";
 const serverOutfile = `packages/cli/dist/servers/${pkg.version}/server.mjs`;
 
-// Do not pack a server from a previous build/version alongside this one.
 rmSync("packages/cli/dist", { recursive: true, force: true });
 
 const result = await Bun.build({
@@ -46,8 +46,10 @@ const server = await Bun.build({
   naming: { entry: "server.mjs" },
   target: "node",
   format: "esm",
-  // The pinned copy runs outside node_modules and must retain its dependencies offline.
   packages: "bundle",
+  define: { DEVVER_NODE_SQLITE: "true" },
+  external: ["@effect/sql-sqlite-bun/SqliteClient"],
+  minify: { syntax: true },
 });
 if (!server.success) {
   console.error("npm server build failed:");
@@ -56,6 +58,8 @@ if (!server.success) {
   }
   process.exit(1);
 }
+
+await packageStaticTools(`packages/cli/dist/servers/${pkg.version}`);
 
 const shebang = "#!/usr/bin/env node\n";
 for (const file of [outfile, serverOutfile]) {

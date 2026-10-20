@@ -164,7 +164,6 @@ async function existingParent() {
   return servers;
 }
 
-/** Read only this user's persisted instance identities; never initialize state. */
 export async function listInstances() {
   const parent = await existingParent();
   if (parent === undefined) {
@@ -203,7 +202,6 @@ export async function listInstances() {
   return instances;
 }
 
-/** Verify owner-only service metadata for an existing named instance. */
 export async function readInstanceService(name: string) {
   if (!NAME.test(name)) {
     throw new Error("Invalid server instance name");

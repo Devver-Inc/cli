@@ -103,7 +103,6 @@ const databaseConfiguration = Effect.gen(function* () {
     return yield* projectCreationCancelled;
   }
   if (wantDb !== "Yes") {
-    // An omitted database is a successful optional result, not cancellation.
     return undefined;
   }
   const rootUsername = yield* Prompt.input("Mongo root username");

@@ -28,6 +28,7 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 /servers/
 
 # caches
+/.playwright-mcp/
 .eslintcache
 .cache
 *.tsbuildinfo

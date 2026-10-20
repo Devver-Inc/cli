@@ -1,7 +1,6 @@
 import type { AddressInfo } from "node:net";
 import { createServer } from "node:net";
 
-/** A bound TCP socket, as opposed to a pipe name or an unbound server. */
 const isTcpAddress = (
   address: ReturnType<ReturnType<typeof createServer>["address"]>
 ): address is AddressInfo => address !== null && typeof address !== "string";

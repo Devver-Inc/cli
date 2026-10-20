@@ -1,4 +1,3 @@
-// Named exports are a focused package interface.
 export { readConfigFile } from "./src/config";
 export {
   getDeploymentEnv,

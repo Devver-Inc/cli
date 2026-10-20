@@ -46,7 +46,6 @@ function plist(
 }
 
 async function launchctl(...args: string[]) {
-  // `launchctl print <domain>` dumps every registered service of the user domain.
   await execute("launchctl", args, {
     timeout: 5000,
     maxBuffer: 4 * 1024 * 1024,
@@ -58,7 +57,6 @@ async function loaded(domain: string, label: string) {
     await launchctl("print", `${domain}/${label}`);
     return true;
   } catch {
-    // A failed print is only evidence of absence if the user's domain is reachable.
     await launchctl("print", domain);
     return false;
   }
@@ -69,11 +67,7 @@ async function removeFailedInstance(
   label: string,
   directory: string
 ) {
-  try {
-    await launchctl("bootout", `${domain}/${label}`);
-  } catch {
-    // bootstrap may have failed before registration; verify rather than assume.
-  }
+  await launchctl("bootout", `${domain}/${label}`).catch(() => undefined);
   if (await loaded(domain, label)) {
     throw new Error("Launchd job remains registered");
   }
@@ -88,7 +82,6 @@ export async function create(name: string) {
   const domain = `gui/${uid}`;
   const parent = await instanceParent(name);
   const directory = join(parent, name);
-  // Exclusive name claim: a duplicate never touches the existing state or job.
   try {
     await mkdir(directory, { mode: PRIVATE_DIRECTORY });
   } catch (error) {
@@ -104,7 +97,7 @@ export async function create(name: string) {
   try {
     const instance = await loadInstance(name);
     const port = await availablePort();
-    const pinned = await pinServer(parent);
+    const pinned = await pinServer(parent, instance.instanceId);
     const data =
       process.env.XDG_DATA_HOME !== undefined &&
       process.env.XDG_DATA_HOME !== ""
@@ -135,8 +128,6 @@ export async function create(name: string) {
     } finally {
       await service.close();
     }
-    // The manifest lives in private instance data, not ~/Library/LaunchAgents:
-    // launchd loads the job into the current user session only, never at login.
     await launchctl("bootstrap", domain, manifest);
     bootstrapped = true;
     await launchctl("kickstart", `${domain}/${label}`);
@@ -153,7 +144,10 @@ export async function create(name: string) {
           return url;
         }
       } catch {
-        // The child may not yet be listening; only a verified identity is ready.
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 150);
+        });
+        continue;
       }
       await new Promise<void>((resolve) => {
         setTimeout(resolve, 150);

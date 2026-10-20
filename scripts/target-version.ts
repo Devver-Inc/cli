@@ -57,7 +57,6 @@ if (hasChangesets) {
     rmSync(directory, { recursive: true, force: true });
   }
 } else {
-  // A nightly without release intent uses a provisional patch prerelease, not a planned stable version.
   console.info(
     process.argv.includes("--local")
       ? root.version
