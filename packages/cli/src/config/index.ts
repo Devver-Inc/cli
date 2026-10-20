@@ -5,6 +5,7 @@ import { cwd } from "node:process";
 import { Schema } from "effect";
 import { dump, load } from "js-yaml";
 
+import "./detectors";
 import { detectProject } from "./detect";
 import type { ProjectDetection } from "./detect";
 
@@ -19,7 +20,7 @@ const ServiceConfigSchema = Schema.Struct({
   depends: Schema.optional(Schema.Array(Schema.String)),
 });
 
-const DevverConfigFileSchema = Schema.Struct({
+const CloudConfigFileSchema = Schema.Struct({
   project: Schema.String,
   services: Schema.Struct({
     web: Schema.optional(ServiceConfigSchema),
@@ -28,6 +29,17 @@ const DevverConfigFileSchema = Schema.Struct({
   databases: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
   env: Schema.optional(Schema.Record(Schema.String, Schema.String)),
 });
+
+const StaticConfigFileSchema = Schema.Struct({
+  static: Schema.Struct({
+    directory: Schema.optional(Schema.String.check(Schema.isNonEmpty())),
+  }),
+});
+
+const DevverConfigFileSchema = Schema.Union([
+  CloudConfigFileSchema,
+  StaticConfigFileSchema,
+]);
 
 export type ServiceConfig = typeof ServiceConfigSchema.Type;
 export type DevverConfigFile = typeof DevverConfigFileSchema.Type;
@@ -69,6 +81,16 @@ export function writeConfigFile(
   const isApiFramework = detection.results.find(
     (r) => r.detected.name === "nestjs" || r.detected.name === "express"
   );
+
+  if (
+    detection.results.length === 0 &&
+    fs.existsSync(path.join(targetDir, "index.html")) &&
+    !fs.existsSync(path.join(targetDir, "package.json"))
+  ) {
+    fs.writeFileSync(configPath, dump({ static: { directory: "." } }));
+    console.log(`\nConfig written to ${configPath}`);
+    return;
+  }
 
   const serviceName =
     isWebFramework === undefined && isApiFramework !== undefined

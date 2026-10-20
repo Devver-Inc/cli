@@ -4,7 +4,7 @@ A developer deploys the checkout's committed HEAD to an attached local server an
 
 ## Sub-features
 
-- `deploy` selects committed HEAD and returns an ID, SHA, and `.localhost` URL.
+- `deploy` selects committed HEAD and returns a `.localhost` URL. `--verbose` also prints the ID and SHA.
 - Uncommitted edits remain absent from the served page.
 - The control API and app listener use different ports.
 
@@ -14,7 +14,7 @@ Attach a local server with `devver attach <control URL>`. In a Git checkout with
 
 ## Driving it with Bash
 
-Preconditions: Bun, Git, and curl are installed. Run `bash .pi/skills/verify-devver-cli/verify.sh deploy`. The helper creates and commits a static HTML fixture, edits `index.html` without committing, then runs the CLI from that checkout. `actions.txt` must show the selected target and `PASS deploy`. `deploy.txt` must print the SHA in `selected-head.txt` and an app URL. `app-response.html` must contain `<h1>committed static page</h1>`, not `uncommitted edit`. `deployment-record.json` must show that ID and SHA with status `ready`. The URL must resolve and answer without a manually supplied Host header.
+Preconditions: Bun, Git, and curl are installed. Run `bash .pi/skills/verify-devver-cli/verify.sh deploy`. The helper creates and commits a static HTML fixture, edits `index.html` without committing, then runs the CLI from that checkout. `actions.txt` must show the selected target and `PASS deploy`. `deploy.txt` comes from `devver deploy --verbose` and must print the SHA in `selected-head.txt` and an app URL. `app-response.html` must contain `<h1>committed static page</h1>`, not `uncommitted edit`. `deployment-record.json` must show that ID and SHA with status `ready`. The URL must resolve and answer without a manually supplied Host header.
 
 ## Gotchas
 

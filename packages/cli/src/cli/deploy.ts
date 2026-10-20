@@ -1,5 +1,5 @@
 import { Console, Data, Effect } from "effect";
-import { Command } from "effect/cli";
+import { Command, Flag } from "effect/cli";
 
 import {
   createDeployment,
@@ -139,13 +139,19 @@ export const resolveDbLinks = (projectId: string) =>
 
 const cloudDeploy = Effect.gen(function* () {
   yield* Effect.tryPromise(checkForConfigFile);
-  yield* checkForGitRepo;
   const config = yield* Effect.try(() => readConfigFile());
   if (config === null) {
     return yield* new DeploymentError({
       message: "Config file not found. Run 'devver init' to create one.",
     });
   }
+  if ("static" in config) {
+    return yield* new DeploymentError({
+      message:
+        "Static config is only supported for local deployments. Select a local server with 'devver attach' before deploying.",
+    });
+  }
+  yield* checkForGitRepo;
   const { projectId, repoName, pushUrl } = yield* resolveRepository;
   const branch = yield* getCurrentBranch;
   const remoteBranchExists = yield* checkRemoteBranch(pushUrl, branch);
@@ -188,11 +194,31 @@ const cloudDeploy = Effect.gen(function* () {
   }
 });
 
-export const deploy = Command.make("deploy", {}, () =>
-  Effect.gen(function* () {
-    const target = (yield* Effect.tryPromise(readConfig))["local-target"];
-    return target === undefined
-      ? yield* withApi(cloudDeploy)
-      : yield* localDeploy(target);
-  })
+export const deploy = Command.make(
+  "deploy",
+  {
+    verbose: Flag.Boolean("verbose").pipe(Flag.withDefault(false)),
+    open: Flag.Boolean("open").pipe(Flag.withDefault(false)),
+  },
+  ({ verbose, open }) =>
+    Effect.gen(function* () {
+      const target = (yield* Effect.tryPromise(readConfig))["local-target"];
+      if (target !== undefined) {
+        return yield* localDeploy(target, verbose, open);
+      }
+      if (open) {
+        return yield* new DeploymentError({
+          message:
+            "--open is only supported for local deployments. Select a local server with 'devver attach' first.",
+        });
+      }
+      const config = yield* Effect.try(() => readConfigFile());
+      if (config !== null && "static" in config) {
+        return yield* new DeploymentError({
+          message:
+            "Static config is only supported for local deployments. Select a local server with 'devver attach' before deploying.",
+        });
+      }
+      return yield* withApi(cloudDeploy);
+    })
 );

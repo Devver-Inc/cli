@@ -1,7 +1,6 @@
 import { Console, Data, Effect, Schema } from "effect";
 import { Argument, Command } from "effect/cli";
 
-import "../config/detectors";
 import { readConfigFile, writeConfigFile } from "../config";
 import {
   CLOUD_API_URL,
@@ -113,9 +112,6 @@ export const init = Command.make("init", {}, () =>
     yield* Effect.try(() => {
       writeConfigFile(detection);
     });
-    if (detection.results.length === 0) {
-      yield* Console.log("  (config file created anyway)");
-    }
   })
 );
 

@@ -75,7 +75,7 @@ if [[ "$FEATURE" == deploy ]]; then
   git commit -qm 'Static fixture'
   git rev-parse HEAD > "$PROOF/selected-head.txt"
   printf '<h1>uncommitted edit</h1>\n' > index.html
-  cli deploy | tee "$PROOF/deploy.txt"
+  cli deploy --verbose | tee "$PROOF/deploy.txt"
   grep -Fq "Commit: $(< "$PROOF/selected-head.txt")" "$PROOF/deploy.txt"
   APP_URL=$(grep -Eo "http://[a-f0-9-]{36}\.$NAME\.localhost:[0-9]+/" "$PROOF/deploy.txt" | tail -1)
   [[ -n "$APP_URL" ]]
