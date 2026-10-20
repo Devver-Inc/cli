@@ -160,7 +160,7 @@ const cloudDeploy = Effect.gen(function* () {
   });
   if (confirm !== "Yes") {
     yield* Console.log("Deployment cancelled.");
-    // oxlint-disable-next-line typescript/consistent-return
+    // oxlint-disable-next-line typescript/consistent-return -- Declined confirmation stops before pushing the branch.
     return;
   }
   yield* pushBranch(pushUrl, branch);

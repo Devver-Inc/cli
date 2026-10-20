@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import {
@@ -12,6 +13,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:net";
 import { networkInterfaces, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -364,6 +366,9 @@ async function failedDeployments(
       expect(failedTool.status).not.toBe(0);
       expect(failedTool.output).toMatch(/(?:process|readiness):/u);
       expect(failedTool.output).not.toMatch(APP_URL);
+      expect(readdirSync(worktrees).toSorted()).toEqual(originals);
+      expect((await response(first.url)).text).toBe("<h1>revision A</h1>");
+      expect((await response(second.url)).text).toBe("<h1>revision B</h1>");
     } finally {
       chmodSync(websitino, mode);
     }
@@ -448,6 +453,128 @@ async function restart(
   }
   await waitFor(first.url, false);
   await waitFor(second.url, false);
+}
+
+function changeStoredStatus(instance: string, id: string, status: string) {
+  const db = new Database(join(instance, "deployments.sqlite"));
+  try {
+    db.query("UPDATE deployments SET status = ? WHERE deploymentId = ?").run(
+      status,
+      id
+    );
+  } finally {
+    db.close();
+  }
+}
+
+async function degradedRestart(
+  ws: Workspace,
+  instance: string,
+  service: Service,
+  controlUrl: string,
+  first: App,
+  second: App
+) {
+  changeStoredStatus(instance, first.id, "preparing");
+  const child = Bun.spawn(
+    [...ws.serverCommand, ws.name, String(service.port)],
+    { env: ws.creationEnv, stdout: "pipe", stderr: "pipe" }
+  );
+  try {
+    await waitFor(`${controlUrl}/identity`, true);
+    const statuses = await response(`${controlUrl}/deployments`);
+    expect(statuses.status).toBe(200);
+    expect(statuses.text).toContain(`"deploymentId":"${first.id}"`);
+    expect(statuses.text).toContain('"status":"degraded"');
+    expect(statuses.text).not.toContain("worktree");
+    expect(ws.cli(ws.root, "server", "status").output).toContain(
+      `${first.id}: degraded (server)`
+    );
+    expect((await response(first.url)).status).not.toBe(200);
+    expect((await response(second.url)).text).toBe("<h1>revision B</h1>");
+  } finally {
+    child.kill();
+    await child.exited;
+    changeStoredStatus(instance, first.id, "ready");
+  }
+  await waitFor(`${controlUrl}/identity`, false);
+}
+
+async function corruptRestart(
+  ws: Workspace,
+  instance: string,
+  service: Service,
+  controlUrl: string,
+  first: App,
+  second: App
+) {
+  changeStoredStatus(instance, first.id, "corrupt");
+  try {
+    const attempted = run(
+      [...ws.serverCommand, ws.name, String(service.port)],
+      ws.root,
+      ws.creationEnv
+    );
+    expect(attempted.status).not.toBe(0);
+    expect(attempted.output).toContain("Deployment records hold entries");
+    await refuses(first.url);
+    await refuses(second.url);
+  } finally {
+    changeStoredStatus(instance, first.id, "ready");
+  }
+  const child = Bun.spawn(
+    [...ws.serverCommand, ws.name, String(service.port)],
+    { env: ws.creationEnv, stdout: "pipe", stderr: "pipe" }
+  );
+  try {
+    await waitFor(`${controlUrl}/identity`, true);
+    expect((await response(first.url)).text).toBe("<h1>revision A</h1>");
+    expect((await response(second.url)).text).toBe("<h1>revision B</h1>");
+  } finally {
+    child.kill();
+    await child.exited;
+  }
+}
+
+async function occupiedPortRestart(
+  ws: Workspace,
+  service: Service,
+  controlUrl: string,
+  first: App,
+  second: App
+) {
+  const blocker = createServer();
+  await new Promise<void>((resolve, reject) => {
+    blocker.once("error", reject);
+    blocker.listen(Number(first.port), "127.0.0.1", resolve);
+  });
+  try {
+    const attempted = run(
+      [...ws.serverCommand, ws.name, String(service.port)],
+      ws.root,
+      ws.creationEnv
+    );
+    expect(attempted.status).not.toBe(0);
+    expect(attempted.output).toContain("saved app port is occupied");
+  } finally {
+    await new Promise<void>((resolve) => {
+      blocker.close(() => {
+        resolve();
+      });
+    });
+  }
+  const child = Bun.spawn(
+    [...ws.serverCommand, ws.name, String(service.port)],
+    { env: ws.creationEnv, stdout: "pipe", stderr: "pipe" }
+  );
+  try {
+    await waitFor(`${controlUrl}/identity`, true);
+    expect((await response(first.url)).text).toBe("<h1>revision A</h1>");
+    expect((await response(second.url)).text).toBe("<h1>revision B</h1>");
+  } finally {
+    child.kill();
+    await child.exited;
+  }
 }
 
 function removeSupervisor(ws: Workspace, service: Service | undefined) {
@@ -554,6 +681,9 @@ async function exercise(distribution: Distribution) {
       second
     );
     await restart(ws, recorded, controlUrl, first, second);
+    await degradedRestart(ws, instance, recorded, controlUrl, first, second);
+    await corruptRestart(ws, instance, recorded, controlUrl, first, second);
+    await occupiedPortRestart(ws, recorded, controlUrl, first, second);
   } finally {
     if (recorded === undefined && existsSync(join(instance, "service.json"))) {
       recorded = decodeService(

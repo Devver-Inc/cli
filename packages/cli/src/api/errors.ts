@@ -24,7 +24,7 @@ export type BackendErrorBody = typeof BackendErrorBodySchema.Type;
 const isCode = (message: BackendErrorBody["message"]): message is string =>
   typeof message === "string";
 
-// oxlint-disable-next-line anti-slop/no-known-value-widening
+// oxlint-disable-next-line anti-slop/no-known-value-widening -- Error codes from the backend are open-ended; this lookup includes known messages only.
 const ERROR_MESSAGES: Record<string, string> = {
   REPO_NOT_FOUND:
     "Repository not found. It may have been deleted or the URL is incorrect.",

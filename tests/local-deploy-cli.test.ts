@@ -6,6 +6,8 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -136,6 +138,58 @@ async function body(url: string, headers: Record<string, string> = {}) {
   });
   return { status: response.status, text: await response.text() };
 }
+
+function isTcpAddress(
+  address: string | AddressInfo | null
+): address is AddressInfo {
+  return address !== null && typeof address !== "string";
+}
+
+test("server status identifies older same-version servers without deployment listing", async () => {
+  const ws = workspace();
+  const instanceId = crypto.randomUUID();
+  const older = createServer((request, response) => {
+    if (request.url === "/api/v1/identity") {
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          instanceId,
+          name: "older",
+          serverVersion: pkg.version,
+          controlProtocolVersion: 1,
+        })
+      );
+    } else {
+      response.writeHead(405);
+      response.end();
+    }
+  });
+  await new Promise<void>((resolve) => {
+    older.listen(0, "127.0.0.1", resolve);
+  });
+  try {
+    const address = older.address();
+    if (!isTcpAddress(address)) {
+      throw new Error("Old server did not bind a TCP port");
+    }
+    const attached = await ws.run([
+      "attach",
+      `http://127.0.0.1:${address.port}/api/v1`,
+    ]);
+    expect(attached.status, attached.output).toBe(0);
+    const status = await ws.run(["server", "status"]);
+    expect(status.status, status.output).toBe(0);
+    expect(status.output).toContain(": reachable");
+    expect(status.output).toContain("Deployment status unavailable");
+  } finally {
+    await new Promise<void>((resolve) => {
+      older.close(() => {
+        resolve();
+      });
+    });
+    rmSync(ws.root, { recursive: true, force: true });
+  }
+});
 
 test("deploy serves the committed HEAD of an attached local target at a loopback app URL", async () => {
   if (process.platform === "win32") {

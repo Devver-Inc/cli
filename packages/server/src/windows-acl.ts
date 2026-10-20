@@ -1,12 +1,9 @@
-import { execFile } from "node:child_process";
 import { lstat, mkdir } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { promisify } from "node:util";
 
+import { execute } from "./exec";
 import { isAlreadyExists } from "./fs-errors";
 
-// oxlint-disable-next-line typescript/strict-void-return -- Node's execFile overload is supported by promisify and retains its rejection semantics.
-const execute = promisify(execFile);
 const ROOT = "devver";
 
 // Windows PowerShell 5.1 is present on every supported Windows host and its

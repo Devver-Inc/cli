@@ -28,7 +28,7 @@ const invalidKey = (key: string) =>
     new ConfigCommandError({ message: `Invalid config key '${key}'` })
   );
 
-// oxlint-disable typescript/consistent-return
+// oxlint-disable typescript/consistent-return -- Invalid keys return a never-succeeding Effect so subsequent code sees the validated key.
 const get = Command.make("get", { key: configKey }, ({ key }) =>
   Effect.gen(function* () {
     if (key !== "api-url") {

@@ -1,9 +1,10 @@
-import { Console, Data, Effect, Schema, Stream } from "effect";
+import { Console, Data, Effect, Result, Schema, Stream } from "effect";
 import { Argument, Command } from "effect/cli";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 
 import pkg from "../../../../package.json" with { type: "json" };
 import { listInstances, readInstanceService } from "../../../server/identity";
+import { listLocalDeployments } from "../api/local-deploy.requests";
 import {
   InstanceNameSchema,
   LocalTargetSchema,
@@ -12,6 +13,7 @@ import {
   writeConfig,
 } from "../config/api";
 import type { CliConfig } from "../config/api";
+import { withLocalApi } from "./api";
 
 const IdentitySchema = Schema.Struct({
   instanceId: Schema.String.check(Schema.isUUID(4)),
@@ -71,24 +73,33 @@ function probe(url: string) {
   );
 }
 
+const identityAt = (url: string) =>
+  Effect.gen(function* () {
+    yield* Effect.try(() => validateControlUrl(url));
+    const identity = yield* probe(url);
+    if (identity.serverVersion !== pkg.version) {
+      return yield* new IdentityProbeError({
+        message: `Incompatible server version (expected ${pkg.version})`,
+      });
+    }
+    return yield* Effect.try(() => decodeTarget({ url, ...identity }));
+  });
+
 export async function verifyIdentity(url: string) {
-  validateControlUrl(url);
-  const identity = await Effect.runPromise(probe(url));
-  if (identity.serverVersion !== pkg.version) {
-    throw new Error(`Incompatible server version (expected ${pkg.version})`);
-  }
-  return decodeTarget({ url, ...identity });
+  return await Effect.runPromise(identityAt(url));
 }
 
 export const attach = Command.make(
   "attach",
   { url: Argument.String("url") },
   ({ url }) =>
-    Effect.tryPromise(async () => {
-      const config = await readConfig();
-      const target = await verifyIdentity(url);
+    Effect.gen(function* () {
+      const config = yield* Effect.tryPromise(readConfig);
+      const target = yield* identityAt(url);
       const { "cloud-target": _removed, ...rest } = config;
-      await writeConfig({ ...rest, "local-target": target });
+      yield* Effect.tryPromise(async () =>
+        writeConfig({ ...rest, "local-target": target })
+      );
       return target;
     }).pipe(
       Effect.flatMap((target) =>
@@ -111,62 +122,86 @@ export const detach = Command.make("detach", {}, () =>
 ).pipe(Command.withDescription("Clear the selected target"));
 
 const status = Command.make("status", {}, () =>
-  Effect.tryPromise(async () => {
-    const config: CliConfig = await readConfig();
+  Effect.gen(function* () {
+    const config: CliConfig = yield* Effect.tryPromise(readConfig);
     const target = config["local-target"];
     if (target === undefined) {
-      return "No server attached";
-    }
-    let reachability = "unreachable";
-    try {
-      const current = await verifyIdentity(target.url);
-      if (
-        current.instanceId === target.instanceId &&
-        current.name === target.name
-      ) {
-        reachability = "reachable";
+      yield* Console.log("No server attached");
+    } else {
+      const current = yield* Effect.result(identityAt(target.url));
+      const reachable =
+        Result.isSuccess(current) &&
+        current.success.instanceId === target.instanceId &&
+        current.success.name === target.name;
+      yield* Console.log(
+        `${target.name} (${target.instanceId}) at ${target.url} — version ${target.serverVersion}: ${reachable ? "reachable" : "unreachable"}`
+      );
+      if (reachable) {
+        const deployments = yield* withLocalApi(
+          target,
+          listLocalDeployments
+        ).pipe(
+          Effect.catchTag("ApiError", (error) =>
+            error.status === 404 || error.status === 405
+              ? Effect.succeed(null)
+              : Effect.fail(error)
+          )
+        );
+        if (deployments === null) {
+          yield* Console.log("  Deployment status unavailable on this server");
+        } else {
+          for (const deployment of deployments) {
+            if (deployment.status === "degraded") {
+              yield* Console.log(
+                `  ${deployment.deploymentId}: degraded (${deployment.stage ?? "server"})`
+              );
+            }
+          }
+        }
       }
-    } catch {
-      return `${target.name} (${target.instanceId}) at ${target.url} — version ${target.serverVersion}: ${reachability}`;
     }
-    return `${target.name} (${target.instanceId}) at ${target.url} — version ${target.serverVersion}: ${reachability}`;
-  }).pipe(Effect.flatMap((message) => Console.log(message)))
+  })
 );
 
-async function instanceReachability(
+const instanceReachability = (
   url: string,
   name: string,
   instanceId: string,
   serverVersion: string
-) {
-  try {
-    const current = await verifyIdentity(url);
-    if (current.name !== name || current.instanceId !== instanceId) {
+) =>
+  Effect.gen(function* () {
+    const current = yield* Effect.result(identityAt(url));
+    if (Result.isFailure(current)) {
+      return current.failure instanceof Error &&
+        current.failure.message.startsWith("Incompatible server version")
+        ? "incompatible"
+        : "unreachable";
+    }
+    if (
+      current.success.name !== name ||
+      current.success.instanceId !== instanceId
+    ) {
       return "mismatched identity";
     }
-    return current.serverVersion === serverVersion
+    return current.success.serverVersion === serverVersion
       ? "reachable"
       : "mismatched version";
-  } catch (error) {
-    return error instanceof Error &&
-      error.message.startsWith("Incompatible server version")
-      ? "incompatible"
-      : "unreachable";
-  }
-}
+  });
 
 const list = Command.make("list", {}, () =>
-  Effect.tryPromise(async () => {
-    const config = await readConfig();
-    const instances = await listInstances();
+  Effect.gen(function* () {
+    const config = yield* Effect.tryPromise(readConfig);
+    const instances = yield* Effect.tryPromise(listInstances);
     if (instances.length === 0) {
-      return "No server instances found";
+      return yield* Console.log("No server instances found");
     }
     const lines: string[] = [];
     for (const instance of instances) {
-      const service = await readInstanceService(instance.name);
+      const service = yield* Effect.tryPromise(async () =>
+        readInstanceService(instance.name)
+      );
       const url = `http://127.0.0.1:${service.port}/api/v1`;
-      const reachability = await instanceReachability(
+      const reachability = yield* instanceReachability(
         url,
         instance.name,
         instance.instanceId,
@@ -183,8 +218,8 @@ const list = Command.make("list", {}, () =>
         `${instance.name} (${instance.instanceId}) at ${url} — version ${service.serverVersion}: ${reachability}${selected}`
       );
     }
-    return lines.join("\n");
-  }).pipe(Effect.flatMap((message) => Console.log(message)))
+    return yield* Console.log(lines.join("\n"));
+  })
 ).pipe(Command.withDescription("List saved local server instances"));
 
 export const server = Command.make("server").pipe(

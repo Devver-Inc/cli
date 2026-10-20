@@ -1,14 +1,10 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat, mkdir, realpath, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { promisify } from "node:util";
 
+import { execute } from "./exec";
 import { isAlreadyExists } from "./fs-errors";
 import { verifyWindowsPrivate } from "./windows-acl";
-
-// oxlint-disable-next-line typescript/strict-void-return -- Node's execFile overload is supported by promisify and preserves subprocess failures.
-const execute = promisify(execFile);
 
 const COMMIT = /^[0-9a-f]{40}$/u;
 const PRIVATE_DIRECTORY = 0o700;

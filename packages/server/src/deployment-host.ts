@@ -1,4 +1,3 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmod,
@@ -11,8 +10,11 @@ import {
 import { createServer } from "node:net";
 import type { AddressInfo } from "node:net";
 import { basename, join } from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
 
+import { Effect } from "effect";
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
+
+import { execute } from "./exec";
 import { isAlreadyExists } from "./fs-errors";
 import { verifyWindowsPrivate } from "./windows-acl";
 
@@ -57,20 +59,16 @@ async function invokeTool(
   cwd: string,
   env: NodeJS.ProcessEnv
 ) {
-  await new Promise<void>((resolve, reject) => {
-    execFile(
-      binary,
-      args,
-      { cwd, env, timeout: 20_000, windowsHide: true },
-      (error) => {
-        if (error === null) {
-          resolve();
-        } else {
-          reject(new Error("Packaged tool command failed"));
-        }
-      }
-    );
-  });
+  try {
+    await execute(binary, args, {
+      cwd,
+      env,
+      timeout: 20_000,
+      windowsHide: true,
+    });
+  } catch {
+    throw new Error("Packaged tool command failed");
+  }
 }
 
 async function privateDirectory(directory: string) {
@@ -205,33 +203,42 @@ async function allocatePort() {
  * Pitchfork's response, rather than accepting another listener
  * that won the port between allocation and startup.
  */
-async function proxyAnswers(port: number) {
-  const deadline = Date.now() + PROXY_DEADLINE;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/`, {
-        redirect: "manual",
-        signal: AbortSignal.timeout(PROXY_TIMEOUT),
-      });
-      if (response.status === 404 || response.status === 502) {
-        const body = await response.text();
-        if (
-          body.includes("No route for <code>127.0.0.1</code>") ||
-          body.includes("No daemon found for host '127.0.0.1'")
-        ) {
-          return true;
-        }
-      } else {
-        await response.body?.cancel();
+const proxyAnswers = (port: number) =>
+  Effect.gen(function* () {
+    const client = HttpClient.withScope(yield* HttpClient.HttpClient);
+    const deadline = Date.now() + PROXY_DEADLINE;
+    while (Date.now() < deadline) {
+      const answered = yield* client
+        .execute(HttpClientRequest.get(`http://127.0.0.1:${port}/`))
+        .pipe(
+          Effect.flatMap((response) =>
+            response.status === 404 || response.status === 502
+              ? response.text.pipe(
+                  Effect.map(
+                    (body) =>
+                      body.includes("No route for <code>127.0.0.1</code>") ||
+                      body.includes("No daemon found for host '127.0.0.1'")
+                  )
+                )
+              : Effect.succeed(false)
+          ),
+          Effect.timeout(PROXY_TIMEOUT),
+          Effect.provideService(FetchHttpClient.RequestInit, {
+            redirect: "manual",
+          }),
+          Effect.scoped,
+          Effect.orElseSucceed(() => false)
+        );
+      if (answered) {
+        return true;
       }
-    } catch {
-      await delay(PROXY_INTERVAL);
-      continue;
+      yield* Effect.sleep(PROXY_INTERVAL);
     }
-    await delay(PROXY_INTERVAL);
-  }
-  return false;
-}
+    return false;
+  }).pipe(
+    // @effect-diagnostics-next-line strictEffectProvide:off -- The Promise host opens this HTTP client at its Effect entry point.
+    Effect.provide(FetchHttpClient.layer)
+  );
 
 // Instance names are ASCII alphanumeric, '_' or '-'. Pitchfork lowercases,
 // collapses separators and limits project labels to 63 characters.
@@ -350,7 +357,7 @@ port = { expect = [${PORT_BASE}], bump = true }
     const started = await run(["supervisor", "start", "--force"])
       .then(() => true)
       .catch(() => false);
-    if (started && (await proxyAnswers(candidate))) {
+    if (started && (await Effect.runPromise(proxyAnswers(candidate)))) {
       proxyPort = candidate;
       break;
     }

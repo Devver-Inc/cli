@@ -18,6 +18,28 @@ export const LocalDeploymentSchema = Schema.Struct({
   url: Schema.String,
 });
 
+const LocalDeploymentStatuses = Schema.Array(
+  Schema.Struct({
+    deploymentId: DeploymentId,
+    status: Schema.Literals(["preparing", "ready", "failed", "degraded"]),
+    stage: Schema.NullOr(
+      Schema.Literals([
+        "server",
+        "source",
+        "git",
+        "config",
+        "process",
+        "readiness",
+      ])
+    ),
+  })
+);
+
+export const listLocalDeployments = Effect.gen(function* () {
+  const api = yield* ApiClient;
+  return yield* api.get("/deployments", LocalDeploymentStatuses);
+});
+
 const encodeRequest = Schema.encodeUnknownSync(LocalDeploymentRequestSchema);
 
 export const createLocalDeployment = (

@@ -29,6 +29,14 @@ export const DeploymentResponse = Schema.Struct({
   url: Schema.String,
 });
 
+export const DeploymentStatuses = Schema.Array(
+  Schema.Struct({
+    deploymentId: DeploymentId,
+    status: Schema.Literals(["preparing", "ready", "failed", "degraded"]),
+    stage: Schema.NullOr(DeployStageSchema),
+  })
+);
+
 /** Every failed deployment names the stage that failed and nothing else. */
 // oxlint-disable-next-line unicorn/throw-new-error -- Schema.Error builds the error class at this contract boundary; it is not a throw.
 export class DeployFailure extends Schema.Error<DeployFailure>("DeployFailure")(
@@ -65,6 +73,14 @@ export const api = HttpApi.make("DevverControl")
         HttpApiEndpoint.post("create", "/deployments", {
           payload: DeployRequest,
           success: DeploymentResponse,
+          error: DeployFailure,
+        })
+      )
+      .add(
+        HttpApiEndpoint.get("list", "/deployments", {
+          success: HttpApiSchema.WithHeaders(DeploymentStatuses, {
+            "cache-control": Schema.Literal("no-store"),
+          }),
           error: DeployFailure,
         })
       )

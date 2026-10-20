@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 import { Cause, Data, Effect, Exit, Option } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/http";
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 
 import { DeployFailure } from "./api";
 import { openDeploymentHost } from "./deployment-host";
@@ -79,10 +79,13 @@ const reachable = (url: string) =>
       const status = yield* client.execute(HttpClientRequest.get(url)).pipe(
         Effect.map((response) => response.status),
         Effect.timeout(READINESS_TIMEOUT),
+        Effect.provideService(FetchHttpClient.RequestInit, {
+          redirect: "manual",
+        }),
         Effect.scoped,
         Effect.orElseSucceed(() => 0)
       );
-      if (status >= 200 && status < 400) {
+      if (status >= 200 && status < 300) {
         return undefined;
       }
       if (status !== 0) {
@@ -123,6 +126,12 @@ export const openDeployer = (name: string) =>
           await opened.close();
         })
     );
+    if (appPort !== undefined && appPort !== host.proxyPort) {
+      return yield* new DeploymentStartupError({
+        message:
+          "The saved app port is occupied; deployment URLs were not changed",
+      });
+    }
     const unpublish = (deploymentId: string) =>
       Effect.promise(async () => {
         await host.withdraw(deploymentId).catch(() => undefined);
@@ -261,10 +270,26 @@ export const openDeployer = (name: string) =>
       return undefined;
     });
     yield* Effect.uninterruptible(reconcile);
-    if (appPort !== host.proxyPort) {
+    if (appPort === undefined) {
       yield* store.setAppPort(host.proxyPort);
     }
-    return { appPort: host.proxyPort, deploy };
+    const statuses = store.list.pipe(
+      Effect.flatMap(({ deployments, unreadable }) =>
+        unreadable === 0
+          ? Effect.succeed(
+              deployments.map(({ deploymentId, status, stage }) => ({
+                deploymentId,
+                status,
+                stage,
+              }))
+            )
+          : new DeployFailure({
+              stage: "server",
+              message: "server: deployment records could not be read",
+            })
+      )
+    );
+    return { appPort: host.proxyPort, deploy, statuses };
   }).pipe(
     Effect.mapError((error) =>
       error instanceof DeploymentStartupError
