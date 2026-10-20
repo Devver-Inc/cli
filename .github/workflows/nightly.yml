@@ -45,22 +45,22 @@ jobs:
           echo 'changed=true' >> "$GITHUB_OUTPUT"
       - uses: oven-sh/setup-bun@v2
         if: steps.changes.outputs.changed == 'true'
-      - run: bun install --frozen-lockfile
+      - uses: actions/setup-node@v4
         if: steps.changes.outputs.changed == 'true'
-      - run: bun run check && bun run typecheck && bun test
+        with:
+          node-version: "26.5.0"
+      - run: bun run sync:version && bun install --frozen-lockfile && bun run check:version
         if: steps.changes.outputs.changed == 'true'
-      - name: Choose an unused prerelease version
+      - run: bun run check && bun run typecheck && bun run test
+        if: steps.changes.outputs.changed == 'true'
+      - name: Choose an unused prerelease version from develop's plan
         if: steps.changes.outputs.changed == 'true'
         id: version
         shell: bash
         run: |
           set -euo pipefail
-          STABLE=$(npm view @devver/cli dist-tags.latest)
-          if [[ ! "$STABLE" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-            echo 'Cannot determine the published stable version' >&2
-            exit 1
-          fi
-          VERSION="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$(( ${BASH_REMATCH[3]} + 1 ))-nightly.build.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          TARGET=$(bun run scripts/target-version.ts)
+          VERSION="${TARGET}-nightly.build.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   binary:
@@ -77,16 +77,22 @@ jobs:
             os: macos-latest
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.sha }}
       - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.5.0"
+      - run: bun run sync:version && bun install --frozen-lockfile
       - name: Stamp nightly version
-        run: npm version '${{ needs.prepare.outputs.version }}' --no-git-tag-version
+        run: npm version '${{ needs.prepare.outputs.version }}' --no-git-tag-version && bun run sync:version
+      - name: Smoke packaged CLI and server without Bun (Unix)
+        if: runner.os != 'Windows'
+        run: bun test tests/server-artifacts.test.ts
+        env:
+          DEVVER_RELEASE_CHANNEL: nightly
       - name: Build standalone binary
         run: bun run build
         env:
@@ -95,22 +101,14 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          tar czf devver-cli-${{ matrix.target }}.tar.gz devver
+          tar czf devver-cli-${{ matrix.target }}.tar.gz devver servers
           shasum -a 256 devver-cli-${{ matrix.target }}.tar.gz > devver-cli-${{ matrix.target }}.tar.gz.sha256
-      - name: Archive (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          7z a devver-cli-${{ matrix.target }}.zip devver.exe
-          (Get-FileHash devver-cli-${{ matrix.target }}.zip -Algorithm SHA256).Hash.ToLower() + "  devver-cli-${{ matrix.target }}.zip" | Out-File -Encoding utf8 devver-cli-${{ matrix.target }}.zip.sha256
       - uses: actions/upload-artifact@v4
         with:
           name: devver-cli-${{ matrix.target }}
           path: |
             devver-cli-${{ matrix.target }}.tar.gz
             devver-cli-${{ matrix.target }}.tar.gz.sha256
-            devver-cli-${{ matrix.target }}.zip
-            devver-cli-${{ matrix.target }}.zip.sha256
           if-no-files-found: error
 
   npm:
@@ -127,12 +125,15 @@ jobs:
           node-version: "26.4.0"
           registry-url: https://registry.npmjs.org
       - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: npm version '${{ needs.prepare.outputs.version }}' --no-git-tag-version
-      - run: bun run build:npm && node dist/cli.mjs --version
+      - run: bun run sync:version && bun install --frozen-lockfile
+      - run: npm version '${{ needs.prepare.outputs.version }}' --no-git-tag-version && bun run sync:version
+      - run: bun test tests/server-artifacts.test.ts
         env:
           DEVVER_RELEASE_CHANNEL: nightly
-      - run: npm publish --access public --tag nightly
+      - run: bun run build:npm && node packages/cli/dist/cli.mjs --version
+        env:
+          DEVVER_RELEASE_CHANNEL: nightly
+      - run: npm publish --workspace @devver/cli --access public --tag nightly
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           DEVVER_RELEASE_CHANNEL: nightly
@@ -158,8 +159,8 @@ jobs:
         shell: bash
         run: |
           shopt -s nullglob
-          files=(artifacts/*.tar.gz artifacts/*.zip artifacts/*.sha256)
-          if (( ${#files[@]} != 6 )); then
+          files=(artifacts/*.tar.gz artifacts/*.sha256)
+          if (( ${#files[@]} != 4 )); then
             echo 'Missing nightly archives or checksums' >&2
             exit 1
           fi
