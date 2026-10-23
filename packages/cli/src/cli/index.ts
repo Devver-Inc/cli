@@ -18,6 +18,17 @@ import { secret } from "./secret";
 import { launchTui, tui } from "./tui";
 import { versionLine } from "./version";
 
+// Expected failures already carry a user-facing message, so the process edge
+// prints it and marks it reported to suppress duplicate cause logging.
+const printExpected = (error: {
+  readonly message: string;
+  [Runtime.errorReported]: boolean;
+}) =>
+  Effect.gen(function* () {
+    yield* Console.error(error.message);
+    error[Runtime.errorReported] = false;
+  });
+
 export const cli = root.pipe(
   Command.withHandler(({ apiUrl }) => launchTui(undefined, apiUrl)),
   Command.withSubcommands([
@@ -47,12 +58,8 @@ if (
 ) {
   NodeRuntime.runMain(
     Command.run(cli, { version: versionLine(pkg.version) }).pipe(
-      Effect.tapErrorTag("DeployAbortError", (error) =>
-        Effect.gen(function* () {
-          yield* Console.error(error.message);
-          error[Runtime.errorReported] = false;
-        })
-      ),
+      Effect.tapErrorTag("DeployAbortError", printExpected),
+      Effect.tapErrorTag("ServerCreateError", printExpected),
       // @effect-diagnostics-next-line strictEffectProvide:off
       Effect.provide(NodeServices.layer)
     )
