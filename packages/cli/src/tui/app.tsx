@@ -1,9 +1,10 @@
 import { RGBA, TextAttributes } from "@opentui/core";
-import type { KeyEvent, ScrollBoxRenderable } from "@opentui/core";
+import type { ColorInput, KeyEvent, ScrollBoxRenderable } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { useEffect, useRef, useState } from "react";
 
 import type { LocalDeploymentStatus } from "../api/local-deploy.requests";
+import { openBrowser } from "../auth/browser";
 import type { Organization } from "../auth/session";
 import { actionFor } from "./keys";
 import type { shortcuts } from "./keys";
@@ -22,6 +23,7 @@ interface LocalTarget {
   readonly server: string;
   readonly workspace: string;
   readonly repositoryId?: string | undefined;
+  readonly openInBrowser?: ((url: string) => Promise<boolean>) | undefined;
   readonly loadDeployments: () => Promise<
     readonly LocalDeploymentStatus[] | null
   >;
@@ -583,16 +585,85 @@ function CloudApp({
   );
 }
 
-function deploymentRow(entry: LocalDeploymentStatus): React.ReactNode {
+interface FlatDeployment {
+  readonly id: string;
+  readonly parentId: string | undefined;
+  readonly repositoryId: string | undefined;
+  readonly commit: string | undefined;
+  readonly status: LocalDeploymentStatus["status"];
+  readonly stage: LocalDeploymentStatus["stage"];
+  readonly url: string | undefined;
+}
+
+interface TreeNode extends FlatDeployment {
+  readonly children: readonly TreeNode[];
+}
+
+// One row per node, depth-first in source order, each indented past its parent.
+function flatten(
+  nodes: readonly TreeNode[],
+  depth = 0
+): (FlatDeployment & { readonly depth: number })[] {
+  const flattened: (FlatDeployment & { readonly depth: number })[] = [];
+  for (const node of nodes) {
+    flattened.push({ ...node, depth });
+    for (const row of flatten(node.children, depth + 1)) {
+      flattened.push(row);
+    }
+  }
+  return flattened;
+}
+
+// A deployment hangs under its parentDeploymentId when the list contains it;
+// anything else (null parent, unknown parent, cross-repository) is a root.
+function buildTree(rows: readonly FlatDeployment[]): TreeNode[] {
+  const byId = new Map<string, FlatDeployment & { children: TreeNode[] }>();
+  for (const row of rows) {
+    byId.set(row.id, { ...row, children: [] });
+  }
+  const roots: (FlatDeployment & { children: TreeNode[] })[] = [];
+  for (const row of rows) {
+    const parent =
+      row.parentId === undefined ? undefined : byId.get(row.parentId);
+    const node = byId.get(row.id);
+    if (node === undefined) {
+      continue;
+    }
+    if (parent === undefined || parent === node) {
+      roots.push(node);
+    } else {
+      parent.children.push(node);
+    }
+  }
+  return roots;
+}
+
+function treeRow(
+  entry: FlatDeployment & { readonly depth: number },
+  selected: boolean
+): React.ReactNode {
+  const indent = "  ".repeat(entry.depth);
+  const branch = entry.depth === 0 ? "" : `${"│ ".repeat(entry.depth - 1)}└─ `;
+  const marker = selected ? "◆" : " ";
+  let color: ColorInput = theme.amber;
+  if (selected) {
+    color = theme.mint;
+  } else if (entry.status === "ready") {
+    color = theme.ink;
+  }
   return (
     <text
-      fg={entry.status === "ready" ? theme.ink : theme.amber}
-      key={entry.deploymentId}
+      attributes={selected ? TextAttributes.BOLD : TextAttributes.NONE}
+      fg={color}
+      key={entry.id}
       wrapMode="none"
     >
-      {entry.deploymentId} {entry.status}
-      {entry.stage === null ? "" : ` (${entry.stage})`}
+      {`${marker} ${indent}${branch}${entry.id.slice(0, 8)} ${entry.status}`}
+      {entry.stage === null || entry.stage === undefined
+        ? ""
+        : ` (${entry.stage})`}
       {entry.commit === undefined ? "" : `  ${entry.commit.slice(0, 8)}`}
+      {entry.url === undefined || entry.url === null ? "" : "  ⌘ open with o"}
     </text>
   );
 }
@@ -609,6 +680,8 @@ function LocalApp({
         readonly deployments: readonly LocalDeploymentStatus[];
       }
   >({ kind: "loading" });
+  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
+  const [status, setStatus] = useState("");
   const list = useRef<ScrollBoxRenderable>(null);
 
   useEffect(() => {
@@ -634,28 +707,97 @@ function LocalApp({
     };
   }, [target.loadDeployments]);
 
+  const rows =
+    result.kind === "loaded"
+      ? flatten(
+          buildTree(
+            result.deployments.map((entry) => ({
+              id: entry.deploymentId,
+              parentId: entry.parentDeploymentId ?? undefined,
+              repositoryId: entry.repositoryId,
+              commit: entry.commit,
+              status: entry.status,
+              stage: entry.stage,
+              url: entry.url ?? undefined,
+            }))
+          )
+        )
+      : [];
+
+  useEffect(() => {
+    if (selectedId === undefined && rows.length > 0) {
+      setSelectedId(rows[0]?.id);
+    }
+  }, [rows, selectedId]);
+
+  useEffect(() => {
+    if (status === "") {
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      setStatus("");
+    }, 4000);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [status]);
+
+  function navigate(action: keyof typeof shortcuts | undefined) {
+    const index = rows.findIndex((row) => row.id === selectedId);
+    const current = rows[index === -1 ? 0 : index];
+    if (action === "down") {
+      const next = rows[(index + 1) % rows.length];
+      if (next !== undefined) {
+        setSelectedId(next.id);
+      }
+    } else if (action === "up") {
+      const previous = rows[(index - 1 + rows.length) % rows.length];
+      if (previous !== undefined) {
+        setSelectedId(previous.id);
+      }
+    } else if (action === "right") {
+      const child = rows.find((row) => row.parentId === current?.id);
+      const next = child ?? rows[(index + 1) % rows.length];
+      if (next !== undefined) {
+        setSelectedId(next.id);
+      }
+    } else if (action === "left") {
+      if (current?.parentId === undefined) {
+        const previous = rows[(index - 1 + rows.length) % rows.length];
+        if (previous !== undefined) {
+          setSelectedId(previous.id);
+        }
+      } else {
+        setSelectedId(current.parentId);
+      }
+    } else if (action === "open") {
+      const url = current?.url;
+      if (url === undefined || url === null) {
+        setStatus("This deployment has no URL to open.");
+        return;
+      }
+      const opener = target.openInBrowser ?? openBrowser;
+      void opener(url).then((opened) => {
+        setStatus(
+          opened
+            ? `Opened ${url}`
+            : "Could not open a browser for this deployment."
+        );
+      });
+    }
+  }
+
   useKeyboard((key) => {
     const action = actionFor(key);
     if (action === "quit") {
       onExit();
-    } else if (action === "down") {
-      list.current?.scrollBy(1);
-    } else if (action === "up") {
-      list.current?.scrollBy(-1);
+      return;
+    }
+    if (result.kind === "loaded" && rows.length > 0) {
+      navigate(action);
     }
   });
 
-  const deployments = result.kind === "loaded" ? result.deployments : [];
-  const current = deployments.filter(
-    (entry) =>
-      entry.repositoryId === target.repositoryId &&
-      target.repositoryId !== undefined
-  );
-  const other = deployments.filter(
-    (entry) =>
-      entry.repositoryId !== target.repositoryId ||
-      target.repositoryId === undefined
-  );
   return (
     <box
       backgroundColor={terminalBackground}
@@ -705,26 +847,12 @@ function LocalApp({
               Deployment listing is unavailable on this server.
             </text>
           )}
-          {result.kind === "loaded" && deployments.length === 0 && (
+          {result.kind === "loaded" && rows.length === 0 && (
             <text fg={theme.muted}>No deployments on this server.</text>
           )}
-          {target.repositoryId !== undefined && deployments.length > 0 && (
-            <text fg={theme.mint}>This checkout</text>
+          {rows.map((row): React.ReactNode =>
+            treeRow(row, row.id === selectedId)
           )}
-          {target.repositoryId !== undefined &&
-            deployments.length > 0 &&
-            current.length === 0 && (
-              <text fg={theme.muted}>No deployments for this checkout.</text>
-            )}
-          {current.map(deploymentRow)}
-          {other.length > 0 && (
-            <text fg={theme.mint}>
-              {target.repositoryId === undefined
-                ? "Server deployments (no Git checkout selected)"
-                : "Other server deployments"}
-            </text>
-          )}
-          {other.map(deploymentRow)}
         </scrollbox>
       </box>
       <box
@@ -733,10 +861,14 @@ function LocalApp({
         height={3}
         paddingX={1}
       >
-        <text fg={theme.muted} flexGrow={1}>
-          j/k scroll · q quit
+        <text
+          fg={status === "" ? theme.muted : theme.rose}
+          flexGrow={1}
+          wrapMode="none"
+        >
+          {status === "" ? "j/k/h/l move · o open · q quit" : status}
         </text>
-        <text fg={theme.muted}>
+        <text fg={theme.muted} wrapMode="none">
           {version !== undefined && version !== "" ? `v${version}` : ""}
         </text>
       </box>

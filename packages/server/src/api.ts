@@ -34,8 +34,10 @@ export const DeploymentStatuses = Schema.Array(
     deploymentId: DeploymentId,
     repositoryId: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
     commit: Commit,
+    parentDeploymentId: Schema.NullOr(DeploymentId),
     status: Schema.Literals(["preparing", "ready", "failed", "degraded"]),
     stage: Schema.NullOr(DeployStageSchema),
+    url: Schema.NullOr(Schema.String),
   })
 );
 

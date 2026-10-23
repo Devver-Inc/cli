@@ -207,17 +207,160 @@ test("local deployments show checkout matches separately from other server recor
     const frame = await setup.waitForFrame((value) =>
       value.includes("33333333")
     );
-    expect(frame).toContain("This checkout");
-    expect(frame).toContain(
-      "11111111-1111-4111-8111-111111111111 ready  bbbbbbbb"
+    // Every server record renders as one row without group headers, and no
+    // row claims to match this checkout.
+    expect(frame).toContain("11111111 ready  bbbbbbbb");
+    expect(frame).toContain("22222222 degraded (process)  dddddddd");
+    expect(frame).toContain("33333333 failed (git)");
+    expect(frame).not.toContain("This checkout");
+    expect(frame).not.toContain("Other server deployments");
+  } finally {
+    await act(async () => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("local deployments render as a tree with selection navigation", async () => {
+  const setup = await testRender(
+    <App
+      onExit={() => undefined}
+      target={{
+        kind: "local",
+        server: "dev",
+        workspace: "site",
+        loadDeployments: async () => [
+          {
+            deploymentId: "11111111-1111-4111-8111-111111111111",
+            repositoryId: "a".repeat(64),
+            commit: "b".repeat(40),
+            parentDeploymentId: null,
+            status: "ready",
+            stage: null,
+          },
+          {
+            deploymentId: "22222222-2222-4222-8222-222222222222",
+            repositoryId: "a".repeat(64),
+            commit: "d".repeat(40),
+            parentDeploymentId: "11111111-1111-4111-8111-111111111111",
+            status: "ready",
+            stage: null,
+          },
+          {
+            deploymentId: "33333333-3333-4333-8333-333333333333",
+            repositoryId: "a".repeat(64),
+            commit: "e".repeat(40),
+            parentDeploymentId: "22222222-2222-4222-8222-222222222222",
+            status: "ready",
+            stage: null,
+          },
+        ],
+      }}
+    />,
+    { width: 90, height: 20 }
+  );
+  try {
+    await setup.waitForFrame((value) => value.includes("11111111"));
+    const frame = setup.captureCharFrame();
+    expect(frame).toContain("└─ 22222222 ready");
+    expect(frame).toContain("│ └─ 33333333 ready");
+    await act(async () => {
+      setup.mockInput.pressKey("j");
+      await Promise.resolve();
+    });
+    await setup.waitForFrame(
+      (value) => value.includes("22222222 ready") && value.includes("◆")
     );
-    expect(frame).toContain("Other server deployments");
-    expect(frame).toContain(
-      "22222222-2222-4222-8222-222222222222 degraded (process)  dddddddd"
+    await act(async () => {
+      setup.mockInput.pressKey("l");
+      await Promise.resolve();
+    });
+    await setup.waitForFrame(
+      (value) => value.includes("33333333 ready") && value.includes("◆")
     );
-    expect(frame).toContain(
-      "33333333-3333-4333-8333-333333333333 failed (git)"
+    await act(async () => {
+      setup.mockInput.pressKey("h");
+      await Promise.resolve();
+    });
+    await setup.waitForFrame(
+      (value) => value.includes("22222222 ready") && value.includes("◆")
     );
+    await act(async () => {
+      setup.mockInput.pressKey("k");
+      await Promise.resolve();
+    });
+    await setup.waitForFrame(
+      (value) => value.includes("11111111 ready") && value.includes("◆")
+    );
+    await act(async () => {
+      setup.mockInput.pressKey("h");
+      await Promise.resolve();
+    });
+    const wrapped = await setup.waitForFrame(
+      (value) => value.includes("33333333 ready") && value.includes("◆")
+    );
+    expect(wrapped).toContain("j/k/h/l move · o open · q quit");
+  } finally {
+    await act(async () => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("o opens a ready deployment URL and reports one without a URL", async () => {
+  const opened: string[] = [];
+  const setup = await testRender(
+    <App
+      onExit={() => undefined}
+      target={{
+        kind: "local",
+        server: "dev",
+        workspace: "site",
+        openInBrowser: async (url) => {
+          opened.push(url);
+          return true;
+        },
+        loadDeployments: async () => [
+          {
+            deploymentId: "11111111-1111-4111-8111-111111111111",
+            status: "ready",
+            stage: null,
+            url: "http://a.localhost:1/",
+          },
+          {
+            deploymentId: "22222222-2222-4222-8222-222222222222",
+            status: "failed",
+            stage: "git",
+            url: null,
+          },
+        ],
+      }}
+    />,
+    { width: 90, height: 14 }
+  );
+  try {
+    await setup.waitForFrame((value) => value.includes("11111111"));
+    await act(async () => {
+      setup.mockInput.pressKey("o");
+      await Promise.resolve();
+    });
+    await setup.waitForFrame((value) =>
+      value.includes("Opened http://a.localhost:1/")
+    );
+    expect(opened).toEqual(["http://a.localhost:1/"]);
+    await act(async () => {
+      setup.mockInput.pressKey("j");
+      await Promise.resolve();
+    });
+    await act(async () => {
+      setup.mockInput.pressKey("o");
+      await Promise.resolve();
+    });
+    const frame = await setup.waitForFrame((value) =>
+      value.includes("This deployment has no URL to open.")
+    );
+    expect(opened).toEqual(["http://a.localhost:1/"]);
+    expect(frame).toContain("22222222 failed (git)");
   } finally {
     await act(async () => {
       setup.renderer.destroy();
@@ -248,8 +391,9 @@ test("without a Git checkout the TUI does not claim server deployments match", a
     const frame = await setup.waitForFrame((value) =>
       value.includes("44444444")
     );
-    expect(frame).toContain("Server deployments (no Git checkout selected)");
+    expect(frame).toContain("44444444 ready");
     expect(frame).not.toContain("This checkout");
+    expect(frame).not.toContain("Other server deployments");
   } finally {
     await act(async () => {
       setup.renderer.destroy();

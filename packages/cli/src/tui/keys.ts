@@ -3,6 +3,9 @@ import type { KeyEvent } from "@opentui/core";
 export const shortcuts = {
   down: ["j", "down"],
   up: ["k", "up"],
+  left: ["h", "left"],
+  right: ["l", "right"],
+  open: ["o"],
   organization: ["g"],
   project: ["p"],
   confirm: ["return"],
@@ -20,6 +23,9 @@ export function actionFor(key: KeyEvent): keyof typeof shortcuts | undefined {
   for (const action of [
     "down",
     "up",
+    "left",
+    "right",
+    "open",
     "organization",
     "project",
     "confirm",

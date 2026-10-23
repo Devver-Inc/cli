@@ -102,15 +102,23 @@ const reachable = (url: string) =>
     });
   });
 
-export const openDeployer = (name: string) =>
+const openDeployerFor = (name: string) =>
   Effect.gen(function* () {
     const instanceDirectory = join(
       yield* startup(async () => await instanceParent(name)),
       name
     );
-    const store = yield* openDeploymentStore(
-      join(instanceDirectory, "deployments.sqlite")
-    );
+    return {
+      instanceDirectory,
+      store: yield* openDeploymentStore(
+        join(instanceDirectory, "deployments.sqlite")
+      ),
+    };
+  });
+
+export const openDeployer = (name: string) =>
+  Effect.gen(function* () {
+    const { instanceDirectory, store } = yield* openDeployerFor(name);
     const appPort = yield* store.appPort;
     const host = yield* Effect.acquireRelease(
       startup(
@@ -167,12 +175,21 @@ export const openDeployer = (name: string) =>
         const worktree = join(instanceDirectory, "worktrees", deploymentId);
         let bare: string | undefined;
         let recorded = false;
+        // A new deployment extends the latest previous deployment of the same
+        // repository, so the tree reads oldest to newest within one checkout.
+        const { deployments } = yield* store.list;
+        const candidates = deployments.filter(
+          (entry) =>
+            entry.repositoryId === source.repositoryId &&
+            entry.status !== "failed"
+        );
+        const parent = candidates.at(-1);
         return yield* Effect.gen(function* () {
           yield* store.record({
             deploymentId,
             repositoryId: source.repositoryId,
             commit: input.commit,
-            parentDeploymentId: null,
+            parentDeploymentId: parent?.deploymentId ?? null,
             worktree,
           });
           recorded = true;
@@ -211,7 +228,7 @@ export const openDeployer = (name: string) =>
             deploymentId,
             repositoryId: source.repositoryId,
             commit: input.commit,
-            parentDeploymentId: null,
+            parentDeploymentId: parent?.deploymentId ?? null,
             url: host.url(deploymentId),
           };
         }).pipe(
@@ -278,12 +295,21 @@ export const openDeployer = (name: string) =>
         unreadable === 0
           ? Effect.succeed(
               deployments.map(
-                ({ deploymentId, repositoryId, commit, status, stage }) => ({
+                ({
                   deploymentId,
                   repositoryId,
                   commit,
+                  parentDeploymentId,
                   status,
                   stage,
+                }) => ({
+                  deploymentId,
+                  repositoryId,
+                  commit,
+                  parentDeploymentId,
+                  status,
+                  stage,
+                  url: status === "ready" ? host.url(deploymentId) : null,
                 })
               )
             )
