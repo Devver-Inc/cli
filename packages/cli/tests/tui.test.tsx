@@ -357,7 +357,7 @@ test("o opens a ready deployment URL and reports one without a URL", async () =>
       await Promise.resolve();
     });
     const frame = await setup.waitForFrame((value) =>
-      value.includes("This deployment has no URL to open.")
+      value.includes("This deployment is not ready, so it has no URL to open.")
     );
     expect(opened).toEqual(["http://a.localhost:1/"]);
     expect(frame).toContain("22222222 failed (git)");

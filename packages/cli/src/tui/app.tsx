@@ -592,7 +592,8 @@ interface FlatDeployment {
   readonly commit: string | undefined;
   readonly status: LocalDeploymentStatus["status"];
   readonly stage: LocalDeploymentStatus["stage"];
-  readonly url: string | undefined;
+  // undefined: the server did not report a URL field; null: reported as none.
+  readonly url: string | null | undefined;
 }
 
 interface TreeNode extends FlatDeployment {
@@ -663,7 +664,9 @@ function treeRow(
         ? ""
         : ` (${entry.stage})`}
       {entry.commit === undefined ? "" : `  ${entry.commit.slice(0, 8)}`}
-      {entry.url === undefined || entry.url === null ? "" : "  ⌘ open with o"}
+      {entry.url !== undefined && entry.url !== null && entry.url !== ""
+        ? "  ⌘ open with o"
+        : ""}
     </text>
   );
 }
@@ -718,7 +721,7 @@ function LocalApp({
               commit: entry.commit,
               status: entry.status,
               stage: entry.stage,
-              url: entry.url ?? undefined,
+              url: entry.url,
             }))
           )
         )
@@ -772,8 +775,14 @@ function LocalApp({
       }
     } else if (action === "open") {
       const url = current?.url;
-      if (url === undefined || url === null) {
-        setStatus("This deployment has no URL to open.");
+      if (url === undefined) {
+        setStatus(
+          "This server does not report deployment URLs. Re-create it from a current build."
+        );
+        return;
+      }
+      if (url === null) {
+        setStatus("This deployment is not ready, so it has no URL to open.");
         return;
       }
       const opener = target.openInBrowser ?? openBrowser;
@@ -858,12 +867,15 @@ function LocalApp({
       <box
         borderColor={theme.line}
         borderStyle="single"
+        flexDirection="row"
         height={3}
+        justifyContent="space-between"
         paddingX={1}
       >
         <text
           fg={status === "" ? theme.muted : theme.rose}
           flexGrow={1}
+          minWidth={0}
           wrapMode="none"
         >
           {status === "" ? "j/k/h/l move · o open · q quit" : status}
@@ -920,7 +932,9 @@ function StandaloneApp({ version, onExit }: AppProps): React.ReactNode {
       <box
         borderColor={theme.line}
         borderStyle="single"
+        flexDirection="row"
         height={3}
+        justifyContent="space-between"
         paddingX={1}
       >
         <text fg={theme.muted} flexGrow={1}>
