@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
-import { Effect } from "effect";
+import { Console, Effect, Runtime } from "effect";
 import { Command } from "effect/cli";
 
 import pkg from "../../../../package.json" with { type: "json" };
@@ -47,6 +47,12 @@ if (
 ) {
   NodeRuntime.runMain(
     Command.run(cli, { version: versionLine(pkg.version) }).pipe(
+      Effect.tapErrorTag("DeployAbortError", (error) =>
+        Effect.gen(function* () {
+          yield* Console.error(error.message);
+          error[Runtime.errorReported] = false;
+        })
+      ),
       // @effect-diagnostics-next-line strictEffectProvide:off
       Effect.provide(NodeServices.layer)
     )

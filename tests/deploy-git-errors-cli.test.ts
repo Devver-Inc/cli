@@ -30,8 +30,8 @@ test("deploy explains missing Git repository and missing commit without changing
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_CONFIG_GLOBAL: join(root, "empty-gitconfig"),
   };
-  const run = async (cwd: string) => {
-    const child = Bun.spawn(["bun", "run", cli, "deploy"], {
+  const run = async (cwd: string, ...args: string[]) => {
+    const child = Bun.spawn(["bun", "run", cli, "deploy", ...args], {
       cwd,
       env,
       stdout: "pipe",
@@ -42,7 +42,7 @@ test("deploy explains missing Git repository and missing commit without changing
       new Response(child.stdout).text(),
       new Response(child.stderr).text(),
     ]);
-    return { status, output: `${out}${err}` };
+    return { status, stdout: out, stderr: err };
   };
   try {
     const config = join(root, "devver", "config");
@@ -65,8 +65,9 @@ test("deploy explains missing Git repository and missing commit without changing
     mkdirSync(empty);
     const noRepo = await run(plain);
     expect(noRepo.status).not.toBe(0);
-    expect(noRepo.output).toContain(
-      "This folder is not a Git repository. Run git init to create one."
+    expect(noRepo.stdout).toBe("");
+    expect(noRepo.stderr).toBe(
+      "This folder is not a Git repository. Run git init to create one.\n"
     );
     expect(existsSync(join(plain, ".git"))).toBe(false);
 
@@ -74,8 +75,9 @@ test("deploy explains missing Git repository and missing commit without changing
     expect(init.exitCode).toBe(0);
     const noCommit = await run(empty);
     expect(noCommit.status).not.toBe(0);
-    expect(noCommit.output).toContain(
-      "Devver needs a commit to deploy. Commit your changes first."
+    expect(noCommit.stdout).toBe("");
+    expect(noCommit.stderr).toBe(
+      "Devver needs a commit to deploy. Commit your changes first.\n"
     );
     expect(
       Bun.spawnSync(["git", "rev-parse", "--verify", "HEAD"], {
@@ -83,6 +85,14 @@ test("deploy explains missing Git repository and missing commit without changing
         env,
       }).exitCode
     ).not.toBe(0);
+
+    writeFileSync(join(config, "cli"), "{}");
+    const otherFailure = await run(plain, "--open");
+    expect(otherFailure.status).not.toBe(0);
+    expect(otherFailure.stdout).toContain("DeploymentError:");
+    expect(otherFailure.stdout).toContain(
+      "--open is only supported for local deployments."
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

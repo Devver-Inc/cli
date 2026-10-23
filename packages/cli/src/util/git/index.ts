@@ -1,12 +1,14 @@
 import { spawn } from "node:child_process";
 
-import { Console, Data, Effect } from "effect";
+import { Console, Data, Effect, Runtime } from "effect";
 
 import { Prompt } from "../prompts";
 
 export class DeployAbortError extends Data.TaggedError("DeployAbortError")<{
   message: string;
-}> {}
+}> {
+  [Runtime.errorReported] = true;
+}
 
 const commitHash = /^[a-f0-9]{40,64}$/iu;
 const aheadBehind = /^(?<ahead>\d+)\s+(?<behind>\d+)$/u;
