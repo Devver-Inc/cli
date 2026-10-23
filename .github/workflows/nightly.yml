@@ -114,6 +114,9 @@ jobs:
   npm:
     needs: [prepare, binary]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     env:
       DEVVER_RELEASE_COMMIT: ${{ needs.prepare.outputs.sha }}
     steps:
