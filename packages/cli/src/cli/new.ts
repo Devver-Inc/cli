@@ -1,6 +1,8 @@
 import { Console, Data, Effect, Runtime } from "effect";
 import { Argument, Command } from "effect/cli";
 
+import { attachTarget } from "./local-server";
+
 const MAX_CAUSE_DEPTH = 5;
 
 export class ServerCreateError extends Data.TaggedError("ServerCreateError")<{
@@ -55,12 +57,15 @@ const createServer = Command.make(
               : "Creating the server failed",
         }),
     }).pipe(
+      Effect.tap((url) => attachTarget(url)),
       Effect.flatMap((url) =>
-        Console.log(`Server ready at ${url}\ndevver attach ${url}`)
+        Console.log(
+          `Server ready and attached at ${url}\nDeploy from any Git checkout with 'devver deploy'.`
+        )
       )
     )
 ).pipe(
-  Command.withDescription("Create a supervised named server without attaching")
+  Command.withDescription("Create a supervised named server and attach to it")
 );
 
 export const newCommand = Command.make("new").pipe(

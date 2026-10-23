@@ -89,19 +89,22 @@ export async function verifyIdentity(url: string) {
   return await Effect.runPromise(identityAt(url));
 }
 
+export const attachTarget = (url: string) =>
+  Effect.gen(function* () {
+    const config = yield* Effect.tryPromise(readConfig);
+    const target = yield* identityAt(url);
+    const { "cloud-target": _removed, ...rest } = config;
+    yield* Effect.tryPromise(async () =>
+      writeConfig({ ...rest, "local-target": target })
+    );
+    return target;
+  });
+
 export const attach = Command.make(
   "attach",
   { url: Argument.String("url") },
   ({ url }) =>
-    Effect.gen(function* () {
-      const config = yield* Effect.tryPromise(readConfig);
-      const target = yield* identityAt(url);
-      const { "cloud-target": _removed, ...rest } = config;
-      yield* Effect.tryPromise(async () =>
-        writeConfig({ ...rest, "local-target": target })
-      );
-      return target;
-    }).pipe(
+    attachTarget(url).pipe(
       Effect.flatMap((target) =>
         Console.log(
           `Attached ${target.name} (${target.instanceId}) at ${target.url} — version ${target.serverVersion}`

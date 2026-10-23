@@ -168,7 +168,9 @@ test("installed npm bin pins and starts its server after the CLI exits", async (
         throw new Error("No control URL");
       }
       urls.push(url);
-      expect(created.output).toContain(`devver attach ${url}`);
+      expect(created.output).toContain(`Server ready and attached at ${url}`);
+      expect(created.output).not.toContain("devver attach");
+      expect(runInstalled("server", "status").output).toContain(`${name} (`);
       const identity = decodeIdentity(
         await (await fetch(`${url}/identity`)).json()
       );
@@ -200,7 +202,7 @@ test("installed npm bin pins and starts its server after the CLI exits", async (
     expect(listed.output).toContain(
       `${urls[1]} — version ${pkg.version}: reachable`
     );
-    expect(runInstalled("server", "status").output).toContain(
+    expect(runInstalled("server", "status").output).not.toContain(
       "No server attached"
     );
     expect(runInstalled("attach", urls[0] ?? "").status).toBe(0);

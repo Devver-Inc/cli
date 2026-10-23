@@ -98,7 +98,7 @@ if (process.platform === "darwin") {
   }
 }
 
-test("macOS launchd keeps named servers ready after CLI exits and attachment is explicit", async () => {
+test("macOS launchd keeps named servers ready after CLI exits and attaches the new instance", async () => {
   const domain = supervisableDomain();
   if (domain === null || node === null) {
     return;
@@ -129,7 +129,9 @@ test("macOS launchd keeps named servers ready after CLI exits and attachment is 
         throw new Error("No control URL");
       }
       urls.push(url);
-      expect(created.output).toContain(`devver attach ${url}`);
+      expect(created.output).toContain(`Server ready and attached at ${url}`);
+      expect(created.output).not.toContain("devver attach");
+      expect(ws.run("server", "status").output).toContain(`${name} (`);
       expect(statSync(directory).mode % 0o1000).toBe(0o700);
       expect(statSync(service).mode % 0o1000).toBe(0o600);
       expect(statSync(join(directory, "service.plist")).mode % 0o1000).toBe(
@@ -176,8 +178,13 @@ test("macOS launchd keeps named servers ready after CLI exits and attachment is 
     expect(listed.output).toContain(
       `${urls[1]} — version ${pkg.version}: reachable`
     );
-    expect(listed.output).not.toContain("[selected]");
-    expect(ws.run("server", "status").output).toContain("No server attached");
+    // Both instances attach at creation, and the last one wins the selection.
+    expect(listed.output).toContain("other (");
+    expect(listed.output).toContain(": reachable [selected]");
+    expect(listed.output).toContain("default (");
+    expect(ws.run("server", "status").output).not.toContain(
+      "No server attached"
+    );
     expect(ws.run("attach", urls[0] ?? "").status).toBe(0);
     const selected = ws.run("server", "list");
     expect(selected.output).toContain(
