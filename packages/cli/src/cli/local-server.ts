@@ -13,7 +13,9 @@ import {
   writeConfig,
 } from "../config/api";
 import type { CliConfig } from "../config/api";
+import { Prompt } from "../util/prompts";
 import { withLocalApi } from "./api";
+import { removeInstance, stopInstance } from "./supervised-server-lifecycle";
 
 const IdentitySchema = Schema.Struct({
   instanceId: Schema.String.check(Schema.isUUID(4)),
@@ -26,6 +28,10 @@ const decodeTarget = Schema.decodeUnknownSync(LocalTargetSchema);
 const MAX_IDENTITY_BYTES = 8192;
 
 class IdentityProbeError extends Data.TaggedError("IdentityProbeError")<{
+  message: string;
+}> {}
+
+class ServerLifecycleError extends Data.TaggedError("ServerLifecycleError")<{
   message: string;
 }> {}
 
@@ -225,7 +231,73 @@ const list = Command.make("list", {}, () =>
   })
 ).pipe(Command.withDescription("List saved local server instances"));
 
+const stop = Command.make(
+  "stop",
+  { name: Argument.String("name") },
+  ({ name }) =>
+    Effect.gen(function* () {
+      yield* Effect.tryPromise({
+        try: async () => stopInstance(name),
+        catch: (error) =>
+          new ServerLifecycleError({
+            message:
+              error instanceof Error
+                ? error.message
+                : "Stopping the server failed",
+          }),
+      });
+      yield* Console.log(
+        `Stopped ${name}. Deployments and state are preserved; re-create the instance's process by hand or with a future 'devver server start'.`
+      );
+    })
+).pipe(
+  Command.withDescription(
+    "Stop a supervised local server, preserving its state"
+  )
+);
+
+const remove = Command.make(
+  "remove",
+  { name: Argument.String("name") },
+  ({ name }) =>
+    Effect.gen(function* () {
+      yield* Effect.tryPromise({
+        try: async () => await readInstanceService(name),
+        catch: (error) =>
+          new ServerLifecycleError({
+            message:
+              error instanceof Error
+                ? error.message
+                : `Instance '${name}' could not be read`,
+          }),
+      });
+      const confirm = yield* Prompt.select({
+        message: `Remove ${name} and delete its deployments, history and state? This cannot be undone.`,
+        options: Prompt.Questions.YNOpts,
+      });
+      if (confirm !== "Yes") {
+        yield* Console.log("Removal cancelled.");
+        return;
+      }
+      yield* Effect.tryPromise({
+        try: async () => removeInstance(name),
+        catch: (error) =>
+          new ServerLifecycleError({
+            message:
+              error instanceof Error
+                ? error.message
+                : "Removing the server failed",
+          }),
+      });
+      yield* Console.log(`Removed ${name} and its state.`);
+    })
+).pipe(
+  Command.withDescription(
+    "Remove a supervised local server and delete its state"
+  )
+);
+
 export const server = Command.make("server").pipe(
   Command.withDescription("Inspect local server instances"),
-  Command.withSubcommands([status, list])
+  Command.withSubcommands([status, list, stop, remove])
 );
