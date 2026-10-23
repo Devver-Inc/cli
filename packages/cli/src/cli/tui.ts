@@ -1,18 +1,22 @@
+import { createHash } from "node:crypto";
+import { realpath } from "node:fs/promises";
 import { basename } from "node:path";
 
 import { Effect, Option } from "effect";
 import { Argument, Command } from "effect/cli";
 
 import pkg from "../../../../package.json" with { type: "json" };
+import { listLocalDeployments } from "../api/local-deploy.requests";
 import { getProjects } from "../api/projects.requests";
 import { getOrganizationDetails } from "../auth/client";
 import { getCurrentOrganization } from "../auth/organization";
 import { readConfig } from "../config/api";
+import { getRepositoryRoot } from "../util/git";
 import {
   getCurrentProjectId,
   setCurrentProjectId,
 } from "../util/project/storage";
-import { withApiAt } from "./api";
+import { withApiAt, withLocalApi } from "./api";
 import { switchOrganization } from "./organization";
 import { root } from "./root";
 import { versionLine } from "./version";
@@ -26,12 +30,40 @@ export const launchTui = (project?: string, apiUrl = Option.none<string>()) =>
     const runWithContext = Effect.runPromiseWith(yield* Effect.context());
     const { run } = yield* Effect.promise(async () => import("../tui/index"));
     if (local !== undefined) {
+      const repositoryRoot = yield* getRepositoryRoot.pipe(
+        Effect.asSome,
+        Effect.catchIf(
+          (error) =>
+            error.message.startsWith("This folder is not a Git repository"),
+          () => Effect.succeed(Option.none<string>())
+        )
+      );
+      const repositoryId = Option.isSome(repositoryRoot)
+        ? createHash("sha256")
+            .update(
+              yield* Effect.tryPromise(
+                async () => await realpath(repositoryRoot.value)
+              )
+            )
+            .digest("hex")
+        : undefined;
       yield* run({
         version: versionLine(pkg.version),
         target: {
           kind: "local",
           server: local.name,
           workspace: project ?? basename(process.cwd()),
+          repositoryId,
+          loadDeployments: async () =>
+            await runWithContext(
+              withLocalApi(local, listLocalDeployments).pipe(
+                Effect.catchTag("ApiError", (error) =>
+                  error.status === 404 || error.status === 405
+                    ? Effect.succeed(null)
+                    : Effect.fail(error)
+                )
+              )
+            ),
         },
       });
       return;

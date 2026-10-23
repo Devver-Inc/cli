@@ -32,6 +32,8 @@ export const DeploymentResponse = Schema.Struct({
 export const DeploymentStatuses = Schema.Array(
   Schema.Struct({
     deploymentId: DeploymentId,
+    repositoryId: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
+    commit: Commit,
     status: Schema.Literals(["preparing", "ready", "failed", "degraded"]),
     stage: Schema.NullOr(DeployStageSchema),
   })

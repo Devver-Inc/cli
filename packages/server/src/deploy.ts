@@ -277,11 +277,15 @@ export const openDeployer = (name: string) =>
       Effect.flatMap(({ deployments, unreadable }) =>
         unreadable === 0
           ? Effect.succeed(
-              deployments.map(({ deploymentId, status, stage }) => ({
-                deploymentId,
-                status,
-                stage,
-              }))
+              deployments.map(
+                ({ deploymentId, repositoryId, commit, status, stage }) => ({
+                  deploymentId,
+                  repositoryId,
+                  commit,
+                  status,
+                  stage,
+                })
+              )
             )
           : new DeployFailure({
               stage: "server",

@@ -3,6 +3,7 @@ import type { KeyEvent, ScrollBoxRenderable } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { useEffect, useRef, useState } from "react";
 
+import type { LocalDeploymentStatus } from "../api/local-deploy.requests";
 import type { Organization } from "../auth/session";
 import { actionFor } from "./keys";
 import type { shortcuts } from "./keys";
@@ -15,6 +16,16 @@ const scrollbarOptions = {
     foregroundColor: theme.muted,
   },
 };
+
+interface LocalTarget {
+  readonly kind: "local";
+  readonly server: string;
+  readonly workspace: string;
+  readonly repositoryId?: string | undefined;
+  readonly loadDeployments: () => Promise<
+    readonly LocalDeploymentStatus[] | null
+  >;
+}
 
 interface CloudTarget {
   readonly kind: "cloud";
@@ -32,14 +43,7 @@ interface CloudTarget {
 }
 
 export interface AppProps {
-  readonly target:
-    | CloudTarget
-    | {
-        readonly kind: "local";
-        readonly server: string;
-        readonly workspace: string;
-      }
-    | { readonly kind: "none" };
+  readonly target: CloudTarget | LocalTarget | { readonly kind: "none" };
   readonly version?: string | undefined;
   readonly onExit: () => void;
 }
@@ -579,17 +583,175 @@ function CloudApp({
   );
 }
 
-function StandaloneApp({ target, version, onExit }: AppProps): React.ReactNode {
+function deploymentRow(entry: LocalDeploymentStatus): React.ReactNode {
+  return (
+    <text
+      fg={entry.status === "ready" ? theme.ink : theme.amber}
+      key={entry.deploymentId}
+      wrapMode="none"
+    >
+      {entry.deploymentId} {entry.status}
+      {entry.stage === null ? "" : ` (${entry.stage})`}
+      {entry.commit === undefined ? "" : `  ${entry.commit.slice(0, 8)}`}
+    </text>
+  );
+}
+
+function LocalApp({
+  target,
+  version,
+  onExit,
+}: AppProps & { readonly target: LocalTarget }): React.ReactNode {
+  const [result, setResult] = useState<
+    | { readonly kind: "loading" | "failed" | "unsupported" }
+    | {
+        readonly kind: "loaded";
+        readonly deployments: readonly LocalDeploymentStatus[];
+      }
+  >({ kind: "loading" });
+  const list = useRef<ScrollBoxRenderable>(null);
+
+  useEffect(() => {
+    let active = true;
+    target
+      .loadDeployments()
+      .then((deployments) => {
+        if (active) {
+          setResult(
+            deployments === null
+              ? { kind: "unsupported" }
+              : { kind: "loaded", deployments }
+          );
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setResult({ kind: "failed" });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [target.loadDeployments]);
+
+  useKeyboard((key) => {
+    const action = actionFor(key);
+    if (action === "quit") {
+      onExit();
+    } else if (action === "down") {
+      list.current?.scrollBy(1);
+    } else if (action === "up") {
+      list.current?.scrollBy(-1);
+    }
+  });
+
+  const deployments = result.kind === "loaded" ? result.deployments : [];
+  const current = deployments.filter(
+    (entry) =>
+      entry.repositoryId === target.repositoryId &&
+      target.repositoryId !== undefined
+  );
+  const other = deployments.filter(
+    (entry) =>
+      entry.repositoryId !== target.repositoryId ||
+      target.repositoryId === undefined
+  );
+  return (
+    <box
+      backgroundColor={terminalBackground}
+      flexDirection="column"
+      height="100%"
+      width="100%"
+    >
+      <box
+        borderColor={theme.line}
+        borderStyle="single"
+        height={3}
+        paddingX={1}
+      >
+        <text attributes={TextAttributes.BOLD} fg={theme.mint}>
+          dv{" "}
+          <span fg={theme.ink}>
+            {target.server} / workspace: {target.workspace}
+          </span>
+        </text>
+      </box>
+      <box
+        border
+        borderColor={theme.line}
+        flexDirection="column"
+        flexGrow={1}
+        minHeight={0}
+        paddingX={1}
+        title=" deployments "
+        titleColor={theme.mint}
+      >
+        <scrollbox
+          flexGrow={1}
+          minHeight={0}
+          ref={list}
+          scrollbarOptions={scrollbarOptions}
+        >
+          {result.kind === "loading" && (
+            <text fg={theme.muted}>Loading deployments…</text>
+          )}
+          {result.kind === "failed" && (
+            <text fg={theme.rose}>
+              Could not load deployments from this server.
+            </text>
+          )}
+          {result.kind === "unsupported" && (
+            <text fg={theme.muted}>
+              Deployment listing is unavailable on this server.
+            </text>
+          )}
+          {result.kind === "loaded" && deployments.length === 0 && (
+            <text fg={theme.muted}>No deployments on this server.</text>
+          )}
+          {target.repositoryId !== undefined && deployments.length > 0 && (
+            <text fg={theme.mint}>This checkout</text>
+          )}
+          {target.repositoryId !== undefined &&
+            deployments.length > 0 &&
+            current.length === 0 && (
+              <text fg={theme.muted}>No deployments for this checkout.</text>
+            )}
+          {current.map(deploymentRow)}
+          {other.length > 0 && (
+            <text fg={theme.mint}>
+              {target.repositoryId === undefined
+                ? "Server deployments (no Git checkout selected)"
+                : "Other server deployments"}
+            </text>
+          )}
+          {other.map(deploymentRow)}
+        </scrollbox>
+      </box>
+      <box
+        borderColor={theme.line}
+        borderStyle="single"
+        height={3}
+        paddingX={1}
+      >
+        <text fg={theme.muted} flexGrow={1}>
+          j/k scroll · q quit
+        </text>
+        <text fg={theme.muted}>
+          {version !== undefined && version !== "" ? `v${version}` : ""}
+        </text>
+      </box>
+    </box>
+  );
+}
+
+function StandaloneApp({ version, onExit }: AppProps): React.ReactNode {
   useKeyboard((key) => {
     if (actionFor(key) === "quit") {
       onExit();
     }
   });
 
-  const label =
-    target.kind === "local"
-      ? `${target.server} / workspace: ${target.workspace}`
-      : "No target selected";
+  const label = "No target selected";
 
   return (
     <box
@@ -641,8 +803,11 @@ function StandaloneApp({ target, version, onExit }: AppProps): React.ReactNode {
 }
 
 export function App(props: AppProps): React.ReactNode {
-  return props.target.kind === "cloud" ? (
-    <CloudApp {...props} target={props.target} />
+  if (props.target.kind === "cloud") {
+    return <CloudApp {...props} target={props.target} />;
+  }
+  return props.target.kind === "local" ? (
+    <LocalApp {...props} target={props.target} />
   ) : (
     <StandaloneApp {...props} />
   );
