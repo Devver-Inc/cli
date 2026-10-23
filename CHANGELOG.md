@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1](https://github.com/Devver-Inc/cli/compare/v1.2.0...v1.2.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **ci:** grant the nightly npm job OIDC permission ([#124](https://github.com/Devver-Inc/cli/issues/124)) ([d3b11a7](https://github.com/Devver-Inc/cli/commit/d3b11a7dca4350a2f75a7b1a360e61d9ad505954))
+* **ci:** publish the nightly as @devver-inc/cli ([#127](https://github.com/Devver-Inc/cli/issues/127)) ([2d2e813](https://github.com/Devver-Inc/cli/commit/2d2e8132adccbb1fbb618f7b331af4cf8a004ce9))
+* **ci:** sync nightly workflow with develop build ([#114](https://github.com/Devver-Inc/cli/issues/114)) ([a2fc3b2](https://github.com/Devver-Inc/cli/commit/a2fc3b249c84498d7c9fde9c6c250ff2f4909f4f))
+* nightly version number ([#55](https://github.com/Devver-Inc/cli/issues/55)) ([2d5d0c9](https://github.com/Devver-Inc/cli/commit/2d5d0c9f21933ff2883dc3e52bb4332756860b78))
+* nightly versions shouldn't show dirty status ([#57](https://github.com/Devver-Inc/cli/issues/57)) ([7fe2de8](https://github.com/Devver-Inc/cli/commit/7fe2de8b717f0a3017790e6142918490d072c92b))
+
 ## [1.2.0](https://github.com/Devver-Inc/cli/compare/v1.1.2...v1.2.0) (2026-07-24)
 
 
