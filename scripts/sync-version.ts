@@ -54,7 +54,7 @@ if (check) {
         "packages/server": Schema.Struct({ version: Schema.String }),
       }),
       packages: Schema.Struct({
-        "@devver/cli": Schema.Tuple([Schema.String]),
+        "@devver-inc/cli": Schema.Tuple([Schema.String]),
         "@devver/server": Schema.Tuple([Schema.String]),
       }),
     })
@@ -72,8 +72,8 @@ if (check) {
     bunLock.workspaces?.["packages/cli"]?.version !== version ||
     bunLock.workspaces?.["packages/cli"]?.bin?.["devver-server"] !== bin ||
     bunLock.workspaces?.["packages/server"]?.version !== version ||
-    bunLock.packages?.["@devver/cli"]?.[0] !==
-      "@devver/cli@workspace:packages/cli" ||
+    bunLock.packages?.["@devver-inc/cli"]?.[0] !==
+      "@devver-inc/cli@workspace:packages/cli" ||
     bunLock.packages?.["@devver/server"]?.[0] !==
       "@devver/server@workspace:packages/server"
   ) {

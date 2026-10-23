@@ -19,7 +19,7 @@
       },
     },
     "packages/cli": {
-      "name": "@devver/cli",
+      "name": "@devver-inc/cli",
       "version": "1.2.0",
       "bin": {
         "devver": "dist/cli.mjs",
@@ -122,7 +122,7 @@
 
     "@clack/prompts": ["@clack/prompts@1.8.1", "", { "dependencies": { "@clack/core": "1.5.1", "fast-string-width": "^3.0.2", "fast-wrap-ansi": "^0.2.0", "sisteransi": "^1.0.5" } }, "sha512-dlT1m5e/0yUL0kRNcQn7yGLVThkgbB0Ga/1AmfDDC/8ik6AIiSf2QLQO2zPYvefsHP0aFgxO93cVLCCfDp7kzQ=="],
 
-    "@devver/cli": ["@devver/cli@workspace:packages/cli"],
+    "@devver-inc/cli": ["@devver-inc/cli@workspace:packages/cli"],
 
     "@devver/server": ["@devver/server@workspace:packages/server"],
 

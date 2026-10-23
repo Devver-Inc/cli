@@ -89,7 +89,7 @@ test("installed npm bin pins and starts its server after the CLI exits", async (
         "npm",
         "pack",
         "--workspace",
-        "@devver/cli",
+        "@devver-inc/cli",
         "--ignore-scripts",
         "--pack-destination",
         ws.root,

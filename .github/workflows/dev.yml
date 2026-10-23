@@ -102,6 +102,9 @@ jobs:
   npm:
     needs: [prepare, binary]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     env:
       DEVVER_RELEASE_COMMIT: ${{ needs.prepare.outputs.sha }}
     steps:
@@ -121,7 +124,7 @@ jobs:
       - run: bun run build:npm && node packages/cli/dist/cli.mjs --version
         env:
           DEVVER_RELEASE_CHANNEL: dev
-      - run: npm publish --workspace @devver/cli --access public --tag dev
+      - run: npm publish --workspace @devver-inc/cli --access public --tag dev
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           DEVVER_RELEASE_CHANNEL: dev
