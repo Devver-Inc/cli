@@ -16,19 +16,31 @@ const scrollbarOptions = {
   },
 };
 
-export interface AppProps {
+interface CloudTarget {
+  readonly kind: "cloud";
   readonly project?: string | undefined;
   readonly currentProjectId?: string | null | undefined;
   readonly loadProjects?:
     | (() => Promise<readonly { id: string; name: string }[]>)
     | undefined;
   readonly onSwitchProject?: ((id: string) => Promise<void>) | undefined;
-  readonly version?: string | undefined;
   readonly organizations?: readonly Organization[] | undefined;
   readonly currentOrganization?: string | null | undefined;
   readonly onSwitchOrganization?:
     | ((current: string | null, id: string) => Promise<void>)
     | undefined;
+}
+
+export interface AppProps {
+  readonly target:
+    | CloudTarget
+    | {
+        readonly kind: "local";
+        readonly server: string;
+        readonly workspace: string;
+      }
+    | { readonly kind: "none" };
+  readonly version?: string | undefined;
   readonly onExit: () => void;
 }
 
@@ -37,7 +49,7 @@ function useOrganizationSelection({
   currentOrganization = null,
   onSwitchOrganization,
 }: Pick<
-  AppProps,
+  CloudTarget,
   "organizations" | "currentOrganization" | "onSwitchOrganization"
 >) {
   const [orgId, setOrgId] = useState(currentOrganization);
@@ -217,7 +229,10 @@ function useProjectSelection({
   onSwitchProject,
   organizationId,
   initialOrganizationId,
-}: Pick<AppProps, "currentProjectId" | "loadProjects" | "onSwitchProject"> & {
+}: Pick<
+  CloudTarget,
+  "currentProjectId" | "loadProjects" | "onSwitchProject"
+> & {
   organizationId?: string | undefined;
   initialOrganizationId: string | null;
 }) {
@@ -445,17 +460,19 @@ function shortcutHelp(pickerOpen: boolean): string {
     : "g organization · p project · q quit";
 }
 
-export function App({
-  project,
-  currentProjectId = null,
-  loadProjects,
-  onSwitchProject,
+function CloudApp({
+  target: {
+    project,
+    currentProjectId = null,
+    loadProjects,
+    onSwitchProject,
+    organizations = [],
+    currentOrganization = null,
+    onSwitchOrganization,
+  },
   version,
-  organizations = [],
-  currentOrganization = null,
-  onSwitchOrganization,
   onExit,
-}: AppProps): React.ReactNode {
+}: AppProps & { readonly target: CloudTarget }): React.ReactNode {
   const org = useOrganizationSelection({
     organizations,
     currentOrganization,
@@ -559,5 +576,74 @@ export function App({
         </text>
       </box>
     </box>
+  );
+}
+
+function StandaloneApp({ target, version, onExit }: AppProps): React.ReactNode {
+  useKeyboard((key) => {
+    if (actionFor(key) === "quit") {
+      onExit();
+    }
+  });
+
+  const label =
+    target.kind === "local"
+      ? `${target.server} / workspace: ${target.workspace}`
+      : "No target selected";
+
+  return (
+    <box
+      backgroundColor={terminalBackground}
+      flexDirection="column"
+      height="100%"
+      width="100%"
+    >
+      <box
+        borderColor={theme.line}
+        borderStyle="single"
+        height={3}
+        paddingX={1}
+      >
+        <text attributes={TextAttributes.BOLD} fg={theme.mint}>
+          dv <span fg={theme.ink}>{label}</span>
+        </text>
+      </box>
+      <box
+        border
+        borderColor={theme.line}
+        flexDirection="column"
+        flexGrow={1}
+        minHeight={0}
+        paddingX={1}
+        title=" deployments "
+        titleColor={theme.mint}
+      >
+        <text fg={theme.muted}>
+          Deployment browsing is not available yet. No deployment data has been
+          loaded.
+        </text>
+      </box>
+      <box
+        borderColor={theme.line}
+        borderStyle="single"
+        height={3}
+        paddingX={1}
+      >
+        <text fg={theme.muted} flexGrow={1}>
+          q quit
+        </text>
+        <text fg={theme.muted}>
+          {version !== undefined && version !== "" ? `v${version}` : ""}
+        </text>
+      </box>
+    </box>
+  );
+}
+
+export function App(props: AppProps): React.ReactNode {
+  return props.target.kind === "cloud" ? (
+    <CloudApp {...props} target={props.target} />
+  ) : (
+    <StandaloneApp {...props} />
   );
 }

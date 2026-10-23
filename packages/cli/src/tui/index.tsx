@@ -15,7 +15,7 @@ const renderer = Effect.acquireRelease(
     })
 );
 
-export const run = (options: TuiOptions = {}) =>
+export const run = (options: TuiOptions) =>
   Effect.gen(function* () {
     const instance = yield* renderer;
     const root = yield* Effect.acquireRelease(

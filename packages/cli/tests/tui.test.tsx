@@ -13,7 +13,7 @@ test("shows honest deployment status and exits", async () => {
       onExit={() => {
         exits += 1;
       }}
-      project="demo"
+      target={{ kind: "cloud", project: "demo" }}
       version="1.2.0"
     />,
     { width: 80, height: 20 }
@@ -40,15 +40,18 @@ test("shows honest deployment status and exits", async () => {
 test("organization switch failure never displays private errors", async () => {
   const setup = await testRender(
     <App
-      currentOrganization="org-1"
       onExit={() => undefined}
-      onSwitchOrganization={async () => {
-        throw new Error("private credential");
+      target={{
+        kind: "cloud",
+        currentOrganization: "org-1",
+        onSwitchOrganization: async () => {
+          throw new Error("private credential");
+        },
+        organizations: [
+          { id: "org-1", name: "Acme" },
+          { id: "org-2", name: "Other" },
+        ],
       }}
-      organizations={[
-        { id: "org-1", name: "Acme" },
-        { id: "org-2", name: "Other" },
-      ]}
     />,
     { width: 80, height: 20 }
   );
@@ -82,16 +85,19 @@ test("project picker persists selection only after success", async () => {
   const calls: string[] = [];
   const setup = await testRender(
     <App
-      currentOrganization="org-1"
-      currentProjectId="p1"
       onExit={() => undefined}
-      organizations={[{ id: "org-1", name: "Acme" }]}
-      loadProjects={async () => [
-        { id: "p1", name: "Storefront" },
-        { id: "p2", name: "Dashboard" },
-      ]}
-      onSwitchProject={async (id) => {
-        calls.push(id);
+      target={{
+        kind: "cloud",
+        currentOrganization: "org-1",
+        currentProjectId: "p1",
+        organizations: [{ id: "org-1", name: "Acme" }],
+        loadProjects: async () => [
+          { id: "p1", name: "Storefront" },
+          { id: "p2", name: "Dashboard" },
+        ],
+        onSwitchProject: async (id) => {
+          calls.push(id);
+        },
       }}
     />,
     { width: 80, height: 20 }
@@ -122,6 +128,41 @@ test("project picker persists selection only after success", async () => {
     });
   }
 });
+
+for (const { target, label } of [
+  {
+    target: { kind: "local", server: "dev", workspace: "site" } as const,
+    label: "dev / workspace: site",
+  },
+  { target: { kind: "none" } as const, label: "No target selected" },
+]) {
+  test(`${target.kind} target hides cloud selectors`, async () => {
+    const setup = await testRender(
+      <App target={target} onExit={() => undefined} />,
+      { width: 80, height: 20 }
+    );
+    try {
+      const frame = await setup.waitForFrame((value) => value.includes(label));
+      expect(frame).toContain("q quit");
+      expect(frame).not.toContain("organization");
+      expect(frame).not.toContain("project ·");
+      for (const key of ["g", "p"]) {
+        await act(async () => {
+          setup.mockInput.pressKey(key);
+          await Promise.resolve();
+        });
+        await setup.renderOnce();
+        expect(setup.captureCharFrame()).toContain(label);
+        expect(setup.captureCharFrame()).not.toContain("Select organization");
+        expect(setup.captureCharFrame()).not.toContain("Select project");
+      }
+    } finally {
+      await act(async () => {
+        setup.renderer.destroy();
+      });
+    }
+  });
+}
 
 test("the TUI releases the renderer and never blocks process exit", () => {
   const probe = Bun.spawnSync(

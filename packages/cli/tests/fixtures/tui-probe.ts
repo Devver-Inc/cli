@@ -3,7 +3,9 @@ import { Cause, Effect, Exit } from "effect";
 import { run } from "../../src/tui/index";
 
 const exit = await Effect.runPromiseExit(
-  run({ project: "demo" }).pipe(Effect.timeout(500))
+  run({ target: { kind: "local", server: "dev", workspace: "demo" } }).pipe(
+    Effect.timeout(500)
+  )
 );
 
 let outcome = "success";
