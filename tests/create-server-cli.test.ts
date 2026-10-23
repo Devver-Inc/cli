@@ -153,7 +153,7 @@ test("installed npm bin pins and starts its server after the CLI exits", async (
     const packagedServer = join(
       installed,
       "node_modules",
-      "@devver",
+      "@devver-inc",
       "cli",
       "dist",
       "servers",
