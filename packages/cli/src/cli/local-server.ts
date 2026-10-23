@@ -1,4 +1,4 @@
-import { Console, Data, Effect, Result, Schema, Stream } from "effect";
+import { Console, Data, Effect, Result, Runtime, Schema, Stream } from "effect";
 import { Argument, Command } from "effect/cli";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 
@@ -33,7 +33,9 @@ class IdentityProbeError extends Data.TaggedError("IdentityProbeError")<{
 
 class ServerLifecycleError extends Data.TaggedError("ServerLifecycleError")<{
   message: string;
-}> {}
+}> {
+  [Runtime.errorReported] = true;
+}
 
 function probe(url: string) {
   return Effect.gen(function* () {

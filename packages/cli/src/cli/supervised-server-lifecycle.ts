@@ -2,7 +2,20 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { instanceParent, readInstanceService } from "../../../server/identity";
-import { execute } from "../util/exec";
+import { execute, isProcessUnknown } from "../util/exec";
+
+const managerState = async (unit: string) => {
+  try {
+    const state = await execute(
+      "systemctl",
+      ["--user", "show", "--property=LoadState", "--value", unit],
+      { timeout: 5000, maxBuffer: 8192 }
+    );
+    return state.stdout.trim();
+  } catch {
+    return "";
+  }
+};
 
 async function stopDarwin(name: string) {
   const service = await readInstanceService(name);
@@ -13,10 +26,17 @@ async function stopDarwin(name: string) {
   }
   const { label } = service;
   const domain = `gui/${process.getuid?.()}`;
-  await execute("launchctl", ["bootout", `${domain}/${label}`], {
-    timeout: 5000,
-    maxBuffer: 8192,
-  });
+  // Stopping an already-stopped job succeeds: the goal is "not running".
+  try {
+    await execute("launchctl", ["bootout", `${domain}/${label}`], {
+      timeout: 5000,
+      maxBuffer: 8192,
+    });
+  } catch (error) {
+    if (!isProcessUnknown(error)) {
+      throw error;
+    }
+  }
   // bootout is asynchronous: PASS only when the job is really gone.
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
@@ -45,16 +65,20 @@ async function stopLinux(name: string) {
     );
   }
   const { unit } = service;
-  await execute("systemctl", ["--user", "stop", unit], {
-    timeout: 5000,
-    maxBuffer: 8192,
-  });
-  const state = await execute(
-    "systemctl",
-    ["--user", "show", "--property=LoadState", "--value", unit],
-    { timeout: 5000, maxBuffer: 8192 }
-  );
-  if (state.stdout.trim() !== "not-found") {
+  try {
+    await execute("systemctl", ["--user", "stop", unit], {
+      timeout: 5000,
+      maxBuffer: 8192,
+    });
+  } catch (stopError) {
+    // An already-stopped unit is fine; the LoadState check below confirms it.
+    const state = await managerState(unit);
+    if (state !== "not-found") {
+      throw stopError;
+    }
+  }
+  const state = await managerState(unit);
+  if (state !== "not-found") {
     throw new Error(`Unit ${unit} remains loaded; stop it by hand.`);
   }
 }
