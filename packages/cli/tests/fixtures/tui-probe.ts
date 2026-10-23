@@ -1,5 +1,6 @@
 import { Cause, Effect, Exit } from "effect";
-import { run } from "../../src/tui";
+
+import { run } from "../../src/tui/index";
 
 const exit = await Effect.runPromiseExit(
   run({ project: "demo" }).pipe(Effect.timeout(500))

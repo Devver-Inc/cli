@@ -15,10 +15,11 @@ import { project } from "./project";
 import { repos } from "./repos";
 import { root } from "./root";
 import { secret } from "./secret";
-import { tui } from "./tui";
+import { launchTui, tui } from "./tui";
 import { versionLine } from "./version";
 
 export const cli = root.pipe(
+  Command.withHandler(({ apiUrl }) => launchTui(undefined, apiUrl)),
   Command.withSubcommands([
     attach,
     auth,
