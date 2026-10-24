@@ -175,21 +175,12 @@ export const openDeployer = (name: string) =>
         const worktree = join(instanceDirectory, "worktrees", deploymentId);
         let bare: string | undefined;
         let recorded = false;
-        // A new deployment extends the latest previous deployment of the same
-        // repository, so the tree reads oldest to newest within one checkout.
-        const { deployments } = yield* store.list;
-        const candidates = deployments.filter(
-          (entry) =>
-            entry.repositoryId === source.repositoryId &&
-            entry.status !== "failed"
-        );
-        const parent = candidates.at(-1);
         return yield* Effect.gen(function* () {
           yield* store.record({
             deploymentId,
             repositoryId: source.repositoryId,
             commit: input.commit,
-            parentDeploymentId: parent?.deploymentId ?? null,
+            parentDeploymentId: null,
             worktree,
           });
           recorded = true;
@@ -228,7 +219,7 @@ export const openDeployer = (name: string) =>
             deploymentId,
             repositoryId: source.repositoryId,
             commit: input.commit,
-            parentDeploymentId: parent?.deploymentId ?? null,
+            parentDeploymentId: null,
             url: host.url(deploymentId),
           };
         }).pipe(

@@ -265,7 +265,7 @@ async function deploy(
   commit: string,
   html: string
 ) {
-  const result = ws.cli(site, "deploy");
+  const result = ws.cli(site, "deploy", "--verbose");
   expect(result.status, result.output).toBe(0);
   expect(result.output).toContain(commit);
   const app = printedApp(result.output);
@@ -679,6 +679,24 @@ async function exercise(distribution: Distribution) {
       git(source.site, "rev-parse", "HEAD"),
       "<h1>revision B</h1>"
     );
+    const listing = await response(`${controlUrl}/deployments`);
+    expect(listing.status).toBe(200);
+    const deployments = Schema.decodeUnknownSync(
+      Schema.Array(
+        Schema.Struct({
+          deploymentId: Schema.String,
+          parentDeploymentId: Schema.NullOr(Schema.String),
+        })
+      )
+    )(JSON.parse(listing.text));
+    for (const { id } of [first, second]) {
+      expect(
+        deployments.find(({ deploymentId }) => deploymentId === id)
+      ).toEqual({
+        deploymentId: id,
+        parentDeploymentId: null,
+      });
+    }
     await isolatedRouting(first, second, controlUrl, recorded.port);
     await failedDeployments(
       ws,
