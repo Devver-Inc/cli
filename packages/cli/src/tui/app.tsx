@@ -673,12 +673,6 @@ function treeRow(
         ? ""
         : ` (${entry.stage})`}
       {entry.commit === undefined ? "" : `  ${entry.commit.slice(0, 8)}`}
-      {entry.status === "ready" &&
-      entry.url !== undefined &&
-      entry.url !== null &&
-      entry.url !== ""
-        ? "  ⌘ open with o · copy with c"
-        : ""}
     </text>
   );
 }

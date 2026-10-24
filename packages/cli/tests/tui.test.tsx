@@ -509,6 +509,9 @@ test("c copies only a selected ready URL and reports clipboard failure", async (
       value.includes("11111111 ready")
     );
     expect(initial).not.toContain("http://a.localhost:1/");
+    expect(initial).not.toContain("open with o");
+    expect(initial).not.toContain("copy with c");
+    expect(initial).toContain("o open · c copy");
     await act(async () => {
       setup.mockInput.pressKey("c");
       await Promise.resolve();
