@@ -169,7 +169,7 @@ for (const { target, label } of [
   });
 }
 
-test("local deployments show checkout matches separately from other server records", async () => {
+test("local deployments show only the opened checkout", async () => {
   const setup = await testRender(
     <App
       onExit={() => undefined}
@@ -205,15 +205,11 @@ test("local deployments show checkout matches separately from other server recor
   );
   try {
     const frame = await setup.waitForFrame((value) =>
-      value.includes("33333333")
+      value.includes("11111111 ready")
     );
-    // Every server record renders as one row without group headers, and no
-    // row claims to match this checkout.
     expect(frame).toContain("11111111 ready  bbbbbbbb");
-    expect(frame).toContain("22222222 degraded (process)  dddddddd");
-    expect(frame).toContain("33333333 failed (git)");
-    expect(frame).not.toContain("This checkout");
-    expect(frame).not.toContain("Other server deployments");
+    expect(frame).not.toContain("22222222");
+    expect(frame).not.toContain("33333333");
   } finally {
     await act(async () => {
       setup.renderer.destroy();

@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type { LocalDeploymentStatus } from "../api/local-deploy.requests";
 import { openBrowser } from "../auth/browser";
 import type { Organization } from "../auth/session";
+import { visibleDeployments } from "./deployments";
 import { actionFor } from "./keys";
 import type { shortcuts } from "./keys";
 import { theme } from "./theme";
@@ -714,15 +715,17 @@ function LocalApp({
     result.kind === "loaded"
       ? flatten(
           buildTree(
-            result.deployments.map((entry) => ({
-              id: entry.deploymentId,
-              parentId: entry.parentDeploymentId ?? undefined,
-              repositoryId: entry.repositoryId,
-              commit: entry.commit,
-              status: entry.status,
-              stage: entry.stage,
-              url: entry.url,
-            }))
+            visibleDeployments(result.deployments, target.repositoryId).map(
+              (entry) => ({
+                id: entry.deploymentId,
+                parentId: entry.parentDeploymentId ?? undefined,
+                repositoryId: entry.repositoryId,
+                commit: entry.commit,
+                status: entry.status,
+                stage: entry.stage,
+                url: entry.url,
+              })
+            )
           )
         )
       : [];
@@ -857,7 +860,11 @@ function LocalApp({
             </text>
           )}
           {result.kind === "loaded" && rows.length === 0 && (
-            <text fg={theme.muted}>No deployments on this server.</text>
+            <text fg={theme.muted}>
+              {target.repositoryId === undefined
+                ? "No deployments on this server."
+                : "No deployments for this repository."}
+            </text>
           )}
           {rows.map((row): React.ReactNode =>
             treeRow(row, row.id === selectedId)
