@@ -48,7 +48,13 @@ export async function pinServer(parent: string, instanceId: string) {
     "WEBSITINO-LICENSE",
   ]) {
     const source = join(sourceRoot, "servers", pkg.version, name);
-    if (!(await lstat(source)).isFile()) {
+    const packaged = await lstat(source).catch(() => undefined);
+    if (packaged === undefined) {
+      throw new Error(
+        `Packaged server tool '${name}' is missing at ${source}. Creating a server needs a packaged build: run 'bun run build', then create the instance with the built './devver' executable. This command cannot run the CLI from source.`
+      );
+    }
+    if (!packaged.isFile()) {
       throw new Error("Packaged server tool must be a regular file");
     }
     const destination = join(pinnedInstance, name);

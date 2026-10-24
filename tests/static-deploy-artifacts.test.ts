@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -8,6 +9,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -473,7 +475,9 @@ async function degradedRestart(
   service: Service,
   controlUrl: string,
   first: App,
-  second: App
+  second: App,
+  site: string,
+  commit: string
 ) {
   changeStoredStatus(instance, first.id, "preparing");
   const child = Bun.spawn(
@@ -486,6 +490,10 @@ async function degradedRestart(
     expect(statuses.status).toBe(200);
     expect(statuses.text).toContain(`"deploymentId":"${first.id}"`);
     expect(statuses.text).toContain('"status":"degraded"');
+    expect(statuses.text).toContain(
+      `"repositoryId":"${createHash("sha256").update(realpathSync(site)).digest("hex")}"`
+    );
+    expect(statuses.text).toContain(`"commit":"${commit}"`);
     expect(statuses.text).not.toContain("worktree");
     expect(ws.cli(ws.root, "server", "status").output).toContain(
       `${first.id}: degraded (server)`
@@ -694,7 +702,16 @@ async function exercise(distribution: Distribution) {
       second
     );
     await restart(ws, recorded, controlUrl, first, second);
-    await degradedRestart(ws, instance, recorded, controlUrl, first, second);
+    await degradedRestart(
+      ws,
+      instance,
+      recorded,
+      controlUrl,
+      first,
+      second,
+      source.site,
+      source.first
+    );
     await corruptRestart(ws, instance, recorded, controlUrl, first, second);
     await occupiedPortRestart(ws, recorded, controlUrl, first, second);
   } finally {

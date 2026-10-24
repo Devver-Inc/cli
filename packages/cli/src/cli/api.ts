@@ -23,9 +23,11 @@ export const withLocalApi = <A, E, R>(
   return effect.pipe(Effect.provide(layer), Effect.scoped);
 };
 
-export const withApi = <A, E, R>(effect: Effect.Effect<A, E, R | ApiClient>) =>
+export const withApiAt = <A, E, R>(
+  apiUrl: Option.Option<string>,
+  effect: Effect.Effect<A, E, R | ApiClient>
+) =>
   Effect.gen(function* () {
-    const { apiUrl } = yield* root;
     const config = yield* Effect.tryPromise(readConfig);
     if (config["local-target"] !== undefined) {
       return yield* new ApiTargetError({
@@ -56,3 +58,9 @@ export const withApi = <A, E, R>(effect: Effect.Effect<A, E, R | ApiClient>) =>
     // @effect-diagnostics-next-line strictEffectProvide:off
     return yield* effect.pipe(Effect.provide(layer));
   }).pipe(Effect.scoped);
+
+export const withApi = <A, E, R>(effect: Effect.Effect<A, E, R | ApiClient>) =>
+  Effect.gen(function* () {
+    const { apiUrl } = yield* root;
+    return yield* withApiAt(apiUrl, effect);
+  });

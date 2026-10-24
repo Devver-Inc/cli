@@ -21,6 +21,11 @@ export const LocalDeploymentSchema = Schema.Struct({
 const LocalDeploymentStatuses = Schema.Array(
   Schema.Struct({
     deploymentId: DeploymentId,
+    repositoryId: Schema.optional(
+      Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u))
+    ),
+    commit: Schema.optional(Commit),
+    parentDeploymentId: Schema.optional(Schema.NullOr(DeploymentId)),
     status: Schema.Literals(["preparing", "ready", "failed", "degraded"]),
     stage: Schema.NullOr(
       Schema.Literals([
@@ -32,8 +37,12 @@ const LocalDeploymentStatuses = Schema.Array(
         "readiness",
       ])
     ),
+    url: Schema.optional(Schema.NullOr(Schema.String)),
   })
 );
+
+export type LocalDeploymentStatus =
+  (typeof LocalDeploymentStatuses.Type)[number];
 
 export const listLocalDeployments = Effect.gen(function* () {
   const api = yield* ApiClient;

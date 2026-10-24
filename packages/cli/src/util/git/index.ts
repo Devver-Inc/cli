@@ -1,12 +1,14 @@
 import { spawn } from "node:child_process";
 
-import { Console, Data, Effect } from "effect";
+import { Console, Data, Effect, Runtime } from "effect";
 
 import { Prompt } from "../prompts";
 
 export class DeployAbortError extends Data.TaggedError("DeployAbortError")<{
   message: string;
-}> {}
+}> {
+  [Runtime.errorReported] = true;
+}
 
 const commitHash = /^[a-f0-9]{40,64}$/iu;
 const aheadBehind = /^(?<ahead>\d+)\s+(?<behind>\d+)$/u;
@@ -123,11 +125,15 @@ export const getCurrentBranch = Effect.gen(function* () {
 });
 
 export const getRepositoryRoot = Effect.gen(function* () {
-  const root = yield* requireSuccess(
-    "rev-parse --show-toplevel",
-    "rev-parse",
-    "--show-toplevel"
-  );
+  const result = yield* git("rev-parse", "--show-toplevel");
+  if (result.code !== 0) {
+    return yield* new DeployAbortError({
+      message: result.stderr.includes("not a git repository")
+        ? "This folder is not a Git repository. Run git init to create one."
+        : `Git rev-parse --show-toplevel failed (exit ${result.code ?? "signal"})`,
+    });
+  }
+  const root = result.stdout;
   if (root === "") {
     return yield* new DeployAbortError({
       message: "Cannot deploy outside a Git work tree",
@@ -137,12 +143,15 @@ export const getRepositoryRoot = Effect.gen(function* () {
 });
 
 export const getCurrentCommit = Effect.gen(function* () {
-  const commit = yield* requireSuccess(
-    "rev-parse HEAD",
-    "rev-parse",
-    "--verify",
-    "HEAD"
-  );
+  const result = yield* git("rev-parse", "--verify", "HEAD");
+  if (result.code !== 0) {
+    return yield* new DeployAbortError({
+      message: result.stderr.includes("Needed a single revision")
+        ? "Devver needs a commit to deploy. Commit your changes first."
+        : `Git rev-parse HEAD failed (exit ${result.code ?? "signal"})`,
+    });
+  }
+  const commit = result.stdout;
   if (!commitHash.test(commit)) {
     return yield* new DeployAbortError({
       message: "Git rev-parse returned an invalid commit",
