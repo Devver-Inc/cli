@@ -1,5 +1,5 @@
 import { Console, Data, Effect, Result, Runtime, Schema, Stream } from "effect";
-import { Argument, Command } from "effect/cli";
+import { Argument, Command, Flag } from "effect/cli";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 
 import pkg from "../../../../package.json" with { type: "json" };
@@ -260,8 +260,11 @@ const stop = Command.make(
 
 const remove = Command.make(
   "remove",
-  { name: Argument.String("name") },
-  ({ name }) =>
+  {
+    name: Argument.String("name"),
+    yes: Flag.Boolean("yes").pipe(Flag.withAlias("y"), Flag.withDefault(false)),
+  },
+  ({ name, yes }) =>
     Effect.gen(function* () {
       yield* Effect.tryPromise({
         try: async () => await readInstanceService(name),
@@ -273,13 +276,24 @@ const remove = Command.make(
                 : `Instance '${name}' could not be read`,
           }),
       });
-      const confirm = yield* Prompt.select({
-        message: `Remove ${name} and delete its deployments, history and state? This cannot be undone.`,
-        options: Prompt.Questions.YNOpts,
-      });
-      if (confirm !== "Yes") {
-        yield* Console.log("Removal cancelled.");
-        return;
+      if (!yes) {
+        if (
+          !process.stdin.isTTY ||
+          !process.stdout.isTTY ||
+          process.env.CI === "true"
+        ) {
+          return yield* new ServerLifecycleError({
+            message:
+              "--yes is required to remove a server without an interactive terminal",
+          });
+        }
+        const confirm = yield* Prompt.select({
+          message: `Remove ${name} and delete its deployments, history and state? This cannot be undone.`,
+          options: Prompt.Questions.YNOpts,
+        });
+        if (confirm !== "Yes") {
+          return yield* Console.log("Removal cancelled.");
+        }
       }
       yield* Effect.tryPromise({
         try: async () => removeInstance(name),
@@ -291,7 +305,7 @@ const remove = Command.make(
                 : "Removing the server failed",
           }),
       });
-      yield* Console.log(`Removed ${name} and its state.`);
+      return yield* Console.log(`Removed ${name} and its state.`);
     })
 ).pipe(
   Command.withDescription(

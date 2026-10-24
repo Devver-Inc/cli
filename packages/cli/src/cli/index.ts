@@ -60,6 +60,7 @@ if (
     Command.run(cli, { version: versionLine(pkg.version) }).pipe(
       Effect.tapErrorTag("DeployAbortError", printExpected),
       Effect.tapErrorTag("ServerCreateError", printExpected),
+      Effect.tapErrorTag("ServerLifecycleError", printExpected),
       // @effect-diagnostics-next-line strictEffectProvide:off
       Effect.provide(NodeServices.layer)
     )
