@@ -254,6 +254,8 @@ function useProjectSelection({
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const list = useRef<ScrollBoxRenderable>(null);
+  const currentOrganizationRef = useRef(organizationId);
+  currentOrganizationRef.current = organizationId;
 
   useEffect(() => {
     if (
@@ -319,14 +321,19 @@ function useProjectSelection({
     ) {
       setError("");
       setLoading(true);
+      const requestedOrganization = organizationId;
       loadProjects()
         .then((result) => {
-          setProjects(result);
-          setLoading(false);
+          if (currentOrganizationRef.current === requestedOrganization) {
+            setProjects(result);
+            setLoading(false);
+          }
         })
         .catch(() => {
-          setError("Could not load projects. Try again.");
-          setLoading(false);
+          if (currentOrganizationRef.current === requestedOrganization) {
+            setError("Could not load projects. Try again.");
+            setLoading(false);
+          }
         });
     } else {
       setError("Select an organization first.");

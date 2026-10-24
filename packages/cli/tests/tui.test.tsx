@@ -81,6 +81,94 @@ test("organization switch failure never displays private errors", async () => {
   }
 });
 
+test("an old project picker request cannot replace another organization's projects", async () => {
+  let resolveOld:
+    | ((projects: readonly { id: string; name: string }[]) => void)
+    | undefined;
+  let requests = 0;
+  const setup = await testRender(
+    <App
+      onExit={() => undefined}
+      target={{
+        kind: "cloud",
+        currentOrganization: "org-1",
+        organizations: [
+          { id: "org-1", name: "Acme" },
+          { id: "org-2", name: "Other" },
+        ],
+        loadProjects: async () => {
+          requests += 1;
+          if (requests === 2 || requests === 4) {
+            return await new Promise<readonly { id: string; name: string }[]>(
+              (resolve) => {
+                resolveOld = resolve;
+              }
+            );
+          }
+          return [
+            {
+              id: requests === 1 ? "old" : "new",
+              name: requests === 1 ? "Old" : "New",
+            },
+          ];
+        },
+        onSwitchOrganization: async () => undefined,
+        onSwitchProject: async () => undefined,
+      }}
+    />,
+    { width: 80, height: 20 }
+  );
+  try {
+    await setup.waitForFrame((value) =>
+      value.includes("Acme / Select project")
+    );
+    await act(async () => {
+      setup.mockInput.pressKey("p");
+      await Promise.resolve();
+    });
+    await setup.waitFor(() => requests === 2);
+    await act(async () => {
+      setup.mockInput.pressEscape();
+      await Bun.sleep(100);
+    });
+    await act(async () => {
+      setup.mockInput.pressKey("g");
+      await Promise.resolve();
+    });
+    await setup.waitForFrame((value) => value.includes("Select organization"));
+    await act(async () => {
+      setup.mockInput.pressArrow("down");
+      await Promise.resolve();
+    });
+    await setup.waitForFrame((value) => value.includes("◆ Other"));
+    await act(async () => {
+      setup.mockInput.pressEnter();
+      await Promise.resolve();
+    });
+    await setup.waitForFrame((value) =>
+      value.includes("Other / Select project")
+    );
+    await setup.waitFor(() => requests === 3);
+    await act(async () => {
+      resolveOld?.([{ id: "stale", name: "Stale" }]);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      setup.mockInput.pressKey("p");
+      await Promise.resolve();
+    });
+    const frame = await setup.waitForFrame((value) =>
+      value.includes("Select project ·")
+    );
+    expect(frame).toContain("New");
+    expect(frame).not.toContain("Stale");
+  } finally {
+    await act(async () => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
 test("project picker persists selection only after success", async () => {
   const calls: string[] = [];
   const setup = await testRender(

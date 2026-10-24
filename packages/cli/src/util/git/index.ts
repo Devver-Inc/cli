@@ -21,7 +21,11 @@ const git = (...args: string[]) =>
         stdout: string;
         stderr: string;
       }>((resolve, reject) => {
-        const child = spawn("git", args, { cwd: process.cwd(), signal });
+        const child = spawn("git", args, {
+          cwd: process.cwd(),
+          env: { ...process.env, LC_ALL: "C" },
+          signal,
+        });
         const stdout: Buffer[] = [];
         const stderr: Buffer[] = [];
         child.stdout.on("data", (chunk: Buffer) => {
