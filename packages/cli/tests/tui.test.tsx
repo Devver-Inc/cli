@@ -383,7 +383,7 @@ test("local deployments render as a tree with selection navigation", async () =>
     const wrapped = await setup.waitForFrame(
       (value) => value.includes("33333333 ready") && value.includes("◆")
     );
-    expect(wrapped).toContain("j/k/h/l move · o open · q quit");
+    expect(wrapped).toContain("j/k/h/l move · o open · c copy · q quit");
   } finally {
     await act(async () => {
       setup.renderer.destroy();
@@ -452,6 +452,123 @@ test("o opens a ready deployment URL and reports one without a URL", async () =>
   }
 });
 
+test("c copies only a selected ready URL and reports clipboard failure", async () => {
+  const copied: string[] = [];
+  let outcome: "success" | "failed" | "throws" = "success";
+  const setup = await testRender(
+    <App
+      onExit={() => undefined}
+      target={{
+        kind: "local",
+        server: "dev",
+        workspace: "site",
+        copyUrl: async (url) => {
+          copied.push(url);
+          if (outcome === "throws") {
+            throw new Error("private clipboard failure");
+          }
+          return outcome === "success";
+        },
+        loadDeployments: async () => [
+          {
+            deploymentId: "11111111-1111-4111-8111-111111111111",
+            status: "ready",
+            stage: null,
+            url: "http://a.localhost:1/",
+          },
+          {
+            deploymentId: "22222222-2222-4222-8222-222222222222",
+            status: "ready",
+            stage: null,
+            url: "",
+          },
+          {
+            deploymentId: "33333333-3333-4333-8333-333333333333",
+            status: "ready",
+            stage: null,
+            url: null,
+          },
+          {
+            deploymentId: "44444444-4444-4444-8444-444444444444",
+            status: "ready",
+            stage: null,
+          },
+          {
+            deploymentId: "55555555-5555-4555-8555-555555555555",
+            status: "failed",
+            stage: "git",
+            url: "http://failed.localhost:1/",
+          },
+        ],
+      }}
+    />,
+    { width: 90, height: 14 }
+  );
+  try {
+    const initial = await setup.waitForFrame((value) =>
+      value.includes("11111111 ready")
+    );
+    expect(initial).not.toContain("http://a.localhost:1/");
+    await act(async () => {
+      setup.mockInput.pressKey("c");
+      await Promise.resolve();
+    });
+    expect(
+      await setup.waitForFrame((value) =>
+        value.includes("Sent deployment URL to clipboard.")
+      )
+    ).not.toContain("http://a.localhost:1/");
+    expect(copied).toEqual(["http://a.localhost:1/"]);
+    outcome = "failed";
+    await act(async () => {
+      setup.mockInput.pressKey("c");
+      await Promise.resolve();
+    });
+    const failed = await setup.waitForFrame((value) =>
+      value.includes("Could not copy the deployment URL.")
+    );
+    expect(failed).not.toContain("Sent deployment URL to clipboard.");
+    outcome = "throws";
+    await act(async () => {
+      setup.mockInput.pressKey("c");
+      await Promise.resolve();
+    });
+    const rejected = await setup.waitForFrame((value) =>
+      value.includes("Could not copy the deployment URL.")
+    );
+    expect(rejected).not.toContain("private clipboard failure");
+    expect(copied).toEqual([
+      "http://a.localhost:1/",
+      "http://a.localhost:1/",
+      "http://a.localhost:1/",
+    ]);
+    for (let index = 0; index < 4; index += 1) {
+      await act(async () => {
+        setup.mockInput.pressKey("j");
+        await Promise.resolve();
+      });
+      await act(async () => {
+        setup.mockInput.pressKey("c");
+        await Promise.resolve();
+      });
+      expect(
+        await setup.waitForFrame((value) =>
+          value.includes("This deployment has no ready URL to copy.")
+        )
+      ).not.toContain("http://failed.localhost:1/");
+    }
+    expect(copied).toEqual([
+      "http://a.localhost:1/",
+      "http://a.localhost:1/",
+      "http://a.localhost:1/",
+    ]);
+  } finally {
+    await act(async () => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
 test("without a Git checkout the TUI does not claim server deployments match", async () => {
   const setup = await testRender(
     <App
@@ -487,8 +604,11 @@ test("without a Git checkout the TUI does not claim server deployments match", a
 
 test("local listing distinguishes unavailable, empty, and failed responses", async () => {
   for (const [response, message] of [
-    [null, "Deployment listing is unavailable on this server."],
-    [[], "No deployments on this server."],
+    [null, "Deployment listing is unavailable on this server. Use a server"],
+    [
+      [],
+      "No deployments on this server. Run devver deploy from a Git checkout.",
+    ],
   ] as const) {
     const setup = await testRender(
       <App
@@ -528,8 +648,9 @@ test("local listing distinguishes unavailable, empty, and failed responses", asy
   );
   try {
     const frame = await setup.waitForFrame((value) =>
-      value.includes("Could not load deployments")
+      value.includes("Could not load deployments from this server.")
     );
+    expect(frame).toContain("devver server status");
     expect(frame).not.toContain("secret details");
   } finally {
     await act(async () => {

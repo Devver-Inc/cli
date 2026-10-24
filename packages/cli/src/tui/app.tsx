@@ -25,6 +25,7 @@ interface LocalTarget {
   readonly workspace: string;
   readonly repositoryId?: string | undefined;
   readonly openInBrowser?: ((url: string) => Promise<boolean>) | undefined;
+  readonly copyUrl?: ((url: string) => Promise<boolean>) | undefined;
   readonly loadDeployments: () => Promise<
     readonly LocalDeploymentStatus[] | null
   >;
@@ -672,8 +673,11 @@ function treeRow(
         ? ""
         : ` (${entry.stage})`}
       {entry.commit === undefined ? "" : `  ${entry.commit.slice(0, 8)}`}
-      {entry.url !== undefined && entry.url !== null && entry.url !== ""
-        ? "  ⌘ open with o"
+      {entry.status === "ready" &&
+      entry.url !== undefined &&
+      entry.url !== null &&
+      entry.url !== ""
+        ? "  ⌘ open with o · copy with c"
         : ""}
     </text>
   );
@@ -755,6 +759,35 @@ function LocalApp({
     };
   }, [status]);
 
+  function copySelected(current: FlatDeployment | undefined) {
+    const url = current?.url;
+    if (
+      current?.status !== "ready" ||
+      url === undefined ||
+      url === null ||
+      url === ""
+    ) {
+      setStatus("This deployment has no ready URL to copy.");
+      return;
+    }
+    if (target.copyUrl === undefined) {
+      setStatus("Could not copy the deployment URL.");
+      return;
+    }
+    void target.copyUrl(url).then(
+      (copied) => {
+        setStatus(
+          copied
+            ? "Sent deployment URL to clipboard."
+            : "Could not copy the deployment URL."
+        );
+      },
+      () => {
+        setStatus("Could not copy the deployment URL.");
+      }
+    );
+  }
+
   function navigate(action: keyof typeof shortcuts | undefined) {
     const index = rows.findIndex((row) => row.id === selectedId);
     const current = rows[index === -1 ? 0 : index];
@@ -783,6 +816,8 @@ function LocalApp({
       } else {
         setSelectedId(current.parentId);
       }
+    } else if (action === "copy") {
+      copySelected(current);
     } else if (action === "open") {
       const url = current?.url;
       if (url === undefined) {
@@ -858,19 +893,21 @@ function LocalApp({
           )}
           {result.kind === "failed" && (
             <text fg={theme.rose}>
-              Could not load deployments from this server.
+              Could not load deployments from this server. Run devver server
+              status.
             </text>
           )}
           {result.kind === "unsupported" && (
             <text fg={theme.muted}>
-              Deployment listing is unavailable on this server.
+              Deployment listing is unavailable on this server. Use a server
+              created with a current build.
             </text>
           )}
           {result.kind === "loaded" && rows.length === 0 && (
             <text fg={theme.muted}>
               {target.repositoryId === undefined
-                ? "No deployments on this server."
-                : "No deployments for this repository."}
+                ? "No deployments on this server. Run devver deploy from a Git checkout."
+                : "No deployments for this repository. Run devver deploy here."}
             </text>
           )}
           {rows.map((row): React.ReactNode =>
@@ -892,7 +929,7 @@ function LocalApp({
           minWidth={0}
           wrapMode="none"
         >
-          {status === "" ? "j/k/h/l move · o open · q quit" : status}
+          {status === "" ? "j/k/h/l move · o open · c copy · q quit" : status}
         </text>
         <text fg={theme.muted} wrapMode="none">
           {version !== undefined && version !== "" ? `v${version}` : ""}
