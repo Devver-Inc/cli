@@ -22,7 +22,7 @@ export class ApiError extends Data.TaggedError("ApiError")<{
 
 export class AuthToken extends Context.Service<
   AuthToken,
-  { readonly token: string | null }
+  { readonly token: () => string | null }
 >()("@devver/cli/api/client/AuthToken") {}
 
 export class ApiBaseUrl extends Context.Service<
@@ -97,14 +97,16 @@ export const ApiClientLive = Layer.effect(
     const { token } = yield* AuthToken;
     const { url: baseUrl } = yield* ApiBaseUrl;
 
-    const addAuth = (request: HttpClientRequest.HttpClientRequest) =>
-      token !== null && token !== ""
+    const addAuth = (request: HttpClientRequest.HttpClientRequest) => {
+      const currentToken = token();
+      return currentToken !== null && currentToken !== ""
         ? HttpClientRequest.setHeader(
             request,
             "Authorization",
-            `Bearer ${token}`
+            `Bearer ${currentToken}`
           )
         : request;
+    };
 
     const makeRequest = <A>(
       request: HttpClientRequest.HttpClientRequest,

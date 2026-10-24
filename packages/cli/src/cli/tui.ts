@@ -6,9 +6,10 @@ import { Effect, Option } from "effect";
 import { Argument, Command } from "effect/cli";
 
 import pkg from "../../../../package.json" with { type: "json" };
+import { ApiClient } from "../api/client";
 import { listLocalDeployments } from "../api/local-deploy.requests";
 import { getProjects } from "../api/projects.requests";
-import { getOrganizationDetails } from "../auth/client";
+import { getAccessToken, getOrganizationDetails } from "../auth/client";
 import { getCurrentOrganization } from "../auth/organization";
 import { readConfig } from "../config/api";
 import { getRepositoryRoot } from "../util/git";
@@ -47,25 +48,32 @@ export const launchTui = (project?: string, apiUrl = Option.none<string>()) =>
             )
             .digest("hex")
         : undefined;
-      yield* run({
-        version: versionLine(pkg.version),
-        target: {
-          kind: "local",
-          server: local.name,
-          workspace: project ?? basename(process.cwd()),
-          repositoryId,
-          loadDeployments: async () =>
-            await runWithContext(
-              withLocalApi(local, listLocalDeployments).pipe(
-                Effect.catchTag("ApiError", (error) =>
-                  error.status === 404 || error.status === 405
-                    ? Effect.succeed(null)
-                    : Effect.fail(error)
-                )
-              )
-            ),
-        },
-      });
+      yield* withLocalApi(
+        local,
+        Effect.gen(function* () {
+          const api = yield* ApiClient;
+          yield* run({
+            version: versionLine(pkg.version),
+            target: {
+              kind: "local",
+              server: local.name,
+              workspace: project ?? basename(process.cwd()),
+              repositoryId,
+              loadDeployments: async () =>
+                await runWithContext(
+                  listLocalDeployments.pipe(
+                    Effect.provideService(ApiClient, api),
+                    Effect.catchTag("ApiError", (error) =>
+                      error.status === 404 || error.status === 405
+                        ? Effect.succeed(null)
+                        : Effect.fail(error)
+                    )
+                  )
+                ),
+            },
+          });
+        })
+      );
       return;
     }
     if (Option.isNone(apiUrl) && config["cloud-target"] !== true) {
@@ -80,22 +88,32 @@ export const launchTui = (project?: string, apiUrl = Option.none<string>()) =>
       getCurrentOrganization
     );
     const currentProjectId = yield* Effect.tryPromise(getCurrentProjectId);
-    yield* run({
-      version: versionLine(pkg.version),
-      target: {
-        kind: "cloud",
-        project,
-        organizations,
-        currentOrganization,
-        currentProjectId,
-        loadProjects: async () =>
-          await runWithContext(withApiAt(apiUrl, getProjects)),
-        onSwitchProject: async (id) => setCurrentProjectId(id),
-        onSwitchOrganization: async (current, id) => {
-          await runWithContext(switchOrganization(current, id));
-        },
-      },
-    });
+    let token = yield* Effect.tryPromise(getAccessToken);
+    yield* withApiAt(
+      apiUrl,
+      Effect.gen(function* () {
+        const api = yield* ApiClient;
+        yield* run({
+          version: versionLine(pkg.version),
+          target: {
+            kind: "cloud",
+            project,
+            organizations,
+            currentOrganization,
+            currentProjectId,
+            loadProjects: async () =>
+              await runWithContext(
+                getProjects.pipe(Effect.provideService(ApiClient, api))
+              ),
+            onSwitchProject: async (id) => setCurrentProjectId(id),
+            onSwitchOrganization: async (current, id) => {
+              token = await runWithContext(switchOrganization(current, id));
+            },
+          },
+        });
+      }),
+      () => token
+    );
   });
 
 export const tui = Command.make(

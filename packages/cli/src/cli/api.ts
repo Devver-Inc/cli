@@ -16,7 +16,7 @@ export const withLocalApi = <A, E, R>(
   effect: Effect.Effect<A, E, R | ApiClient>
 ) => {
   const layer = ApiClientLayer.pipe(
-    Layer.provide(Layer.succeed(AuthToken, { token: null })),
+    Layer.provide(Layer.succeed(AuthToken, { token: () => null })),
     Layer.provide(Layer.succeed(ApiBaseUrl, { url: target.url }))
   );
   // @effect-diagnostics-next-line strictEffectProvide:off
@@ -25,7 +25,8 @@ export const withLocalApi = <A, E, R>(
 
 export const withApiAt = <A, E, R>(
   apiUrl: Option.Option<string>,
-  effect: Effect.Effect<A, E, R | ApiClient>
+  effect: Effect.Effect<A, E, R | ApiClient>,
+  currentToken?: () => string | null
 ) =>
   Effect.gen(function* () {
     const config = yield* Effect.tryPromise(readConfig);
@@ -45,14 +46,19 @@ export const withApiAt = <A, E, R>(
           "No CLI target selected. Run 'devver cloud', attach a local server, or provide --api-url for this command.",
       });
     }
-    const token = yield* Effect.tryPromise(getAccessToken);
-    if (token === null || token === "") {
+    const token =
+      currentToken === undefined
+        ? yield* Effect.tryPromise(getAccessToken)
+        : currentToken();
+    if ((token === null || token === "") && currentToken === undefined) {
       return yield* new ApiTargetError({
         message: "Not authenticated. Run 'devver auth login'.",
       });
     }
     const layer = ApiClientLayer.pipe(
-      Layer.provide(Layer.succeed(AuthToken, { token })),
+      Layer.provide(
+        Layer.succeed(AuthToken, { token: currentToken ?? (() => token) })
+      ),
       Layer.provide(Layer.succeed(ApiBaseUrl, { url }))
     );
     // @effect-diagnostics-next-line strictEffectProvide:off
