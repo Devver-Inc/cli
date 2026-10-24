@@ -334,6 +334,7 @@ _Principle: Anything doable in TUI should be doable in CLI and vice versa._
 
 - **Do prompt**: Destructive actions, first-time setup, ambiguous input
 - **Don't prompt**: When `--yes` / `-y` flag passed, when not a TTY, in CI
+- Destructive commands fail without changing state when no TTY is available; `--yes` / `-y` explicitly authorizes them.
 
 ### 10.2 Prompt Design
 

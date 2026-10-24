@@ -10,6 +10,10 @@ Terms for local deployment and optional public publishing.
 
 **Deployment**: A published revision of a project with an identity that persists across amendments. _Avoid_: Server instance
 
+**Root deployment**: An independent deployment with no parent. Sharing a repository or Git history with another deployment does not make it a child.
+
+**Child deployment**: A deployment explicitly forked from a particular parent deployment. _Avoid_: Next revision, newer deployment
+
 **Public route**: A stable public address for one deployment, managed by a publishing service. It does not grant access to the server's control interface. _Avoid_: CLI target, control URL
 
 **Devver-managed publishing**: An optional service that issues public routes under a Devver-owned domain. Independently exposing an app through a developer's own service is not a Devver-managed publishing integration. _Avoid_: Remote attachment

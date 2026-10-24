@@ -22,13 +22,13 @@ export class ApiError extends Data.TaggedError("ApiError")<{
 
 export class AuthToken extends Context.Service<
   AuthToken,
-  { readonly token: string | null }
->()("@devver/cli/api/client/AuthToken") {}
+  { readonly token: () => string | null }
+>()("@devver-inc/cli/api/client/AuthToken") {}
 
 export class ApiBaseUrl extends Context.Service<
   ApiBaseUrl,
   { readonly url: string }
->()("@devver/cli/api/client/ApiBaseUrl") {}
+>()("@devver-inc/cli/api/client/ApiBaseUrl") {}
 
 export type ApiRequestError =
   | ApiError
@@ -63,7 +63,7 @@ interface ApiClientService {
 }
 
 export class ApiClient extends Context.Service<ApiClient, ApiClientService>()(
-  "@devver/cli/api/client/ApiClient"
+  "@devver-inc/cli/api/client/ApiClient"
 ) {}
 
 const checkStatus = (
@@ -97,14 +97,16 @@ export const ApiClientLive = Layer.effect(
     const { token } = yield* AuthToken;
     const { url: baseUrl } = yield* ApiBaseUrl;
 
-    const addAuth = (request: HttpClientRequest.HttpClientRequest) =>
-      token !== null && token !== ""
+    const addAuth = (request: HttpClientRequest.HttpClientRequest) => {
+      const currentToken = token();
+      return currentToken !== null && currentToken !== ""
         ? HttpClientRequest.setHeader(
             request,
             "Authorization",
-            `Bearer ${token}`
+            `Bearer ${currentToken}`
           )
         : request;
+    };
 
     const makeRequest = <A>(
       request: HttpClientRequest.HttpClientRequest,

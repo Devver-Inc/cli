@@ -27,7 +27,7 @@ export const switchOrganization = (
           message: "Failed to refresh organization credentials",
         });
       }
-      return undefined;
+      return token;
     }).pipe(
       Effect.tapError(() =>
         Effect.tryPromise(async () =>

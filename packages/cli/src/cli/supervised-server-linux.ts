@@ -9,7 +9,10 @@ import { execute } from "../util/exec";
 import { isAlreadyExists } from "../util/fs-errors";
 import { verifyIdentity } from "./local-server";
 import { availablePort } from "./loopback";
-import { pinServer } from "./supervised-server-posix";
+import {
+  MissingPackagedServerError,
+  pinServer,
+} from "./supervised-server-posix";
 
 const DIRECTORY_MODE = 0o700;
 
@@ -120,6 +123,9 @@ export async function create(name: string) {
         `Server creation failed; instance '${name}' may need recovery: run systemctl --user stop ${unit}, then remove new state at ${directory} before retrying. No readiness was reported`,
         { cause: error }
       );
+    }
+    if (error instanceof MissingPackagedServerError) {
+      throw error;
     }
     throw new Error(
       started

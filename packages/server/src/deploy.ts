@@ -102,15 +102,23 @@ const reachable = (url: string) =>
     });
   });
 
-export const openDeployer = (name: string) =>
+const openDeployerFor = (name: string) =>
   Effect.gen(function* () {
     const instanceDirectory = join(
       yield* startup(async () => await instanceParent(name)),
       name
     );
-    const store = yield* openDeploymentStore(
-      join(instanceDirectory, "deployments.sqlite")
-    );
+    return {
+      instanceDirectory,
+      store: yield* openDeploymentStore(
+        join(instanceDirectory, "deployments.sqlite")
+      ),
+    };
+  });
+
+export const openDeployer = (name: string) =>
+  Effect.gen(function* () {
+    const { instanceDirectory, store } = yield* openDeployerFor(name);
     const appPort = yield* store.appPort;
     const host = yield* Effect.acquireRelease(
       startup(
@@ -277,11 +285,24 @@ export const openDeployer = (name: string) =>
       Effect.flatMap(({ deployments, unreadable }) =>
         unreadable === 0
           ? Effect.succeed(
-              deployments.map(({ deploymentId, status, stage }) => ({
-                deploymentId,
-                status,
-                stage,
-              }))
+              deployments.map(
+                ({
+                  deploymentId,
+                  repositoryId,
+                  commit,
+                  parentDeploymentId,
+                  status,
+                  stage,
+                }) => ({
+                  deploymentId,
+                  repositoryId,
+                  commit,
+                  parentDeploymentId,
+                  status,
+                  stage,
+                  url: status === "ready" ? host.url(deploymentId) : null,
+                })
+              )
             )
           : new DeployFailure({
               stage: "server",

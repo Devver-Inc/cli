@@ -1,5 +1,5 @@
-import { Console, Data, Effect, Result, Schema, Stream } from "effect";
-import { Argument, Command } from "effect/cli";
+import { Console, Data, Effect, Result, Runtime, Schema, Stream } from "effect";
+import { Argument, Command, Flag } from "effect/cli";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 
 import pkg from "../../../../package.json" with { type: "json" };
@@ -13,7 +13,9 @@ import {
   writeConfig,
 } from "../config/api";
 import type { CliConfig } from "../config/api";
+import { Prompt } from "../util/prompts";
 import { withLocalApi } from "./api";
+import { removeInstance, stopInstance } from "./supervised-server-lifecycle";
 
 const IdentitySchema = Schema.Struct({
   instanceId: Schema.String.check(Schema.isUUID(4)),
@@ -28,6 +30,12 @@ const MAX_IDENTITY_BYTES = 8192;
 class IdentityProbeError extends Data.TaggedError("IdentityProbeError")<{
   message: string;
 }> {}
+
+class ServerLifecycleError extends Data.TaggedError("ServerLifecycleError")<{
+  message: string;
+}> {
+  [Runtime.errorReported] = true;
+}
 
 function probe(url: string) {
   return Effect.gen(function* () {
@@ -89,19 +97,22 @@ export async function verifyIdentity(url: string) {
   return await Effect.runPromise(identityAt(url));
 }
 
+export const attachTarget = (url: string) =>
+  Effect.gen(function* () {
+    const config = yield* Effect.tryPromise(readConfig);
+    const target = yield* identityAt(url);
+    const { "cloud-target": _removed, ...rest } = config;
+    yield* Effect.tryPromise(async () =>
+      writeConfig({ ...rest, "local-target": target })
+    );
+    return target;
+  });
+
 export const attach = Command.make(
   "attach",
   { url: Argument.String("url") },
   ({ url }) =>
-    Effect.gen(function* () {
-      const config = yield* Effect.tryPromise(readConfig);
-      const target = yield* identityAt(url);
-      const { "cloud-target": _removed, ...rest } = config;
-      yield* Effect.tryPromise(async () =>
-        writeConfig({ ...rest, "local-target": target })
-      );
-      return target;
-    }).pipe(
+    attachTarget(url).pipe(
       Effect.flatMap((target) =>
         Console.log(
           `Attached ${target.name} (${target.instanceId}) at ${target.url} — version ${target.serverVersion}`
@@ -222,7 +233,87 @@ const list = Command.make("list", {}, () =>
   })
 ).pipe(Command.withDescription("List saved local server instances"));
 
+const stop = Command.make(
+  "stop",
+  { name: Argument.String("name") },
+  ({ name }) =>
+    Effect.gen(function* () {
+      yield* Effect.tryPromise({
+        try: async () => stopInstance(name),
+        catch: (error) =>
+          new ServerLifecycleError({
+            message:
+              error instanceof Error
+                ? error.message
+                : "Stopping the server failed",
+          }),
+      });
+      yield* Console.log(
+        `Stopped ${name}. Deployments and state are preserved; re-create the instance's process by hand or with a future 'devver server start'.`
+      );
+    })
+).pipe(
+  Command.withDescription(
+    "Stop a supervised local server, preserving its state"
+  )
+);
+
+const remove = Command.make(
+  "remove",
+  {
+    name: Argument.String("name"),
+    yes: Flag.Boolean("yes").pipe(Flag.withAlias("y"), Flag.withDefault(false)),
+  },
+  ({ name, yes }) =>
+    Effect.gen(function* () {
+      yield* Effect.tryPromise({
+        try: async () => await readInstanceService(name),
+        catch: (error) =>
+          new ServerLifecycleError({
+            message:
+              error instanceof Error
+                ? error.message
+                : `Instance '${name}' could not be read`,
+          }),
+      });
+      if (!yes) {
+        if (
+          !process.stdin.isTTY ||
+          !process.stdout.isTTY ||
+          process.env.CI === "true"
+        ) {
+          return yield* new ServerLifecycleError({
+            message:
+              "--yes is required to remove a server without an interactive terminal",
+          });
+        }
+        const confirm = yield* Prompt.select({
+          message: `Remove ${name} and delete its deployments, history and state? This cannot be undone.`,
+          options: Prompt.Questions.YNOpts,
+        });
+        if (confirm !== "Yes") {
+          return yield* Console.log("Removal cancelled.");
+        }
+      }
+      yield* Effect.tryPromise({
+        try: async () => removeInstance(name),
+        catch: (error) =>
+          new ServerLifecycleError({
+            message:
+              error instanceof Error
+                ? error.message
+                : "Removing the server failed",
+          }),
+      });
+      return yield* Console.log(`Removed ${name} and its state.`);
+    })
+).pipe(
+  Command.withDescription(
+    "Remove a supervised local server and delete its state"
+  )
+);
+
 export const server = Command.make("server").pipe(
   Command.withDescription("Inspect local server instances"),
-  Command.withSubcommands([status, list])
+  Command.withSubcommands([status, list, stop, remove])
 );
