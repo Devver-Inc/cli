@@ -3,8 +3,8 @@ set -euo pipefail
 
 FEATURE=${1:-}
 case "$FEATURE" in
-  attach|deploy|switch) ;;
-  *) printf 'Usage: bash .pi/skills/verify-devver-cli/verify.sh attach|deploy|switch\n' >&2; exit 2 ;;
+  attach|deploy|switch|tui) ;;
+  *) printf 'Usage: bash .pi/skills/verify-devver-cli/verify.sh attach|deploy|switch|tui\n' >&2; exit 2 ;;
 esac
 
 REPO=$(cd "$(dirname "$0")/../../.." && pwd)
@@ -64,7 +64,7 @@ cli() {
 cd "$RUN"
 cli attach "$URL"
 cli server status
-if [[ "$FEATURE" == deploy ]]; then
+if [[ "$FEATURE" == deploy || "$FEATURE" == tui ]]; then
   mkdir site
   cd site
   git init -q -b main
@@ -98,6 +98,25 @@ if [[ "$FEATURE" == deploy ]]; then
     console.log(JSON.stringify(row));
   ' "$XDG_DATA_HOME/devver/servers/$NAME/deployments.sqlite" "$DEPLOYMENT_ID" "$(< "$PROOF/selected-head.txt")" > "$PROOF/deployment-record.json"
   printf 'Fetched %s and confirmed committed content and the persisted ready record.\n' "$APP_URL" | tee -a "$PROOF/actions.txt"
+  if [[ "$FEATURE" == tui ]]; then
+    cli deploy --verbose | tee "$PROOF/tui-second-deploy.txt"
+    SECOND_URL=$(grep -Eo "http://[a-f0-9-]{36}\.$NAME\.localhost:[0-9]+/" "$PROOF/tui-second-deploy.txt" | tail -1)
+    [[ -n "$SECOND_URL" && "$SECOND_URL" != "$APP_URL" ]]
+    curl --fail --silent --show-error "$SECOND_URL" > "$PROOF/tui-second-response.html"
+    grep -Fxq '<h1>committed static page</h1>' "$PROOF/tui-second-response.html"
+    mkdir bin
+    printf '#!/bin/sh\nprintf "%%s\\n" "$1" > "$DEVVER_VERIFY_OPENED"\n' > bin/open
+    cp bin/open bin/xdg-open
+    chmod 700 bin/open bin/xdg-open
+    export DEVVER_VERIFY_OPENED="$PROOF/tui-opened.txt" PATH="$PWD/bin:$PATH"
+    python3 "$REPO/.pi/skills/verify-devver-cli/tui-drive.py" list-open "$REPO" "$PWD" "$PROOF" "$DEPLOYMENT_ID" "$SECOND_URL"
+    printf 'TUI listed two deployments, selected the second, and opened its verified URL.\n' | tee -a "$PROOF/actions.txt"
+    kill "$SERVER_PID"
+    wait "$SERVER_PID" || true
+    SERVER_PID=
+    python3 "$REPO/.pi/skills/verify-devver-cli/tui-drive.py" unreachable "$REPO" "$PWD" "$PROOF" "$DEPLOYMENT_ID" "$SECOND_URL"
+    printf 'TUI reported that the attached server was unreachable.\n' | tee -a "$PROOF/actions.txt"
+  fi
 elif [[ "$FEATURE" == switch ]]; then
   cli cloud
   cli config list
