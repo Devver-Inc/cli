@@ -3,28 +3,10 @@ import { Argument, Command } from "effect/cli";
 
 import { attachTarget } from "./local-server";
 
-const MAX_CAUSE_DEPTH = 5;
-
 export class ServerCreateError extends Data.TaggedError("ServerCreateError")<{
   message: string;
 }> {
   [Runtime.errorReported] = true;
-}
-
-// Only `Error` messages are read from the chain; an arbitrary thrown value can
-// carry credentials in its properties.
-function causeMessages(error: Error): string {
-  const messages: string[] = [];
-  let current: Error | undefined = error;
-  for (
-    let depth = 0;
-    depth < MAX_CAUSE_DEPTH && current !== undefined;
-    depth += 1
-  ) {
-    messages.push(current.message);
-    current = current.cause instanceof Error ? current.cause : undefined;
-  }
-  return messages.join("\n");
 }
 
 const createServer = Command.make(
@@ -53,7 +35,7 @@ const createServer = Command.make(
         new ServerCreateError({
           message:
             error instanceof Error
-              ? causeMessages(error)
+              ? error.message
               : "Creating the server failed",
         }),
     }).pipe(

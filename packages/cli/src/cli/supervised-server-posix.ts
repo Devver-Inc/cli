@@ -8,6 +8,10 @@ import { isAlreadyExists } from "../util/fs-errors";
 const DIRECTORY_MODE = 0o700;
 const FILE_MODE = 0o700;
 
+export class MissingPackagedServerError extends Error {
+  override name = "MissingPackagedServerError";
+}
+
 async function privateDirectory(path: string) {
   try {
     await mkdir(path, { mode: DIRECTORY_MODE });
@@ -50,7 +54,7 @@ export async function pinServer(parent: string, instanceId: string) {
     const source = join(sourceRoot, "servers", pkg.version, name);
     const packaged = await lstat(source).catch(() => undefined);
     if (packaged === undefined) {
-      throw new Error(
+      throw new MissingPackagedServerError(
         `Packaged server tool '${name}' is missing at ${source}. Creating a server needs a packaged build: run 'bun run build', then create the instance with the built './devver' executable. This command cannot run the CLI from source.`
       );
     }
