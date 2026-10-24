@@ -203,7 +203,7 @@ test("deploy serves the committed HEAD of an attached local target at a loopback
   try {
     expect((await ws.run(["attach", running.url])).status).toBe(0);
 
-    const deployed = await ws.run(["deploy"], source.directory);
+    const deployed = await ws.run(["deploy", "--verbose"], source.directory);
     expect(deployed.status, deployed.output).toBe(0);
     expect(deployed.output).toContain(source.commit);
     expect(deployed.output.toLowerCase()).toContain("not sandboxed");

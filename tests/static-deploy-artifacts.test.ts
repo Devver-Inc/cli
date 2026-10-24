@@ -147,7 +147,7 @@ function linuxManager(root: string) {
   );
   writeFileSync(
     join(directory, "systemctl"),
-    '#!/bin/sh\ncase "$2" in is-active) read pid < "$XDG_DATA_HOME/$4.pid"; kill -0 "$pid";; stop) read pid < "$XDG_DATA_HOME/$3.pid"; kill "$pid";; esac\n',
+    '#!/bin/sh\ncase "$2" in is-active) read pid < "$XDG_DATA_HOME/$4.pid"; read _ _ state _ < "/proc/$pid/stat" || exit 1; [ "$state" != Z ] && kill -0 "$pid";; stop) read pid < "$XDG_DATA_HOME/$3.pid"; kill "$pid";; esac\n',
     { mode: 0o700 }
   );
   return directory;
@@ -605,6 +605,19 @@ function removeSupervisor(ws: Workspace, service: Service | undefined) {
   }
   if (service?.unit !== undefined) {
     run(["systemctl", "--user", "stop", service.unit], ws.root, ws.env);
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      if (
+        run(
+          ["systemctl", "--user", "is-active", "--quiet", service.unit],
+          ws.root,
+          ws.env
+        ).status !== 0
+      ) {
+        break;
+      }
+      Bun.spawnSync(["/bin/sleep", "0.2"]);
+    }
     expect(
       run(
         ["systemctl", "--user", "is-active", "--quiet", service.unit],

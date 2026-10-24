@@ -42,7 +42,7 @@ if (hasChangesets) {
       })
     )(JSON.parse(readFileSync(output, "utf-8")));
     const cli = result.releases.find(
-      (release) => release.name === "@devver/cli"
+      (release) => release.name === "@devver-inc/cli"
     );
     if (cli === undefined && result.releases.length > 0) {
       throw new Error("Changesets do not describe a CLI release");
