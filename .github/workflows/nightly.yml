@@ -136,7 +136,10 @@ jobs:
           path: artifacts
           merge-multiple: true
       - run: bun run build:npm && packages/cli/bin/devver --version && bun test tests/npm-artifact.test.ts
-      - run: npm publish --workspace @devver-inc/cli --access public --tag nightly
+      - run: |
+          for NAME in cli-darwin-arm64 cli-linux-x64 cli; do
+            npm publish --workspace "@devver-inc/$NAME" --access public --tag nightly
+          done
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           DEVVER_RELEASE_CHANNEL: nightly

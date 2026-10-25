@@ -54,6 +54,8 @@ test("installed npm bin pins and starts its server after the CLI exits", async (
         "pack",
         "--workspace",
         "@devver-inc/cli",
+        "--workspace",
+        `@devver-inc/cli-${process.platform}-${process.arch}`,
         "--ignore-scripts",
         "--offline",
         "--pack-destination",
@@ -66,7 +68,12 @@ test("installed npm bin pins and starts its server after the CLI exits", async (
       }
     );
     expect(packed.exitCode, packed.stderr.toString()).toBe(0);
-    const archive = join(ws.root, packed.stdout.toString().trim());
+    const archives = packed.stdout
+      .toString()
+      .trim()
+      .split("\n")
+      .map((name) => join(ws.root, name));
+    expect(archives).toHaveLength(2);
     const install = Bun.spawnSync(
       [
         "npm",
@@ -77,7 +84,7 @@ test("installed npm bin pins and starts its server after the CLI exits", async (
         "--no-fund",
         "--prefix",
         installed,
-        archive,
+        ...archives,
       ],
       {
         cwd: ws.root,
@@ -121,9 +128,7 @@ test("installed npm bin pins and starts its server after the CLI exits", async (
       installed,
       "node_modules",
       "@devver-inc",
-      "cli",
-      "dist",
-      "linux-x64",
+      `cli-${process.platform}-${process.arch}`,
       "servers",
       pkg.version,
       "devver-server"

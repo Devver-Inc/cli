@@ -15,6 +15,7 @@ const decodeCli = Schema.decodeUnknownSync(
     version: Schema.String,
     bin: Schema.Record(Schema.String, Schema.String),
     dependencies: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+    optionalDependencies: Schema.Record(Schema.String, Schema.String),
   })
 );
 const root = decodeVersion(JSON.parse(readFileSync("package.json", "utf-8")));
@@ -22,6 +23,20 @@ const check = process.argv.includes("--check");
 const { version } = root;
 const cliPath = "packages/cli/package.json";
 const serverPath = "packages/server/package.json";
+const platforms = [
+  { name: "@devver-inc/cli-darwin-arm64", home: "packages/cli-darwin-arm64" },
+  { name: "@devver-inc/cli-linux-x64", home: "packages/cli-linux-x64" },
+] as const;
+const platformDocuments = platforms.map((platform) => ({
+  ...platform,
+  path: `${platform.home}/package.json`,
+  document: decodeDocument(
+    JSON.parse(readFileSync(`${platform.home}/package.json`, "utf-8"))
+  ),
+}));
+const pins = Object.fromEntries(
+  platforms.map((platform) => [platform.name, version])
+);
 const cliDocument = decodeDocument(JSON.parse(readFileSync(cliPath, "utf-8")));
 const cli = decodeCli(cliDocument);
 const serverDocument = decodeDocument(
@@ -29,6 +44,18 @@ const serverDocument = decodeDocument(
 );
 const server = decodeVersion(serverDocument);
 const bin = "bin/devver-server";
+
+const Workspace = Schema.Struct({ version: Schema.String });
+const Pins = Schema.Record(Schema.String, Schema.String);
+
+const workspaceOf = (name: string) =>
+  name === "@devver/server"
+    ? "packages/server"
+    : `packages/${name.slice("@devver-inc/".length)}`;
+
+const pinned = (declared: Record<string, string>) =>
+  platforms.every((platform) => declared[platform.name] === version) &&
+  Object.keys(declared).length === platforms.length;
 
 if (check) {
   const lock = Schema.decodeUnknownSync(
@@ -39,8 +66,11 @@ if (check) {
         "packages/cli": Schema.Struct({
           version: Schema.String,
           bin: Schema.Struct({ "devver-server": Schema.String }),
+          optionalDependencies: Pins,
         }),
-        "packages/server": Schema.Struct({ version: Schema.String }),
+        "packages/cli-darwin-arm64": Workspace,
+        "packages/cli-linux-x64": Workspace,
+        "packages/server": Workspace,
       }),
     })
   )(JSON.parse(readFileSync("package-lock.json", "utf-8")));
@@ -50,46 +80,67 @@ if (check) {
         "packages/cli": Schema.Struct({
           version: Schema.String,
           bin: Schema.Struct({ "devver-server": Schema.String }),
+          optionalDependencies: Pins,
         }),
-        "packages/server": Schema.Struct({ version: Schema.String }),
+        "packages/cli-darwin-arm64": Workspace,
+        "packages/cli-linux-x64": Workspace,
+        "packages/server": Workspace,
       }),
       packages: Schema.Struct({
         "@devver-inc/cli": Schema.Tuple([Schema.String]),
+        "@devver-inc/cli-darwin-arm64": Schema.Tuple([Schema.String]),
+        "@devver-inc/cli-linux-x64": Schema.Tuple([Schema.String]),
         "@devver/server": Schema.Tuple([Schema.String]),
       }),
     })
   )(Bun.JSONC.parse(readFileSync("bun.lock", "utf-8")));
+  const resolved = Object.entries(bunLock.packages);
   if (
     cli.version !== version ||
     server.version !== version ||
     cli.bin?.["devver-server"] !== bin ||
     cli.dependencies?.["@devver/server"] !== undefined ||
+    !pinned(cli.optionalDependencies) ||
+    platformDocuments.some(
+      ({ document }) => decodeVersion(document).version !== version
+    ) ||
     lock.version !== version ||
-    lock.packages?.[""]?.version !== version ||
-    lock.packages?.["packages/cli"]?.version !== version ||
-    lock.packages?.["packages/cli"]?.bin?.["devver-server"] !== bin ||
-    lock.packages?.["packages/server"]?.version !== version ||
-    bunLock.workspaces?.["packages/cli"]?.version !== version ||
-    bunLock.workspaces?.["packages/cli"]?.bin?.["devver-server"] !== bin ||
-    bunLock.workspaces?.["packages/server"]?.version !== version ||
-    bunLock.packages?.["@devver-inc/cli"]?.[0] !==
-      "@devver-inc/cli@workspace:packages/cli" ||
-    bunLock.packages?.["@devver/server"]?.[0] !==
-      "@devver/server@workspace:packages/server"
+    lock.packages[""].version !== version ||
+    lock.packages["packages/cli"].version !== version ||
+    lock.packages["packages/cli"].bin["devver-server"] !== bin ||
+    !pinned(lock.packages["packages/cli"].optionalDependencies) ||
+    lock.packages["packages/cli-darwin-arm64"].version !== version ||
+    lock.packages["packages/cli-linux-x64"].version !== version ||
+    lock.packages["packages/server"].version !== version ||
+    bunLock.workspaces["packages/cli"].version !== version ||
+    bunLock.workspaces["packages/cli"].bin["devver-server"] !== bin ||
+    !pinned(bunLock.workspaces["packages/cli"].optionalDependencies) ||
+    bunLock.workspaces["packages/cli-darwin-arm64"].version !== version ||
+    bunLock.workspaces["packages/cli-linux-x64"].version !== version ||
+    bunLock.workspaces["packages/server"].version !== version ||
+    resolved.some(
+      ([name, [target]]) => target !== `${name}@workspace:${workspaceOf(name)}`
+    )
   ) {
     throw new Error(
-      "Workspace versions, bins or locks differ; run bun run sync:version"
+      "Workspace versions, bins, platform pins or locks differ; run bun run sync:version"
     );
   }
 } else {
   writeFileSync(
     cliPath,
-    `${JSON.stringify({ ...cliDocument, version, bin: { ...cli.bin, "devver-server": bin } }, null, 2)}\n`
+    `${JSON.stringify({ ...cliDocument, version, bin: { ...cli.bin, "devver-server": bin }, optionalDependencies: pins }, null, 2)}\n`
   );
   writeFileSync(
     serverPath,
     `${JSON.stringify({ ...serverDocument, version }, null, 2)}\n`
   );
+  for (const { path, document } of platformDocuments) {
+    writeFileSync(
+      path,
+      `${JSON.stringify({ ...document, version }, null, 2)}\n`
+    );
+  }
   const installed = spawnSync("bun", ["install"], { stdio: "inherit" });
   if (installed.status === 0) {
     const npmLock = spawnSync(
@@ -100,6 +151,7 @@ if (check) {
         "--ignore-scripts",
         "--no-audit",
         "--no-fund",
+        "--force",
       ],
       { stdio: "inherit" }
     );

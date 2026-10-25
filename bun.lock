@@ -44,6 +44,18 @@
         "web-tree-sitter": "0.25.10",
         "xdg-basedir": "^5.1.0",
       },
+      "optionalDependencies": {
+        "@devver-inc/cli-darwin-arm64": "1.2.0",
+        "@devver-inc/cli-linux-x64": "1.2.0",
+      },
+    },
+    "packages/cli-darwin-arm64": {
+      "name": "@devver-inc/cli-darwin-arm64",
+      "version": "1.2.0",
+    },
+    "packages/cli-linux-x64": {
+      "name": "@devver-inc/cli-linux-x64",
+      "version": "1.2.0",
     },
     "packages/server": {
       "name": "@devver/server",
@@ -122,6 +134,10 @@
     "@clack/prompts": ["@clack/prompts@1.8.1", "", { "dependencies": { "@clack/core": "1.5.1", "fast-string-width": "^3.0.2", "fast-wrap-ansi": "^0.2.0", "sisteransi": "^1.0.5" } }, "sha512-dlT1m5e/0yUL0kRNcQn7yGLVThkgbB0Ga/1AmfDDC/8ik6AIiSf2QLQO2zPYvefsHP0aFgxO93cVLCCfDp7kzQ=="],
 
     "@devver-inc/cli": ["@devver-inc/cli@workspace:packages/cli"],
+
+    "@devver-inc/cli-darwin-arm64": ["@devver-inc/cli-darwin-arm64@workspace:packages/cli-darwin-arm64"],
+
+    "@devver-inc/cli-linux-x64": ["@devver-inc/cli-linux-x64@workspace:packages/cli-linux-x64"],
 
     "@devver/server": ["@devver/server@workspace:packages/server"],
 

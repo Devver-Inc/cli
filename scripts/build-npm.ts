@@ -8,6 +8,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   readSync,
   renameSync,
@@ -19,12 +20,19 @@ import { join } from "node:path";
 import pkg from "../package.json";
 
 const targets = [
-  { archive: "aarch64-apple-darwin", directory: "darwin-arm64" },
-  { archive: "x86_64-unknown-linux-gnu", directory: "linux-x64" },
+  {
+    archive: "aarch64-apple-darwin",
+    home: "packages/cli-darwin-arm64",
+    platform: "darwin-arm64",
+  },
+  {
+    archive: "x86_64-unknown-linux-gnu",
+    home: "packages/cli-linux-x64",
+    platform: "linux-x64",
+  },
 ] as const;
 const input = process.argv[2] ?? "artifacts";
-const dist = "packages/cli/dist";
-const staging = `${dist}.staging`;
+const packaged = ["devver", "servers", "version", "fixture"];
 const members = [
   "devver",
   `servers/${pkg.version}/devver-server`,
@@ -55,93 +63,109 @@ function executableHeader(path: string): Buffer {
   }
 }
 
+function stage(target: (typeof targets)[number], destination: string) {
+  const filename = `devver-cli-${target.archive}.tar.gz`;
+  const archive = join(input, filename);
+  const checksum = readFileSync(`${archive}.sha256`, "utf-8");
+  const match = /^(?<hash>[a-f0-9]{64}) {2}(?<name>[^\r\n]+)\r?\n?$/u.exec(
+    checksum
+  );
+  if (match?.groups?.name !== filename) {
+    throw new Error(`Invalid checksum file for ${filename}`);
+  }
+  const actual = createHash("sha256")
+    .update(readFileSync(archive))
+    .digest("hex");
+  if (actual !== match.groups.hash) {
+    throw new Error(`Checksum mismatch for ${filename}`);
+  }
+  const listed = tar(["-tzf", archive]).trimEnd().split("\n");
+  const expected = [
+    "devver",
+    "servers/",
+    `servers/${pkg.version}/`,
+    ...members.slice(1),
+  ].toSorted();
+  if (
+    listed.length !== expected.length ||
+    listed.toSorted().some((item, index) => item !== expected[index])
+  ) {
+    throw new Error(`Unexpected archive members or version in ${filename}`);
+  }
+  const modes = tar(["-tvzf", archive]).trimEnd().split("\n");
+  if (
+    modes.length !== listed.length ||
+    modes.some(
+      (line, index) =>
+        !line.startsWith(listed[index]?.endsWith("/") === true ? "d" : "-")
+    )
+  ) {
+    throw new Error(
+      `Archive contains links or invalid member types: ${filename}`
+    );
+  }
+  mkdirSync(destination, { recursive: true });
+  tar(["-xzf", archive, "-C", destination]);
+  for (const member of members) {
+    const path = join(destination, member);
+    const stat = lstatSync(path);
+    if (!(stat.isFile() && !stat.isSymbolicLink())) {
+      throw new Error(`Invalid archive member ${member}`);
+    }
+  }
+  if (process.env.DEVVER_TEST_ONLY_NPM_FIXTURE === "1") {
+    writeFileSync(
+      join(destination, "fixture"),
+      "Never publish this test fixture.\n"
+    );
+  } else {
+    for (const member of members.slice(0, 2)) {
+      const header = executableHeader(join(destination, member));
+      const isMachO = header.equals(Buffer.from([0xcf, 0xfa, 0xed, 0xfe]));
+      const isElf = header.equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46]));
+      if (target.platform === "darwin-arm64" ? !isMachO : !isElf) {
+        throw new Error(`Wrong executable platform in ${filename}`);
+      }
+    }
+  }
+  chmodSync(join(destination, "devver"), 0o755);
+  chmodSync(join(destination, "servers", pkg.version, "devver-server"), 0o755);
+  writeFileSync(join(destination, "version"), `${pkg.version}\n`);
+}
+
 function assemble() {
-  rmSync(staging, { recursive: true, force: true });
-  rmSync(dist, { recursive: true, force: true });
+  const stagings = targets.map((target) => join(target.home, ".staging"));
   try {
-    mkdirSync(staging, { recursive: true });
-    for (const target of targets) {
-      const filename = `devver-cli-${target.archive}.tar.gz`;
-      const archive = join(input, filename);
-      const checksum = readFileSync(`${archive}.sha256`, "utf-8");
-      const match = /^(?<hash>[a-f0-9]{64}) {2}(?<name>[^\r\n]+)\r?\n?$/u.exec(
-        checksum
-      );
-      if (match?.groups?.name !== filename) {
-        throw new Error(`Invalid checksum file for ${filename}`);
+    for (const [index, target] of targets.entries()) {
+      const staging = stagings[index];
+      if (staging === undefined) {
+        throw new Error(`Missing staging directory for ${target.platform}`);
       }
-      const actual = createHash("sha256")
-        .update(readFileSync(archive))
-        .digest("hex");
-      if (actual !== match.groups.hash) {
-        throw new Error(`Checksum mismatch for ${filename}`);
-      }
-      const listed = tar(["-tzf", archive]).trimEnd().split("\n");
-      const expected = [
-        "devver",
-        "servers/",
-        `servers/${pkg.version}/`,
-        ...members.slice(1),
-      ].toSorted();
-      if (
-        listed.length !== expected.length ||
-        listed.toSorted().some((item, index) => item !== expected[index])
-      ) {
-        throw new Error(`Unexpected archive members or version in ${filename}`);
-      }
-      const modes = tar(["-tvzf", archive]).trimEnd().split("\n");
-      if (
-        modes.length !== listed.length ||
-        modes.some(
-          (line, index) =>
-            !line.startsWith(listed[index]?.endsWith("/") === true ? "d" : "-")
-        )
-      ) {
-        throw new Error(
-          `Archive contains links or invalid member types: ${filename}`
-        );
-      }
-      const destination = join(staging, target.directory);
-      mkdirSync(destination);
-      tar(["-xzf", archive, "-C", destination]);
-      for (const member of members) {
-        const path = join(destination, member);
-        const stat = lstatSync(path);
-        if (!stat.isFile() || stat.isSymbolicLink()) {
-          throw new Error(`Invalid archive member ${member}`);
-        }
-      }
-      if (process.env.DEVVER_TEST_ONLY_NPM_FIXTURE !== "1") {
-        for (const member of members.slice(0, 2)) {
-          const header = executableHeader(join(destination, member));
-          const isMachO = header.equals(Buffer.from([0xcf, 0xfa, 0xed, 0xfe]));
-          const isElf = header.equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46]));
-          if (target.directory === "darwin-arm64" ? !isMachO : !isElf) {
-            throw new Error(`Wrong executable platform in ${filename}`);
-          }
-        }
-      }
-      chmodSync(join(destination, "devver"), 0o755);
-      chmodSync(
-        join(destination, "servers", pkg.version, "devver-server"),
-        0o755
-      );
+      rmSync(staging, { recursive: true, force: true });
+      stage(target, staging);
     }
-    if (process.env.DEVVER_TEST_ONLY_NPM_FIXTURE === "1") {
-      writeFileSync(
-        join(staging, "fixture"),
-        "Never publish this test fixture.\n"
-      );
+    for (const [index, target] of targets.entries()) {
+      const staging = stagings[index];
+      if (staging === undefined) {
+        throw new Error(`Missing staging directory for ${target.platform}`);
+      }
+      for (const name of packaged) {
+        rmSync(join(target.home, name), { recursive: true, force: true });
+      }
+      for (const name of readdirSync(staging)) {
+        renameSync(join(staging, name), join(target.home, name));
+      }
+      rmSync(staging, { recursive: true, force: true });
     }
-    writeFileSync(join(staging, "version"), `${pkg.version}\n`);
-    renameSync(staging, dist);
   } catch (error) {
-    rmSync(staging, { recursive: true, force: true });
+    for (const staging of stagings) {
+      rmSync(staging, { recursive: true, force: true });
+    }
     throw error;
   }
 }
 
 assemble();
 console.log(
-  `Assembled npm package ${pkg.version} from verified standalone archives`
+  `Assembled npm platform packages ${pkg.version} from verified standalone archives`
 );

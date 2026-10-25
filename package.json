@@ -19,6 +19,8 @@
   },
   "workspaces": [
     "packages/cli",
+    "packages/cli-darwin-arm64",
+    "packages/cli-linux-x64",
     "packages/server"
   ],
   "type": "module",

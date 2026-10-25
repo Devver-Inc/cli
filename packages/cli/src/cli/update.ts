@@ -143,7 +143,7 @@ export const installedRelease: Effect.Effect<UpdatableRelease | undefined> =
     );
     if (root !== undefined && platform !== undefined) {
       const installed = yield* resolved(
-        join(root, "@devver-inc", "cli", "dist", platform, "devver")
+        join(root, "@devver-inc", `cli-${platform}`, "devver")
       );
       if (installed === running) {
         return { installer: "npm", ...stamped };
