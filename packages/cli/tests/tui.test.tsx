@@ -420,7 +420,9 @@ test("local deployments render as a tree with selection navigation", async () =>
     const wrapped = await setup.waitForFrame(
       (value) => value.includes("33333333 ready") && value.includes("◆")
     );
-    expect(wrapped).toContain("j/k/h/l move · o open · c copy · q quit");
+    expect(wrapped).toContain(
+      "j/k/h/l move · o open · c copy · r rename · q quit"
+    );
   } finally {
     await act(async () => {
       setup.renderer.destroy();

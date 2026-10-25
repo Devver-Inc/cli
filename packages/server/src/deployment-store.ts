@@ -33,6 +33,7 @@ const DeploymentSchema = Schema.Struct({
   ...identity,
   status: Schema.Literals(["preparing", "ready", "failed", "degraded"]),
   stage: Schema.NullOr(DeployStageSchema),
+  displayName: Schema.NullOr(Schema.String),
   createdAt: Schema.String,
 });
 
@@ -112,6 +113,9 @@ export const openDeploymentStore = (path: string) =>
     const columns = yield* Schema.decodeUnknownEffect(
       Schema.Array(Schema.Struct({ name: Schema.String }))
     )(yield* sql.unsafe("PRAGMA table_info(deployments)"));
+    if (!columns.some((column) => column.name === "displayName")) {
+      yield* sql.unsafe("ALTER TABLE deployments ADD COLUMN displayName TEXT");
+    }
     if (columns.some((column) => column.name === "sitePort")) {
       yield* sql.unsafe("ALTER TABLE deployments DROP COLUMN sitePort");
     }
@@ -120,7 +124,7 @@ export const openDeploymentStore = (path: string) =>
       value TEXT NOT NULL
     ) STRICT`);
     const select = `SELECT deploymentId, repositoryId, commitSha AS "commit", parentDeploymentId,
-      worktree, status, stage, createdAt FROM deployments`;
+      worktree, status, stage, displayName, createdAt FROM deployments`;
     const markStatus = (
       deploymentId: string,
       status: string,
@@ -136,6 +140,13 @@ export const openDeploymentStore = (path: string) =>
             (deploymentId, repositoryId, commitSha, parentDeploymentId, worktree, status, stage, createdAt)
             VALUES (${deployment.deploymentId}, ${deployment.repositoryId}, ${deployment.commit},
               ${deployment.parentDeploymentId}, ${deployment.worktree}, 'preparing', NULL, ${new Date().toISOString()})`;
+        }),
+      rename: (deploymentId: string, displayName: string) =>
+        Effect.gen(function* () {
+          const rows =
+            yield* sql`UPDATE deployments SET displayName = ${displayName}
+            WHERE deploymentId = ${deploymentId} RETURNING deploymentId`;
+          return rows.length > 0;
         }),
       markReady: (deploymentId: string) =>
         markStatus(deploymentId, "ready", null),

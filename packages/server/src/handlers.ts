@@ -2,7 +2,12 @@ import { Effect } from "effect";
 import { HttpApiBuilder, HttpApiSchema } from "effect/http-api";
 
 import pkg from "../../../package.json" with { type: "json" };
-import { api, CONTROL_PROTOCOL_VERSION, DeployFailure } from "./api";
+import {
+  api,
+  CONTROL_PROTOCOL_VERSION,
+  DeployFailure,
+  DeploymentNotFound,
+} from "./api";
 import type { openDeployer } from "./deploy";
 import type { loadInstance } from "./identity";
 
@@ -37,6 +42,23 @@ export const deploymentHandlers = (deployer: Deployer) =>
               : new DeployFailure({
                   stage: "server",
                   message: "server: the deployment could not be completed",
+                })
+          )
+        )
+      )
+      .handle("rename", ({ params, payload }) =>
+        deployer.rename(params.deploymentId, payload.displayName).pipe(
+          Effect.flatMap((found) =>
+            found
+              ? Effect.succeed({ displayName: payload.displayName })
+              : new DeploymentNotFound({ message: "Deployment not found" })
+          ),
+          Effect.mapError((error) =>
+            error instanceof DeploymentNotFound
+              ? error
+              : new DeployFailure({
+                  stage: "server",
+                  message: "server: deployment name could not be saved",
                 })
           )
         )
