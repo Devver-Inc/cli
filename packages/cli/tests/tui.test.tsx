@@ -6,6 +6,43 @@ import { act } from "react";
 
 import { App } from "../src/tui/app";
 
+test("all targets show a newer release after the TUI starts", async () => {
+  for (const target of [
+    { kind: "none" },
+    { kind: "cloud", project: "demo" },
+    {
+      kind: "local",
+      server: "demo",
+      workspace: "site",
+      loadDeployments: async () => [],
+    },
+  ] as const) {
+    const setup = await testRender(
+      <App
+        onExit={() => undefined}
+        target={target}
+        version="1.2.0 (nightly)"
+        checkUpdate={async () => ({
+          version: "1.3.0-nightly.build.10.1",
+          url: "https://example.test/release",
+        })}
+      />,
+      { width: 100, height: 20 }
+    );
+    try {
+      const frame = await setup.waitForFrame((value) =>
+        value.includes("devver --update · v1.3.0-nightly.build.10.1 available")
+      );
+      expect(frame).toContain("v1.3.0-nightly.build.10.1 available");
+      expect(frame).toContain("v1.2.0 (nightly)");
+    } finally {
+      await act(async () => {
+        setup.renderer.destroy();
+      });
+    }
+  }
+});
+
 test("shows honest deployment status and exits", async () => {
   let exits = 0;
   const setup = await testRender(

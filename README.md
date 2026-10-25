@@ -16,6 +16,10 @@ Build with `bun run build` for standalone executables. To assemble an npm packag
 
 After `bun run build`, use `./devver new server <name>` (or put this checkout first on `PATH`); a new server pins this build under its own instance ID, even when the version number has not changed. Existing servers keep their pinned binaries. For an isolated foreground test that cleans up on Ctrl-C, run `mise run dev-local`; it prints a temporary CLI command to use from your website checkout.
 
+## Updating the CLI
+
+A globally installed npm CLI can run `devver --update`. It checks the published npm tag and installs an exact newer version on the same channel: `latest` for stable or `nightly` for nightly. A stable Homebrew installation uses `brew update` and `brew upgrade devver-cli` when its formula has a newer stable version. The terminal UI shows `devver --update` only when it detects a supported installation and a newer release. Source, dev preview, and standalone downloads do not self-update. For those builds, replace the CLI and its matching versioned server together using the original distribution method. Existing supervised servers retain their pinned binaries.
+
 ## Development and release versions
 
 Every PR must add a `.changeset/*.md` file: run `mise run bump` and select `@devver-inc/cli` with the appropriate patch/minor/major bump, or `mise run no-release` for a change that needs no release. Commit the file with the PR; CI checks for it. Changesets on `develop` determine the planned version shown by `bun run cmd --version`. A local checkout also shows its commit SHA; it does not reserve a published build number. With no pending changesets, local source shows the current stable baseline instead.

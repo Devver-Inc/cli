@@ -20,6 +20,7 @@ import {
 import { withApiAt, withLocalApi } from "./api";
 import { switchOrganization } from "./organization";
 import { root } from "./root";
+import { availableUpdate } from "./update";
 import { versionLine } from "./version";
 
 const projectArgument = Argument.String("project").pipe(Argument.optional);
@@ -30,6 +31,7 @@ export const launchTui = (project?: string, apiUrl = Option.none<string>()) =>
     const local = config["local-target"];
     const runWithContext = Effect.runPromiseWith(yield* Effect.context());
     const { run } = yield* Effect.promise(async () => import("../tui/index"));
+    const checkUpdate = async () => await runWithContext(availableUpdate);
     if (local !== undefined) {
       const repositoryRoot = yield* getRepositoryRoot.pipe(
         Effect.asSome,
@@ -54,6 +56,7 @@ export const launchTui = (project?: string, apiUrl = Option.none<string>()) =>
           const api = yield* ApiClient;
           yield* run({
             version: versionLine(pkg.version),
+            checkUpdate,
             target: {
               kind: "local",
               server: local.name,
@@ -79,6 +82,7 @@ export const launchTui = (project?: string, apiUrl = Option.none<string>()) =>
     if (Option.isNone(apiUrl) && config["cloud-target"] !== true) {
       yield* run({
         version: versionLine(pkg.version),
+        checkUpdate,
         target: { kind: "none" },
       });
       return;
@@ -95,6 +99,7 @@ export const launchTui = (project?: string, apiUrl = Option.none<string>()) =>
         const api = yield* ApiClient;
         yield* run({
           version: versionLine(pkg.version),
+          checkUpdate,
           target: {
             kind: "cloud",
             project,
