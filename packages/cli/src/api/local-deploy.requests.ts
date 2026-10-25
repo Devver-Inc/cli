@@ -26,6 +26,7 @@ const LocalDeploymentStatuses = Schema.Array(
     ),
     commit: Schema.optional(Commit),
     parentDeploymentId: Schema.optional(Schema.NullOr(DeploymentId)),
+    displayName: Schema.optional(Schema.NullOr(Schema.String)),
     status: Schema.Literals(["preparing", "ready", "failed", "degraded"]),
     stage: Schema.NullOr(
       Schema.Literals([
@@ -48,6 +49,21 @@ export const listLocalDeployments = Effect.gen(function* () {
   const api = yield* ApiClient;
   return yield* api.get("/deployments", LocalDeploymentStatuses);
 });
+
+const RenameResponse = Schema.Struct({ displayName: Schema.String });
+
+export const renameLocalDeployment = (
+  deploymentId: string,
+  displayName: string
+) =>
+  Effect.gen(function* () {
+    const api = yield* ApiClient;
+    return yield* api.put(
+      `/deployments/${encodeURIComponent(deploymentId)}/name`,
+      { displayName },
+      RenameResponse
+    );
+  });
 
 const encodeRequest = Schema.encodeUnknownSync(LocalDeploymentRequestSchema);
 

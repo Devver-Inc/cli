@@ -293,6 +293,7 @@ export const openDeployer = (name: string) =>
                   parentDeploymentId,
                   status,
                   stage,
+                  displayName,
                 }) => ({
                   deploymentId,
                   repositoryId,
@@ -300,6 +301,7 @@ export const openDeployer = (name: string) =>
                   parentDeploymentId,
                   status,
                   stage,
+                  displayName,
                   url: status === "ready" ? host.url(deploymentId) : null,
                 })
               )
@@ -310,7 +312,7 @@ export const openDeployer = (name: string) =>
             })
       )
     );
-    return { appPort: host.proxyPort, deploy, statuses };
+    return { appPort: host.proxyPort, deploy, statuses, rename: store.rename };
   }).pipe(
     Effect.mapError((error) =>
       error instanceof DeploymentStartupError

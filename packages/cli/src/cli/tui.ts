@@ -7,7 +7,10 @@ import { Argument, Command } from "effect/cli";
 
 import pkg from "../../../../package.json" with { type: "json" };
 import { ApiClient } from "../api/client";
-import { listLocalDeployments } from "../api/local-deploy.requests";
+import {
+  listLocalDeployments,
+  renameLocalDeployment,
+} from "../api/local-deploy.requests";
 import { getProjects } from "../api/projects.requests";
 import { getAccessToken, getOrganizationDetails } from "../auth/client";
 import { getCurrentOrganization } from "../auth/organization";
@@ -62,6 +65,12 @@ export const launchTui = (project?: string, apiUrl = Option.none<string>()) =>
               server: local.name,
               workspace: project ?? basename(process.cwd()),
               repositoryId,
+              renameDeployment: async (id, name) =>
+                await runWithContext(
+                  renameLocalDeployment(id, name).pipe(
+                    Effect.provideService(ApiClient, api)
+                  )
+                ),
               loadDeployments: async () =>
                 await runWithContext(
                   listLocalDeployments.pipe(

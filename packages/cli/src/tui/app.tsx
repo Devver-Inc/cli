@@ -1,5 +1,10 @@
 import { RGBA, TextAttributes } from "@opentui/core";
-import type { ColorInput, KeyEvent, ScrollBoxRenderable } from "@opentui/core";
+import type {
+  ColorInput,
+  InputRenderable,
+  KeyEvent,
+  ScrollBoxRenderable,
+} from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { useEffect, useRef, useState } from "react";
 
@@ -30,6 +35,9 @@ interface LocalTarget {
   readonly loadDeployments: () => Promise<
     readonly LocalDeploymentStatus[] | null
   >;
+  readonly renameDeployment?:
+    | ((id: string, name: string) => Promise<{ readonly displayName: string }>)
+    | undefined;
 }
 
 interface CloudTarget {
@@ -603,6 +611,7 @@ function CloudApp({
 
 interface FlatDeployment {
   readonly id: string;
+  readonly displayName: string | null | undefined;
   readonly parentId: string | undefined;
   readonly repositoryId: string | undefined;
   readonly commit: string | undefined;
@@ -675,7 +684,7 @@ function treeRow(
       key={entry.id}
       wrapMode="none"
     >
-      {`${marker} ${indent}${branch}${entry.id.slice(0, 8)} ${entry.status}`}
+      {`${marker} ${indent}${branch}${entry.displayName !== null && entry.displayName !== undefined && entry.displayName !== "" ? `${entry.displayName} (${entry.id.slice(0, 8)})` : entry.id.slice(0, 8)} ${entry.status}`}
       {entry.stage === null || entry.stage === undefined
         ? ""
         : ` (${entry.stage})`}
@@ -699,7 +708,13 @@ function LocalApp({
   >({ kind: "loading" });
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState("");
+  const [editor, setEditor] = useState<
+    | { readonly kind: "idle" }
+    | { readonly kind: "editing"; readonly id: string; readonly value: string }
+    | { readonly kind: "saving"; readonly id: string }
+  >({ kind: "idle" });
   const list = useRef<ScrollBoxRenderable>(null);
+  const nameInput = useRef<InputRenderable>(null);
 
   useEffect(() => {
     let active = true;
@@ -731,6 +746,7 @@ function LocalApp({
             visibleDeployments(result.deployments, target.repositoryId).map(
               (entry) => ({
                 id: entry.deploymentId,
+                displayName: entry.displayName,
                 parentId: entry.parentDeploymentId ?? undefined,
                 repositoryId: entry.repositoryId,
                 commit: entry.commit,
@@ -843,14 +859,91 @@ function LocalApp({
     }
   }
 
+  function saveName(value: string, id: string) {
+    const name = value.trim();
+    if (
+      name.length === 0 ||
+      name.length > 80 ||
+      // oxlint-disable-next-line no-control-regex -- Reject terminal escape and C0/C1 controls before sending.
+      /[\u0000-\u001F\u007F-\u009F]/u.test(name)
+    ) {
+      setStatus("Name must be 1–80 characters without control characters.");
+      return;
+    }
+    if (target.renameDeployment === undefined) {
+      setStatus("This server does not support renaming deployments.");
+      return;
+    }
+    setEditor({ kind: "saving", id });
+    void target.renameDeployment(id, name).then(
+      ({ displayName }) => {
+        setResult((previous) =>
+          previous.kind === "loaded"
+            ? {
+                kind: "loaded",
+                deployments: previous.deployments.map((entry) =>
+                  entry.deploymentId === id ? { ...entry, displayName } : entry
+                ),
+              }
+            : previous
+        );
+        setEditor({ kind: "idle" });
+        setStatus("Deployment renamed.");
+      },
+      // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Promise rejection is external; only the safe HTTP status is inspected.
+      (error: unknown) => {
+        setEditor({ kind: "editing", id, value });
+        if (
+          error instanceof Error &&
+          "status" in error &&
+          error.status === 405
+        ) {
+          setStatus("This server does not support renaming deployments.");
+        } else if (
+          error instanceof Error &&
+          "status" in error &&
+          error.status === 404
+        ) {
+          setStatus(
+            "Deployment not found, or this server does not support renaming."
+          );
+        } else {
+          setStatus("Could not rename deployment. Try again.");
+        }
+      }
+    );
+  }
+
   useKeyboard((key) => {
     const action = actionFor(key);
+    if (editor.kind !== "idle") {
+      if (action === "cancel" && editor.kind === "editing") {
+        key.preventDefault();
+        setEditor({ kind: "idle" });
+        setStatus("");
+      } else if (action === "quit" && key.ctrl) {
+        onExit();
+      }
+      return;
+    }
     if (action === "quit") {
       onExit();
       return;
     }
     if (result.kind === "loaded" && rows.length > 0) {
-      navigate(action);
+      if (action === "rename") {
+        const current = rows.find((row) => row.id === selectedId) ?? rows[0];
+        if (current !== undefined) {
+          setEditor({
+            kind: "editing",
+            id: current.id,
+            value: current.displayName ?? "",
+          });
+          setStatus("");
+        }
+      } else {
+        navigate(action);
+      }
     }
   });
 
@@ -917,6 +1010,27 @@ function LocalApp({
           )}
         </scrollbox>
       </box>
+      {editor.kind === "editing" && (
+        <box height={1} flexDirection="row">
+          <text fg={theme.mint}>Rename: </text>
+          <input
+            flexGrow={1}
+            focused
+            ref={nameInput}
+            maxLength={80}
+            value={editor.value}
+            onInput={(value) => {
+              setEditor((previous) =>
+                previous.kind === "editing" ? { ...previous, value } : previous
+              );
+            }}
+            onSubmit={() => {
+              saveName(nameInput.current?.value ?? editor.value, editor.id);
+            }}
+          />
+        </box>
+      )}
+      {editor.kind === "saving" && <text fg={theme.muted}>Saving name…</text>}
       {update !== undefined && (
         <text fg={theme.mint} wrapMode="none">
           {`devver --update · v${update.version} available`}
@@ -936,7 +1050,10 @@ function LocalApp({
           minWidth={0}
           wrapMode="none"
         >
-          {status || "j/k/h/l move · o open · c copy · q quit"}
+          {status ||
+            (editor.kind === "editing"
+              ? "Enter save · Esc cancel"
+              : "j/k/h/l move · o open · c copy · r rename · q quit")}
         </text>
         <text fg={theme.muted} wrapMode="none">
           {version !== undefined && version !== "" ? `v${version}` : ""}

@@ -15,6 +15,14 @@ export const API_PATH = "/api/v1";
 const DeploymentId = Schema.String.check(Schema.isUUID(4));
 const Commit = Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/u));
 
+export const DisplayName = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(80),
+  // oxlint-disable-next-line no-control-regex -- Reject terminal escape and C0/C1 controls in persisted names.
+  Schema.isPattern(/^[^\u0000-\u001F\u007F-\u009F]+$/u),
+  Schema.isTrimmed()
+);
+
 /** The checkout and commit a local deploy selects, both untrusted. */
 export const DeployRequest = Schema.Struct({
   source: Schema.String.check(Schema.isNonEmpty()),
@@ -35,6 +43,7 @@ export const DeploymentStatuses = Schema.Array(
     repositoryId: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
     commit: Commit,
     parentDeploymentId: Schema.NullOr(DeploymentId),
+    displayName: Schema.NullOr(DisplayName),
     status: Schema.Literals(["preparing", "ready", "failed", "degraded"]),
     stage: Schema.NullOr(DeployStageSchema),
     url: Schema.NullOr(Schema.String),
@@ -50,6 +59,14 @@ export class DeployFailure extends Schema.Error<DeployFailure>("DeployFailure")(
     message: Schema.String,
   },
   { httpApiStatus: 500 }
+) {}
+
+// oxlint-disable-next-line unicorn/throw-new-error -- Schema.Error declares a typed HTTP error.
+export class DeploymentNotFound extends Schema.Error<DeploymentNotFound>(
+  "DeploymentNotFound"
+)(
+  { _tag: Schema.tag("DeploymentNotFound"), message: Schema.String },
+  { httpApiStatus: 404 }
 ) {}
 
 export const IdentityResponse = Schema.Struct({
@@ -78,6 +95,14 @@ export const api = HttpApi.make("DevverControl")
           payload: DeployRequest,
           success: DeploymentResponse,
           error: DeployFailure,
+        })
+      )
+      .add(
+        HttpApiEndpoint.put("rename", "/deployments/:deploymentId/name", {
+          params: Schema.Struct({ deploymentId: DeploymentId }),
+          payload: Schema.Struct({ displayName: DisplayName }),
+          success: Schema.Struct({ displayName: DisplayName }),
+          error: [DeploymentNotFound, DeployFailure],
         })
       )
       .add(
