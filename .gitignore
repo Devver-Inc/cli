@@ -26,6 +26,11 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 .devver/
 /devver
 /servers/
+packages/cli-*/devver
+packages/cli-*/servers/
+packages/cli-*/version
+packages/cli-*/fixture
+packages/cli-*/.staging/
 
 # caches
 /.playwright-mcp/

@@ -13,6 +13,12 @@ root=$(CDPATH= cd -- "$(dirname -- "$script")/.." && pwd -P)
 case "$(uname -s):$(uname -m)" in
   Darwin:arm64) target=darwin-arm64 ;;
   Linux:x86_64) target=linux-x64 ;;
-  *) echo 'devver: unsupported platform (requires macOS arm64 or Linux x64)' >&2; exit 1 ;;
+  *) echo "devver: unsupported platform $(uname -s):$(uname -m) (requires macOS arm64 or Linux x64)" >&2; exit 1 ;;
 esac
-exec "$root/dist/$target/devver" "$@"
+for home in "$root/../cli-$target" "$root/node_modules/@devver-inc/cli-$target"; do
+  if [ -x "$home/devver" ]; then
+    exec "$home/devver" "$@"
+  fi
+done
+echo "devver: missing platform package @devver-inc/cli-$target; reinstall @devver-inc/cli" >&2
+exit 1

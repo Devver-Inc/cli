@@ -219,11 +219,13 @@ jobs:
       - name: Publish to npm
         run: |
           VERSION='${{ needs.plan.outputs.version }}'
-          if [ "$(npm view "@devver-inc/cli@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
-            echo "@devver-inc/cli@$VERSION is already published"
-          else
-            npm publish --workspace @devver-inc/cli --access public
-          fi
+          for NAME in cli-darwin-arm64 cli-linux-x64 cli; do
+            if [ "$(npm view "@devver-inc/$NAME@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
+              echo "@devver-inc/$NAME@$VERSION is already published"
+            else
+              npm publish --workspace "@devver-inc/$NAME" --access public
+            fi
+          done
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
