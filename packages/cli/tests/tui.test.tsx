@@ -332,7 +332,7 @@ test("local deployments show only the opened checkout", async () => {
     const frame = await setup.waitForFrame((value) =>
       value.includes("11111111 ready")
     );
-    expect(frame).toContain("11111111 ready  bbbbbbbb");
+    expect(frame).toContain("11111111 ready  commit bbbbbbbb");
     expect(frame).not.toContain("22222222");
     expect(frame).not.toContain("33333333");
   } finally {
@@ -383,8 +383,8 @@ test("local deployments render as a tree with selection navigation", async () =>
   try {
     await setup.waitForFrame((value) => value.includes("11111111"));
     const frame = setup.captureCharFrame();
-    expect(frame).toContain("└─ 22222222 ready");
-    expect(frame).toContain("│ └─ 33333333 ready");
+    expect(frame).toContain("└─ 22222222 ready  commit dddddddd");
+    expect(frame).toContain("│ └─ 33333333 ready  commit eeeeeeee");
     await act(async () => {
       setup.mockInput.pressKey("j");
       await Promise.resolve();

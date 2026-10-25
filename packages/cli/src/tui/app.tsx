@@ -688,7 +688,7 @@ function treeRow(
       {entry.stage === null || entry.stage === undefined
         ? ""
         : ` (${entry.stage})`}
-      {entry.commit === undefined ? "" : `  ${entry.commit.slice(0, 8)}`}
+      {entry.commit === undefined ? "" : `  commit ${entry.commit.slice(0, 8)}`}
     </text>
   );
 }
