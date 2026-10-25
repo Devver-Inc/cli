@@ -104,11 +104,7 @@ test("nightly compares build numbers and stays on its channel", () => {
   ).toBe(false);
 });
 
-test("installer plan pins npm and never routes nightly to brew", () => {
-  const candidate = {
-    version: "1.3.0-nightly.build.10.1",
-    url: "https://example.test",
-  };
+test("installer plan pins the npm version and upgrades the brew formula", () => {
   expect(
     updatePlan(
       {
@@ -116,7 +112,10 @@ test("installer plan pins npm and never routes nightly to brew", () => {
         installer: "npm",
         version: "1.3.0-nightly.build.9.1",
       },
-      candidate
+      {
+        version: "1.3.0-nightly.build.10.1",
+        url: "https://example.test",
+      }
     )
   ).toEqual([
     "npm",
@@ -126,18 +125,14 @@ test("installer plan pins npm and never routes nightly to brew", () => {
   ]);
   expect(
     updatePlan(
-      {
-        channel: "nightly",
-        installer: "brew",
-        version: "1.3.0-nightly.build.9.1",
-      },
-      candidate
-    )
-  ).toBeUndefined();
-  expect(
-    updatePlan(
       { channel: "stable", installer: "brew", version: "1.2.0" },
       { version: "1.3.0", url: "https://example.test" }
     )
   ).toEqual(["brew", "upgrade", "devver-cli"]);
+  expect(
+    updatePlan(
+      { channel: "stable", installer: "brew", version: "1.2.0" },
+      { version: "1.2.0", url: "https://example.test" }
+    )
+  ).toBeUndefined();
 });

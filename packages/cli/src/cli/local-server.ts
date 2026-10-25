@@ -1,6 +1,5 @@
-import { Console, Data, Effect, Result, Runtime, Schema, Stream } from "effect";
+import { Console, Data, Effect, Result, Runtime, Schema } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
-import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 
 import pkg from "../../../../package.json" with { type: "json" };
 import { listInstances, readInstanceService } from "../../../server/identity";
@@ -13,6 +12,7 @@ import {
   writeConfig,
 } from "../config/api";
 import type { CliConfig } from "../config/api";
+import { fetchJson } from "../util/http";
 import { Prompt } from "../util/prompts";
 import { withLocalApi } from "./api";
 import { removeInstance, stopInstance } from "./supervised-server-lifecycle";
@@ -23,7 +23,6 @@ const IdentitySchema = Schema.Struct({
   serverVersion: Schema.String,
   controlProtocolVersion: Schema.Literal(1),
 });
-const decodeIdentity = Schema.decodeUnknownSync(IdentitySchema);
 const decodeTarget = Schema.decodeUnknownSync(LocalTargetSchema);
 const MAX_IDENTITY_BYTES = 8192;
 
@@ -37,49 +36,14 @@ class ServerLifecycleError extends Data.TaggedError("ServerLifecycleError")<{
   [Runtime.errorReported] = true;
 }
 
-function probe(url: string) {
-  return Effect.gen(function* () {
-    const client = yield* HttpClient.HttpClient;
-    const response = yield* client.execute(
-      HttpClientRequest.get(`${url}/identity`).pipe(
-        HttpClientRequest.setHeader("Accept", "application/json")
-      )
-    );
-    if (response.status !== 200) {
-      return yield* new IdentityProbeError({
-        message: `Identity probe returned HTTP ${response.status}`,
-      });
-    }
-    const bytes = yield* Stream.runFoldEffect(
-      response.stream,
-      () => Buffer.alloc(0),
-      (acc, chunk) =>
-        acc.length + chunk.length > MAX_IDENTITY_BYTES
-          ? Effect.fail(
-              new IdentityProbeError({
-                message: "Identity response is too large",
-              })
-            )
-          : Effect.succeed(Buffer.concat([acc, chunk]))
-    );
-    return yield* Effect.try({
-      try: () =>
-        decodeIdentity(
-          JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
-        ),
-      catch: () =>
-        new IdentityProbeError({
-          message: "Server identity response is invalid",
-        }),
-    });
-  }).pipe(
-    Effect.timeout(2000),
-    Effect.provideService(FetchHttpClient.RequestInit, { redirect: "manual" }),
-    // @effect-diagnostics-next-line strictEffectProvide:off
-    Effect.provide(FetchHttpClient.layer),
-    Effect.scoped
-  );
-}
+const probe = (url: string) =>
+  fetchJson({
+    url: `${url}/identity`,
+    schema: IdentitySchema,
+    limit: MAX_IDENTITY_BYTES,
+    timeout: 2000,
+    onError: (message) => new IdentityProbeError({ message }),
+  });
 
 const identityAt = (url: string) =>
   Effect.gen(function* () {
