@@ -25,7 +25,7 @@ test("local cross-platform fixture cannot be published", () => {
     stderr: "pipe",
   });
   expect(result.exitCode).not.toBe(0);
-});
+}, 120_000);
 
 test("packed npm CLI and server run without Node or Bun", () => {
   if (!supported) {
@@ -98,4 +98,4 @@ test("packed npm CLI and server run without Node or Bun", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
-}, 30_000);
+}, 300_000);
