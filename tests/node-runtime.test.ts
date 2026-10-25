@@ -27,13 +27,13 @@ const repo = join(import.meta.dir, "..");
 const driver = join(import.meta.dir, "fixtures", "node-runtime-driver.ts");
 const BUN_API =
   /\bBun\s*\.\s*(?<api>serve|spawn|stderr|stdout|file|color|build)\b/u;
-const NPM_VERSION =
-  /^devver v\d+\.\d+\.\d+ \(npm, (?:[0-9a-f]{7}(?:-dirty)?|unknown)\)$/u;
 
 function nodeEnvironment() {
   const node = Bun.which("node");
   if (node === null) {
-    throw new Error("node is required: the npm CLI must run without Bun");
+    throw new Error(
+      "node is required for the shared-code Node compatibility test"
+    );
   }
   const git = Bun.which("git");
   if (git === null) {
@@ -41,40 +41,6 @@ function nodeEnvironment() {
   }
   return { node, path: [dirname(node), dirname(git)].join(delimiter) };
 }
-
-test("the npm bundle runs under Node without eagerly loading the TUI", () => {
-  const { node, path } = nodeEnvironment();
-  const build = Bun.spawnSync(["bun", "run", "scripts/build-npm.ts"], {
-    cwd: repo,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  expect(build.exitCode, build.stderr.toString()).toBe(0);
-
-  const bundle = join(repo, "packages/cli/dist", "cli.mjs");
-  const run = (...args: string[]) => {
-    const result = Bun.spawnSync([node, bundle, ...args], {
-      cwd: repo,
-      env: { HOME: process.env.HOME ?? repo, PATH: path },
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    return {
-      code: result.exitCode,
-      output: `${result.stdout.toString()}${result.stderr.toString()}`,
-    };
-  };
-
-  const version = run("--version");
-  expect(version.code, version.output).toBe(0);
-  expect(version.output.trim()).toMatch(NPM_VERSION);
-
-  const help = run("--help");
-  expect(help.code, help.output).toBe(0);
-  expect(help.output).toContain("SUBCOMMANDS");
-
-  expect(run("nope").code).not.toBe(0);
-});
 
 test("auth callback and git run under Node with Bun absent", () => {
   const { node, path } = nodeEnvironment();

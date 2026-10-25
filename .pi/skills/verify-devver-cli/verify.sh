@@ -28,7 +28,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 printf 'Feature: %s\nRepo: %s\n' "$FEATURE" "$REPO" | tee "$PROOF/actions.txt"
-(cd "$REPO" && bun run build:npm) > "$PROOF/build.log" 2>&1
+(cd "$REPO" && bun run scripts/build-npm-fixture.ts) > "$PROOF/build.log" 2>&1
 bun run "$REPO/packages/server/src/index.ts" "$NAME" 0 > "$RUN/server.log" 2>&1 &
 SERVER_PID=$!
 URL=

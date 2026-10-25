@@ -1,75 +1,147 @@
 #!/usr/bin/env bun
 
-/**
- * Builds the Node-targeted ESM entrypoint published to npm.
- *
- * Only this repository's sources are bundled: Node cannot resolve the
- * extensionless relative specifiers used across `src/`. Dependencies stay
- * external so npm installs them and packages with native assets (OpenTUI)
- * keep resolving their own files.
- */
-
-import { chmodSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import {
+  chmodSync,
+  closeSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { join } from "node:path";
 
 import pkg from "../package.json";
-import cli from "../packages/cli/package.json";
-import { buildDefines } from "./stamp";
-import { packageStaticTools } from "./static-tools";
 
-const outfile = "packages/cli/dist/cli.mjs";
-const serverOutfile = `packages/cli/dist/servers/${pkg.version}/server.mjs`;
+const targets = [
+  { archive: "aarch64-apple-darwin", directory: "darwin-arm64" },
+  { archive: "x86_64-unknown-linux-gnu", directory: "linux-x64" },
+] as const;
+const input = process.argv[2] ?? "artifacts";
+const dist = "packages/cli/dist";
+const staging = `${dist}.staging`;
+const members = [
+  "devver",
+  `servers/${pkg.version}/devver-server`,
+  `servers/${pkg.version}/pitchfork`,
+  `servers/${pkg.version}/websitino`,
+  `servers/${pkg.version}/PITCHFORK-LICENSE`,
+  `servers/${pkg.version}/WEBSITINO-LICENSE`,
+];
 
-rmSync("packages/cli/dist", { recursive: true, force: true });
-
-const result = await Bun.build({
-  entrypoints: ["./packages/cli/src/cli/index.ts"],
-  outdir: "packages/cli/dist",
-  naming: { entry: "cli.mjs" },
-  target: "node",
-  format: "esm",
-  external: Object.keys(cli.dependencies),
-  splitting: true,
-  define: buildDefines("npm"),
-});
-
-if (!result.success) {
-  console.error("npm build failed:");
-  for (const log of result.logs) {
-    console.error(log);
+function tar(args: string[]): string {
+  const result = spawnSync("tar", args, { encoding: "utf-8" });
+  if (result.status !== 0) {
+    throw new Error(`Invalid npm archive: ${args[0]}`);
   }
-  process.exit(1);
+  return result.stdout;
 }
 
-const server = await Bun.build({
-  entrypoints: ["./packages/server/src/index.ts"],
-  outdir: `packages/cli/dist/servers/${pkg.version}`,
-  naming: { entry: "server.mjs" },
-  target: "node",
-  format: "esm",
-  packages: "bundle",
-  define: { DEVVER_NODE_SQLITE: "true" },
-  external: ["@effect/sql-sqlite-bun/SqliteClient"],
-  minify: { syntax: true },
-});
-if (!server.success) {
-  console.error("npm server build failed:");
-  for (const log of server.logs) {
-    console.error(log);
+function executableHeader(path: string): Buffer {
+  const handle = openSync(path, "r");
+  const header = Buffer.alloc(4);
+  try {
+    if (readSync(handle, header, 0, 4, 0) !== 4) {
+      throw new Error(`Truncated executable: ${path}`);
+    }
+    return header;
+  } finally {
+    closeSync(handle);
   }
-  process.exit(1);
 }
 
-await packageStaticTools(`packages/cli/dist/servers/${pkg.version}`);
-
-const shebang = "#!/usr/bin/env node\n";
-for (const file of [outfile, serverOutfile]) {
-  const code = readFileSync(file, "utf-8");
-  if (!code.startsWith(shebang)) {
-    writeFileSync(file, `${shebang}${code}`);
+function assemble() {
+  rmSync(staging, { recursive: true, force: true });
+  rmSync(dist, { recursive: true, force: true });
+  try {
+    mkdirSync(staging, { recursive: true });
+    for (const target of targets) {
+      const filename = `devver-cli-${target.archive}.tar.gz`;
+      const archive = join(input, filename);
+      const checksum = readFileSync(`${archive}.sha256`, "utf-8");
+      const match = /^(?<hash>[a-f0-9]{64}) {2}(?<name>[^\r\n]+)\r?\n?$/u.exec(
+        checksum
+      );
+      if (match?.groups?.name !== filename) {
+        throw new Error(`Invalid checksum file for ${filename}`);
+      }
+      const actual = createHash("sha256")
+        .update(readFileSync(archive))
+        .digest("hex");
+      if (actual !== match.groups.hash) {
+        throw new Error(`Checksum mismatch for ${filename}`);
+      }
+      const listed = tar(["-tzf", archive]).trimEnd().split("\n");
+      const expected = [
+        "devver",
+        "servers/",
+        `servers/${pkg.version}/`,
+        ...members.slice(1),
+      ].toSorted();
+      if (
+        listed.length !== expected.length ||
+        listed.toSorted().some((item, index) => item !== expected[index])
+      ) {
+        throw new Error(`Unexpected archive members or version in ${filename}`);
+      }
+      const modes = tar(["-tvzf", archive]).trimEnd().split("\n");
+      if (
+        modes.length !== listed.length ||
+        modes.some(
+          (line, index) =>
+            !line.startsWith(listed[index]?.endsWith("/") === true ? "d" : "-")
+        )
+      ) {
+        throw new Error(
+          `Archive contains links or invalid member types: ${filename}`
+        );
+      }
+      const destination = join(staging, target.directory);
+      mkdirSync(destination);
+      tar(["-xzf", archive, "-C", destination]);
+      for (const member of members) {
+        const path = join(destination, member);
+        const stat = lstatSync(path);
+        if (!stat.isFile() || stat.isSymbolicLink()) {
+          throw new Error(`Invalid archive member ${member}`);
+        }
+      }
+      if (process.env.DEVVER_TEST_ONLY_NPM_FIXTURE !== "1") {
+        for (const member of members.slice(0, 2)) {
+          const header = executableHeader(join(destination, member));
+          const isMachO = header.equals(Buffer.from([0xcf, 0xfa, 0xed, 0xfe]));
+          const isElf = header.equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46]));
+          if (target.directory === "darwin-arm64" ? !isMachO : !isElf) {
+            throw new Error(`Wrong executable platform in ${filename}`);
+          }
+        }
+      }
+      chmodSync(join(destination, "devver"), 0o755);
+      chmodSync(
+        join(destination, "servers", pkg.version, "devver-server"),
+        0o755
+      );
+    }
+    if (process.env.DEVVER_TEST_ONLY_NPM_FIXTURE === "1") {
+      writeFileSync(
+        join(staging, "fixture"),
+        "Never publish this test fixture.\n"
+      );
+    }
+    writeFileSync(join(staging, "version"), `${pkg.version}\n`);
+    renameSync(staging, dist);
+  } catch (error) {
+    rmSync(staging, { recursive: true, force: true });
+    throw error;
   }
-  chmodSync(file, 0o755);
 }
 
+assemble();
 console.log(
-  `Built ${outfile} and ${serverOutfile} for Node (version ${pkg.version})`
+  `Assembled npm package ${pkg.version} from verified standalone archives`
 );

@@ -62,7 +62,7 @@ jobs:
           bun run scripts/adopt-cli-version.ts
           bun run sync:version
           bun run check:version
-          bun run check && bun run test
+          bun run check && bun run scripts/build-npm-fixture.ts && bun run test
       - name: Commit the release and tag the exact commit
         id: plan
         if: ${{ !inputs.tag }}
@@ -204,14 +204,17 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Smoke packed npm CLI and server without Bun
-        run: bun test tests/server-artifacts.test.ts
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: devver-cli-*
+          path: artifacts
+          merge-multiple: true
 
-      - name: Build npm package
-        run: bun run build:npm
-
-      - name: Verify the published entrypoint exists
-        run: test -x packages/cli/dist/cli.mjs && node packages/cli/dist/cli.mjs --version
+      - name: Assemble and verify npm package
+        run: |
+          bun run build:npm
+          packages/cli/bin/devver --version
+          bun test tests/npm-artifact.test.ts
 
       - name: Publish to npm
         run: |

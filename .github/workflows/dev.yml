@@ -42,7 +42,7 @@ jobs:
         with:
           node-version: "26.5.0"
       - run: bun run sync:version && bun install --frozen-lockfile && bun run check:version
-      - run: bun run check && bun run typecheck && bun run test
+      - run: bun run check && bun run typecheck && bun run scripts/build-npm-fixture.ts && bun run test
       - name: Choose an unused dev version from the selected commit
         id: version
         shell: bash
@@ -118,12 +118,12 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun run sync:version && bun install --frozen-lockfile
       - run: npm version '${{ needs.prepare.outputs.version }}' --no-git-tag-version && bun run sync:version
-      - run: bun test tests/server-artifacts.test.ts
-        env:
-          DEVVER_RELEASE_CHANNEL: dev
-      - run: bun run build:npm && node packages/cli/dist/cli.mjs --version
-        env:
-          DEVVER_RELEASE_CHANNEL: dev
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: devver-cli-*
+          path: artifacts
+          merge-multiple: true
+      - run: bun run build:npm && packages/cli/bin/devver --version && bun test tests/npm-artifact.test.ts
       - run: npm publish --workspace @devver-inc/cli --access public --tag dev
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
