@@ -28,7 +28,7 @@ const serverDocument = decodeDocument(
   JSON.parse(readFileSync(serverPath, "utf-8"))
 );
 const server = decodeVersion(serverDocument);
-const bin = `dist/servers/${version}/server.mjs`;
+const bin = "bin/devver-server";
 
 if (check) {
   const lock = Schema.decodeUnknownSync(

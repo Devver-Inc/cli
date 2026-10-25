@@ -54,8 +54,6 @@ const decodeInstance = Schema.decodeUnknownSync(
   Schema.Struct({ instanceId: Schema.String })
 );
 
-type Distribution = "npm" | "standalone";
-
 function git(cwd: string, ...args: string[]) {
   const result = Bun.spawnSync(["git", ...args], {
     cwd,
@@ -164,38 +162,21 @@ function powershell(script: string) {
   );
 }
 
-function artifact(distribution: Distribution) {
-  const built = run(
-    ["bun", "run", distribution === "npm" ? "build:npm" : "build"],
-    repo,
-    process.env
-  );
+function artifact() {
+  const built = run(["bun", "run", "build"], repo, process.env);
   expect(built.status, built.output).toBe(0);
-  const node = Bun.which("node");
-  if (distribution === "npm" && node === null) {
-    throw new Error("Node is required to run the npm artifact");
-  }
-  const executable =
-    distribution === "npm"
-      ? join(repo, "packages/cli/dist/cli.mjs")
-      : join(repo, onWindows ? "devver.exe" : "devver");
-  const server =
-    distribution === "npm"
-      ? join(repo, "packages/cli/dist/servers", pkg.version, "server.mjs")
-      : join(
-          repo,
-          "servers",
-          pkg.version,
-          onWindows ? "devver-server.exe" : "devver-server"
-        );
-  return {
-    command: distribution === "npm" ? [node ?? "", executable] : [executable],
-    serverCommand: distribution === "npm" ? [node ?? "", server] : [server],
-  };
+  const executable = join(repo, onWindows ? "devver.exe" : "devver");
+  const server = join(
+    repo,
+    "servers",
+    pkg.version,
+    onWindows ? "devver-server.exe" : "devver-server"
+  );
+  return { command: [executable], serverCommand: [server] };
 }
 
-function workspace(distribution: Distribution) {
-  const built = artifact(distribution);
+function workspace() {
+  const built = artifact();
   const gitPath = Bun.which("git");
   if (gitPath === null) {
     throw new Error("Git is required for a committed deployment");
@@ -214,9 +195,7 @@ function workspace(distribution: Distribution) {
   ];
   const path = paths.join(onWindows ? ";" : ":");
   expect(Bun.which("bun", { PATH: path })).toBeNull();
-  if (distribution === "standalone") {
-    expect(Bun.which("node", { PATH: path })).toBeNull();
-  }
+  expect(Bun.which("node", { PATH: path })).toBeNull();
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PATH: path,
@@ -652,9 +631,9 @@ async function stopRecordedSites(instance: string, data: string) {
   });
 }
 
-async function exercise(distribution: Distribution) {
+async function exercise() {
   const windowsData = onWindows ? await windowsServersDirectory() : undefined;
-  const ws = workspace(distribution);
+  const ws = workspace();
   const data =
     windowsData ?? join(ws.env.XDG_DATA_HOME ?? "", "devver", "servers");
   const instance = join(data, ws.name);
@@ -757,6 +736,6 @@ async function exercise(distribution: Distribution) {
 
 if (!onWindows) {
   test("the standalone CLI deploys committed static revisions and recovers after restart", async () => {
-    await exercise("standalone");
+    await exercise();
   }, 300_000);
 }

@@ -10,9 +10,9 @@ export PATH="$PWD:$PATH"          # in another terminal, from the repo root
 devver --version                  # runs the freshly built ./devver
 ```
 
-The watcher rebuilds the executable; an already-running process does not restart. The source CLI reports the pending Changesets target and Git commit when you request `--version`; watch-built binaries report the `dev` channel. Release builds stamp their version and commit. npm publishes only `@devver-inc/cli`, including a bundled offline server at `dist/servers/<version>/server.mjs`; the server workspace is not published.
+The watcher rebuilds the executable; an already-running process does not restart. The source CLI reports the pending Changesets target and Git commit when you request `--version`; watch-built binaries report the `dev` channel. Release builds stamp their version and commit. npm publishes only `@devver-inc/cli`, with native CLI and offline server executables for macOS arm64 and Linux x64; the server workspace is not published.
 
-Build with `bun run build:npm` for Node/npm or `bun run build` for standalone executables. Both distributions package pinned MIT-licensed Pitchfork and Websitino for local static serving; builds download and verify their checksums, while runtime startup never downloads them. **Local static serving requires macOS 14 or newer on Apple Silicon** (or supported Linux x64); Windows standalone publishing and CI are paused pending runtime verification. Older macOS fails rather than attempting to run an incompatible Websitino binary. Run `bun run check`, `bun run typecheck`, and `bun test` from the root.
+Build with `bun run build` for standalone executables. To assemble an npm package, place both standalone archives and their SHA-256 files in `artifacts/`, then run `bun run build:npm`. For local tests only, `bun run scripts/build-npm-fixture.ts` assembles a host-only fixture; never publish it. The npm package installs with Node but its commands run without Node or Bun. Both distributions package pinned MIT-licensed Pitchfork and Websitino for local static serving; builds download and verify their checksums, while runtime startup never downloads them. **Local static serving requires macOS 14 or newer on Apple Silicon** (or supported Linux x64); Windows standalone publishing and CI are paused pending runtime verification. Older macOS fails rather than attempting to run an incompatible Websitino binary. Run `bun run check`, `bun run typecheck`, and `bun test` from the root.
 
 After `bun run build`, use `./devver new server <name>` (or put this checkout first on `PATH`); a new server pins this build under its own instance ID, even when the version number has not changed. Existing servers keep their pinned binaries. For an isolated foreground test that cleans up on Ctrl-C, run `mise run dev-local`; it prints a temporary CLI command to use from your website checkout.
 
@@ -25,9 +25,10 @@ Every PR must add a `.changeset/*.md` file: run `mise run bump` and select `@dev
 Nightly runs daily (or manually) on the latest `develop` commit and publishes public `@devver-inc/cli@nightly` plus `nightly-*` GitHub prereleases. An unchanged commit is skipped. A nightly without pending Changesets uses a _provisional_ next-patch prerelease number, not an approved stable plan. A maintainer can run **Dev preview** from `main` with a full repository commit SHA to publish public `@devver-inc/cli@dev` and matching `dev-*` prerelease binaries. Each publish gets a unique workflow run/attempt number; neither prerelease updates npm `latest` or Homebrew.
 
 ```bash
-npm install -g @devver-inc/cli@dev      # explicit preview, Node >=26.4
+npm install -g @devver-inc/cli@dev      # explicit preview
 npm install -g @devver-inc/cli@nightly  # nightly
 npm install -g @devver-inc/cli          # stable
+# npm requires Node to install; devver and devver-server run without either runtime
 ```
 
 For CI without Node, pin an actual `nightly-*` or `dev-*` tag from [GitHub Releases](https://github.com/Devver-Inc/cli/releases) with mise's GitHub backend:

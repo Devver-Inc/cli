@@ -21,13 +21,13 @@ const APP_URL =
   /App URL: (?<url>http:\/\/(?<id>[0-9a-f-]{36})\.(?<project>[a-z0-9-]+)\.localhost:(?<port>\d+)\/)/u;
 
 function packagedTools() {
-  const tools = join(repo, "packages", "cli", "dist", "servers", pkg.version);
+  const tools = join(repo, "servers", pkg.version);
   if (
     !existsSync(
       join(tools, `websitino${process.platform === "win32" ? ".exe" : ""}`)
     )
   ) {
-    const build = Bun.spawnSync(["bun", "run", "build:npm"], {
+    const build = Bun.spawnSync(["bun", "run", "build"], {
       cwd: repo,
       stdout: "pipe",
       stderr: "pipe",

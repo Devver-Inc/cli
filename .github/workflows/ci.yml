@@ -44,8 +44,8 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
-      - name: Run tests
-        run: bun run test
+      - name: Build local npm fixture and run tests
+        run: bun run scripts/build-npm-fixture.ts && bun run test
 
   build:
     name: Build Check
