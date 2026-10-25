@@ -1,10 +1,21 @@
 import { expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { Effect } from "effect";
 
 import {
   installedRelease,
+  isNpmInstallation,
   isNewer,
   updatePlan,
 } from "../packages/cli/src/cli/update";
@@ -40,6 +51,50 @@ test("--update cannot be combined with a subcommand", () => {
 
 test("source checkout has no published installation", async () => {
   expect(await Effect.runPromise(installedRelease)).toBeUndefined();
+});
+
+test("npm installation recognizes sibling and nested platform binaries only", async () => {
+  const root = mkdtempSync(join(tmpdir(), "devver-update-"));
+  try {
+    const packageRoot = join(root, "@devver-inc", "cli");
+    const sibling = join(root, "@devver-inc", "cli-darwin-arm64", "devver");
+    const nested = join(
+      packageRoot,
+      "node_modules",
+      "@devver-inc",
+      "cli-darwin-arm64",
+      "devver"
+    );
+    const unrelated = join(root, "other", "devver");
+    for (const path of [sibling, nested, unrelated]) {
+      mkdirSync(join(path, ".."), { recursive: true });
+      writeFileSync(path, "fixture");
+    }
+    const launcher = join(root, "launcher");
+    symlinkSync(nested, launcher);
+    expect(
+      await Effect.runPromise(
+        isNpmInstallation(realpathSync(sibling), root, "darwin-arm64")
+      )
+    ).toBe(true);
+    expect(
+      await Effect.runPromise(
+        isNpmInstallation(realpathSync(launcher), root, "darwin-arm64")
+      )
+    ).toBe(true);
+    expect(
+      await Effect.runPromise(
+        isNpmInstallation(realpathSync(unrelated), root, "darwin-arm64")
+      )
+    ).toBe(false);
+    expect(
+      await Effect.runPromise(
+        isNpmInstallation(realpathSync(nested), root, "linux-x64")
+      )
+    ).toBe(false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("stable compares versions without accepting prereleases or downgrades", () => {
