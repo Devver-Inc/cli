@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type { LocalDeploymentStatus } from "../api/local-deploy.requests";
 import { openBrowser } from "../auth/browser";
 import type { Organization } from "../auth/session";
+import type { Candidate } from "../cli/update";
 import { visibleDeployments } from "./deployments";
 import { actionFor } from "./keys";
 import type { shortcuts } from "./keys";
@@ -49,6 +50,8 @@ interface CloudTarget {
 export interface AppProps {
   readonly target: CloudTarget | LocalTarget | { readonly kind: "none" };
   readonly version?: string | undefined;
+  readonly update?: Candidate | undefined;
+  readonly checkUpdate?: (() => Promise<Candidate | undefined>) | undefined;
   readonly onExit: () => void;
 }
 
@@ -476,6 +479,7 @@ function shortcutHelp(pickerOpen: boolean): string {
 }
 
 function CloudApp({
+  update,
   target: {
     project,
     currentProjectId = null,
@@ -568,6 +572,11 @@ function CloudApp({
           </text>
         </box>
       )}
+      {update !== undefined && (
+        <text fg={theme.mint} wrapMode="none">
+          {`devver --update · v${update.version} available`}
+        </text>
+      )}
       <box
         borderColor={theme.line}
         borderStyle="single"
@@ -582,9 +591,7 @@ function CloudApp({
           minWidth={0}
           wrapMode="none"
         >
-          {org.orgError === ""
-            ? shortcutHelp(org.orgPicker || projects.picker)
-            : org.orgError}
+          {org.orgError || shortcutHelp(org.orgPicker || projects.picker)}
         </text>
         <text fg={theme.muted} wrapMode="none">
           {version !== undefined && version !== "" ? `v${version}` : ""}
@@ -678,6 +685,7 @@ function treeRow(
 }
 
 function LocalApp({
+  update,
   target,
   version,
   onExit,
@@ -909,6 +917,11 @@ function LocalApp({
           )}
         </scrollbox>
       </box>
+      {update !== undefined && (
+        <text fg={theme.mint} wrapMode="none">
+          {`devver --update · v${update.version} available`}
+        </text>
+      )}
       <box
         borderColor={theme.line}
         borderStyle="single"
@@ -923,7 +936,7 @@ function LocalApp({
           minWidth={0}
           wrapMode="none"
         >
-          {status === "" ? "j/k/h/l move · o open · c copy · q quit" : status}
+          {status || "j/k/h/l move · o open · c copy · q quit"}
         </text>
         <text fg={theme.muted} wrapMode="none">
           {version !== undefined && version !== "" ? `v${version}` : ""}
@@ -933,7 +946,7 @@ function LocalApp({
   );
 }
 
-function StandaloneApp({ version, onExit }: AppProps): React.ReactNode {
+function StandaloneApp({ version, update, onExit }: AppProps): React.ReactNode {
   useKeyboard((key) => {
     if (actionFor(key) === "quit") {
       onExit();
@@ -974,6 +987,11 @@ function StandaloneApp({ version, onExit }: AppProps): React.ReactNode {
           loaded.
         </text>
       </box>
+      {update !== undefined && (
+        <text fg={theme.mint} wrapMode="none">
+          {`devver --update · v${update.version} available`}
+        </text>
+      )}
       <box
         borderColor={theme.line}
         borderStyle="single"
@@ -994,12 +1012,32 @@ function StandaloneApp({ version, onExit }: AppProps): React.ReactNode {
 }
 
 export function App(props: AppProps): React.ReactNode {
+  const [update, setUpdate] = useState<Candidate | undefined>();
+  useEffect(() => {
+    let active = true;
+    void props.checkUpdate?.().then(
+      (candidate) => {
+        if (active) {
+          setUpdate(candidate);
+        }
+      },
+      () => {
+        if (active) {
+          setUpdate(undefined);
+        }
+      }
+    );
+    return () => {
+      active = false;
+    };
+  }, [props.checkUpdate]);
+  const displayProps = { ...props, update };
   if (props.target.kind === "cloud") {
-    return <CloudApp {...props} target={props.target} />;
+    return <CloudApp {...displayProps} target={props.target} />;
   }
   return props.target.kind === "local" ? (
-    <LocalApp {...props} target={props.target} />
+    <LocalApp {...displayProps} target={props.target} />
   ) : (
-    <StandaloneApp {...props} />
+    <StandaloneApp {...displayProps} />
   );
 }

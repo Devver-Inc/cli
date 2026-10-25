@@ -16,13 +16,14 @@ import { repos } from "./repos";
 import { root } from "./root";
 import { secret } from "./secret";
 import { launchTui, tui } from "./tui";
+import { runUpdate } from "./update";
 import { versionLine } from "./version";
 
 // Expected failures already carry a user-facing message, so the process edge
 // prints it and marks it reported to suppress duplicate cause logging.
 const printExpected = (error: {
   readonly message: string;
-  [Runtime.errorReported]: boolean;
+  [Runtime.errorReported]?: boolean;
 }) =>
   Effect.gen(function* () {
     yield* Console.error(error.message);
@@ -30,7 +31,14 @@ const printExpected = (error: {
   });
 
 export const cli = root.pipe(
-  Command.withHandler(({ apiUrl }) => launchTui(undefined, apiUrl)),
+  Command.withHandler(({ apiUrl, update }) =>
+    Effect.gen(function* () {
+      if (update) {
+        return yield* runUpdate;
+      }
+      return yield* launchTui(undefined, apiUrl);
+    })
+  ),
   Command.withSubcommands([
     attach,
     auth,
@@ -61,6 +69,7 @@ if (
       Effect.tapErrorTag("DeployAbortError", printExpected),
       Effect.tapErrorTag("ServerCreateError", printExpected),
       Effect.tapErrorTag("ServerLifecycleError", printExpected),
+      Effect.tapErrorTag("UpdateError", printExpected),
       // @effect-diagnostics-next-line strictEffectProvide:off
       Effect.provide(NodeServices.layer)
     )
