@@ -127,6 +127,31 @@ const stampedRelease = ():
     : undefined;
 };
 
+export const isNpmInstallation = (
+  running: string,
+  root: string,
+  platform: (typeof PUBLISHED_PLATFORMS)[number]
+) =>
+  Effect.gen(function* () {
+    for (const home of [
+      join(root, "@devver-inc", `cli-${platform}`),
+      join(
+        root,
+        "@devver-inc",
+        "cli",
+        "node_modules",
+        "@devver-inc",
+        `cli-${platform}`
+      ),
+    ]) {
+      const installed = yield* resolved(join(home, "devver"));
+      if (installed === running) {
+        return true;
+      }
+    }
+    return false;
+  });
+
 export const installedRelease: Effect.Effect<UpdatableRelease | undefined> =
   Effect.gen(function* () {
     const stamped = stampedRelease();
@@ -141,13 +166,12 @@ export const installedRelease: Effect.Effect<UpdatableRelease | undefined> =
     const platform = PUBLISHED_PLATFORMS.find(
       (name) => name === `${process.platform}-${process.arch}`
     );
-    if (root !== undefined && platform !== undefined) {
-      const installed = yield* resolved(
-        join(root, "@devver-inc", `cli-${platform}`, "devver")
-      );
-      if (installed === running) {
-        return { installer: "npm", ...stamped };
-      }
+    if (
+      root !== undefined &&
+      platform !== undefined &&
+      (yield* isNpmInstallation(running, root, platform))
+    ) {
+      return { installer: "npm", ...stamped };
     }
     if (stamped.channel !== "stable") {
       return undefined;
