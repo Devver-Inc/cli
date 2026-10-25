@@ -100,7 +100,7 @@ export const openDeploymentStore = (path: string) =>
           );
           return Context.get(context, SqlClient.SqlClient);
         });
-    yield* sql.unsafe(`CREATE TABLE IF NOT EXISTS deployments (
+    yield* sql`CREATE TABLE IF NOT EXISTS deployments (
       deploymentId TEXT PRIMARY KEY NOT NULL,
       repositoryId TEXT NOT NULL,
       commitSha TEXT NOT NULL,
@@ -109,21 +109,21 @@ export const openDeploymentStore = (path: string) =>
       status TEXT NOT NULL,
       stage TEXT,
       createdAt TEXT NOT NULL
-    ) STRICT`);
+    ) STRICT`;
     const columns = yield* Schema.decodeUnknownEffect(
       Schema.Array(Schema.Struct({ name: Schema.String }))
-    )(yield* sql.unsafe("PRAGMA table_info(deployments)"));
+    )(yield* sql`PRAGMA table_info(deployments)`);
     if (!columns.some((column) => column.name === "displayName")) {
-      yield* sql.unsafe("ALTER TABLE deployments ADD COLUMN displayName TEXT");
+      yield* sql`ALTER TABLE deployments ADD COLUMN displayName TEXT`;
     }
     if (columns.some((column) => column.name === "sitePort")) {
-      yield* sql.unsafe("ALTER TABLE deployments DROP COLUMN sitePort");
+      yield* sql`ALTER TABLE deployments DROP COLUMN sitePort`;
     }
-    yield* sql.unsafe(`CREATE TABLE IF NOT EXISTS instance (
+    yield* sql`CREATE TABLE IF NOT EXISTS instance (
       key TEXT PRIMARY KEY NOT NULL,
       value TEXT NOT NULL
-    ) STRICT`);
-    const select = `SELECT deploymentId, repositoryId, commitSha AS "commit", parentDeploymentId,
+    ) STRICT`;
+    const select = sql`SELECT deploymentId, repositoryId, commitSha AS "commit", parentDeploymentId,
       worktree, status, stage, displayName, createdAt FROM deployments`;
     const markStatus = (
       deploymentId: string,
@@ -156,17 +156,14 @@ export const openDeploymentStore = (path: string) =>
         markStatus(deploymentId, "degraded", stage),
       read: (deploymentId: string) =>
         Effect.gen(function* () {
-          const [row] = yield* sql.unsafe(`${select} WHERE deploymentId = ?`, [
-            deploymentId,
-          ]);
+          const [row] =
+            yield* sql`${select} WHERE deploymentId = ${deploymentId}`;
           return row === undefined
             ? undefined
             : yield* Schema.decodeUnknownEffect(DeploymentSchema)(row);
         }),
       list: Effect.gen(function* () {
-        const rows = yield* sql.unsafe(
-          `${select} ORDER BY createdAt, deploymentId`
-        );
+        const rows = yield* sql`${select} ORDER BY createdAt, deploymentId`;
         const deployments: Deployment[] = [];
         let unreadable = 0;
         for (const row of rows) {

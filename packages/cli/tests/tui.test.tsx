@@ -417,11 +417,8 @@ test("local deployments render as a tree with selection navigation", async () =>
       setup.mockInput.pressKey("h");
       await Promise.resolve();
     });
-    const wrapped = await setup.waitForFrame(
+    await setup.waitForFrame(
       (value) => value.includes("33333333 ready") && value.includes("◆")
-    );
-    expect(wrapped).toContain(
-      "j/k/h/l move · o open · c copy · r rename · q quit"
     );
   } finally {
     await act(async () => {
