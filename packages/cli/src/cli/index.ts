@@ -9,6 +9,7 @@ import { cloud } from "./cloud";
 import { config, init } from "./config";
 import { deploy } from "./deploy";
 import { attach, detach, server } from "./local-server";
+import { merge } from "./merge";
 import { newCommand } from "./new";
 import { organization } from "./organization";
 import { project } from "./project";
@@ -47,6 +48,7 @@ export const cli = root.pipe(
     deploy,
     detach,
     init,
+    merge,
     newCommand,
     organization,
     project,

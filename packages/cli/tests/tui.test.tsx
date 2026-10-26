@@ -427,6 +427,87 @@ test("local deployments render as a tree with selection navigation", async () =>
   }
 });
 
+test("m confirms a merge and shows both navigable parents", async () => {
+  const first = "11111111-1111-4111-8111-111111111111";
+  const second = "22222222-2222-4222-8222-222222222222";
+  const merged = "33333333-3333-4333-8333-333333333333";
+  const repositoryId = "a".repeat(64);
+  const calls: string[][] = [];
+  const setup = await testRender(
+    <App
+      onExit={() => undefined}
+      target={{
+        kind: "local",
+        server: "dev",
+        workspace: "site",
+        repositoryId,
+        loadDeployments: async () =>
+          [first, second].map((deploymentId) => ({
+            deploymentId,
+            repositoryId,
+            commit: "b".repeat(40),
+            parentDeploymentId: null,
+            status: "ready" as const,
+            stage: null,
+            url: `http://${deploymentId}.dev.localhost:9000/`,
+          })),
+        mergeDeployments: async (a, b) => {
+          calls.push([a, b]);
+          return {
+            deploymentId: merged,
+            repositoryId,
+            commit: "c".repeat(40),
+            parentDeploymentId: a,
+            secondParentDeploymentId: b,
+            url: `http://${merged}.dev.localhost:9000/`,
+          };
+        },
+      }}
+    />,
+    { width: 110, height: 20 }
+  );
+  try {
+    await setup.waitForFrame((frame) => frame.includes("11111111 ready"));
+    await act(async () => {
+      setup.mockInput.pressKey("m");
+      await Promise.resolve();
+    });
+    await setup.waitForFrame((frame) => frame.includes("Select a second"));
+    await act(async () => {
+      setup.mockInput.pressKey("j");
+      await Promise.resolve();
+    });
+    await setup.waitForFrame((frame) => frame.includes("◆ 22222222 ready"));
+    await act(async () => {
+      setup.mockInput.pressKey("m");
+      await Promise.resolve();
+    });
+    await setup.waitForFrame((frame) => frame.includes("Press Enter to merge"));
+    expect(calls).toHaveLength(0);
+    await act(async () => {
+      setup.mockInput.pressEnter();
+      await Promise.resolve();
+    });
+    const frame = await setup.waitForFrame((value) =>
+      value.includes("Merged 33333333")
+    );
+    expect(calls).toEqual([[first, second]]);
+    expect(frame).toContain("↖ 11111111 + 22222222");
+    await act(async () => {
+      setup.mockInput.pressKey("2");
+      await Promise.resolve();
+    });
+    const parent = await setup.waitForFrame((value) =>
+      value.includes("◆ 22222222 ready")
+    );
+    expect(parent).toContain("◆ 22222222 ready");
+  } finally {
+    await act(async () => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
 test("o opens a ready deployment URL and reports one without a URL", async () => {
   const opened: string[] = [];
   const setup = await testRender(

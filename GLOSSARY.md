@@ -14,6 +14,8 @@ Terms for local deployment and optional public publishing.
 
 **Child deployment**: A deployment explicitly forked from a particular parent deployment. _Avoid_: Next revision, newer deployment
 
+**Merged deployment**: A new deployment whose code combines two deployments of the same repository and whose lineage names both as parents. Neither source deployment is replaced. _Avoid_: Amended deployment
+
 **Public route**: A stable public address for one deployment, managed by a publishing service. It does not grant access to the server's control interface. _Avoid_: CLI target, control URL
 
 **Devver-managed publishing**: An optional service that issues public routes under a Devver-owned domain. Independently exposing an app through a developer's own service is not a Devver-managed publishing integration. _Avoid_: Remote attachment

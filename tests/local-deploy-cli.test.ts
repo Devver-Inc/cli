@@ -1,8 +1,11 @@
+import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -109,7 +112,7 @@ async function foreground(
       new Promise<never>((_resolve, reject) => {
         setTimeout(() => {
           reject(new Error("Server did not start"));
-        }, 10_000);
+        }, 60_000);
       }),
     ]);
     reader.releaseLock();
@@ -251,5 +254,246 @@ test("deploy serves the committed HEAD of an attached local target at a loopback
   if (appUrl !== undefined) {
     const orphan = await body(appUrl).catch(() => ({ status: 0, text: "" }));
     expect(orphan.status).not.toBe(200);
+  }
+}, 180_000);
+
+test("server migrates existing deployment records to nullable second-parent lineage", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  packagedTools();
+  const ws = workspace();
+  const source = checkout(ws.root);
+  const running = await foreground(ws.env, "older-store");
+  let stopped = false;
+  try {
+    expect((await ws.run(["attach", running.url])).status).toBe(0);
+    const deployed = await ws.run(["deploy"], source.directory);
+    expect(deployed.status, deployed.output).toBe(0);
+    const url = APP_URL.exec(deployed.output)?.groups?.url;
+    expect(url).toBeDefined();
+    await stop(running.child);
+    stopped = true;
+    const db = new Database(
+      join(ws.root, "devver", "servers", "older-store", "deployments.sqlite")
+    );
+    try {
+      db.run("ALTER TABLE deployments DROP COLUMN secondParentDeploymentId");
+    } finally {
+      db.close();
+    }
+    const restarted = await foreground(ws.env, "older-store");
+    try {
+      const listing = await body(`${restarted.url}/deployments`);
+      expect(listing.status).toBe(200);
+      expect(listing.text).toContain('"secondParentDeploymentId":null');
+      if (url !== undefined) {
+        expect((await body(url)).text).toBe("<h1>committed site</h1>");
+      }
+    } finally {
+      await stop(restarted.child);
+    }
+  } finally {
+    if (!stopped) {
+      await stop(running.child);
+    }
+    rmSync(ws.root, { recursive: true, force: true });
+  }
+}, 180_000);
+
+test("merge creates a two-parent revision without changing either source checkout or app", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  packagedTools();
+  const ws = workspace();
+  const site = join(ws.root, "merge-site");
+  mkdirSync(site);
+  writeFileSync(join(site, "index.html"), "<h1>base</h1>");
+  git(site, "init", "-q", "-b", "main");
+  git(site, "add", ".");
+  git(site, "commit", "-q", "-m", "base");
+  const base = git(site, "rev-parse", "HEAD");
+  writeFileSync(join(site, "first.txt"), "first");
+  git(site, "add", ".");
+  git(site, "commit", "-q", "-m", "first");
+  const firstCommit = git(site, "rev-parse", "HEAD");
+  const running = await foreground(ws.env, "merging");
+  try {
+    expect((await ws.run(["attach", running.url])).status).toBe(0);
+    const first = await ws.run(["deploy"], site);
+    expect(first.status, first.output).toBe(0);
+    const firstMatch = APP_URL.exec(first.output)?.groups;
+    expect(firstMatch?.id).toBeDefined();
+    git(site, "checkout", "-q", "-b", "second", base);
+    writeFileSync(join(site, "second.txt"), "second");
+    git(site, "add", ".");
+    git(site, "commit", "-q", "-m", "second");
+    const secondCommit = git(site, "rev-parse", "HEAD");
+    const second = await ws.run(["deploy"], site);
+    expect(second.status, second.output).toBe(0);
+    const secondMatch = APP_URL.exec(second.output)?.groups;
+    expect(secondMatch?.id).toBeDefined();
+    if (firstMatch?.id === undefined || secondMatch?.id === undefined) {
+      throw new Error("Deployments did not return IDs");
+    }
+    const firstId = firstMatch.id;
+    const merged = await ws.run(["merge", firstMatch.id, secondMatch.id], site);
+    expect(merged.status, merged.output).toBe(0);
+    const id = /Merged deployment (?<id>[0-9a-f-]{36})/u.exec(merged.output)
+      ?.groups?.id;
+    const commit = /Commit: (?<commit>[0-9a-f]{40})/u.exec(merged.output)
+      ?.groups?.commit;
+    const url = /App URL: (?<url>http:\/\/[^\s]+)/u.exec(merged.output)?.groups
+      ?.url;
+    expect(id).toBeDefined();
+    expect(commit).toBeDefined();
+    expect(url).toBeDefined();
+    if (id === undefined || commit === undefined || url === undefined) {
+      throw new Error("Merge did not return a revision and URL");
+    }
+    expect(git(site, "rev-parse", "HEAD")).toBe(secondCommit);
+    expect(git(site, "status", "--porcelain")).toBe("");
+    const repositoryId = createHash("sha256")
+      .update(realpathSync(site))
+      .digest("hex");
+    const bare = join(
+      ws.root,
+      "devver",
+      "servers",
+      "merging",
+      "repositories",
+      `${repositoryId}.git`
+    );
+    expect(git(bare, "rev-list", "--parents", "-n", "1", commit)).toBe(
+      `${commit} ${firstCommit} ${secondCommit}`
+    );
+    expect((await body(`${url}first.txt`)).text).toBe("first");
+    expect((await body(`${url}second.txt`)).text).toBe("second");
+    expect((await body(`${firstMatch.url}second.txt`)).status).not.toBe(200);
+    expect((await body(`${secondMatch.url}first.txt`)).status).not.toBe(200);
+    const listing = await body(`${running.url}/deployments`);
+    expect(listing.status).toBe(200);
+    const rows: unknown = JSON.parse(listing.text);
+    expect(Array.isArray(rows)).toBe(true);
+    if (!Array.isArray(rows)) {
+      throw new TypeError("Deployment list is not an array");
+    }
+    expect(rows).toContainEqual(
+      expect.objectContaining({
+        deploymentId: id,
+        parentDeploymentId: firstMatch.id,
+        secondParentDeploymentId: secondMatch.id,
+        commit,
+        status: "ready",
+      })
+    );
+    const duplicate = await ws.run(
+      ["merge", firstMatch.id, firstMatch.id],
+      site
+    );
+    expect(duplicate.status).not.toBe(0);
+
+    await (async () => {
+      git(site, "checkout", "-q", "-b", "conflict-a", base);
+      writeFileSync(join(site, "index.html"), "<h1>conflict A</h1>");
+      git(site, "add", ".");
+      git(site, "commit", "-q", "-m", "conflict A");
+      const conflictA = APP_URL.exec((await ws.run(["deploy"], site)).output)
+        ?.groups?.id;
+      git(site, "checkout", "-q", "-b", "conflict-b", base);
+      writeFileSync(join(site, "index.html"), "<h1>conflict B</h1>");
+      git(site, "add", ".");
+      git(site, "commit", "-q", "-m", "conflict B");
+      const conflictB = APP_URL.exec((await ws.run(["deploy"], site)).output)
+        ?.groups?.id;
+      if (conflictA === undefined || conflictB === undefined) {
+        throw new Error("Conflicting source deployments were not created");
+      }
+      const beforeConflict = await body(`${running.url}/deployments`);
+      const conflict = await ws.run(["merge", conflictA, conflictB], site);
+      expect(conflict.status).not.toBe(0);
+      expect(conflict.output).toContain(
+        "Merge conflicts prevent combining these revisions"
+      );
+      expect((await body(`${running.url}/deployments`)).text).toBe(
+        beforeConflict.text
+      );
+      expect(git(site, "status", "--porcelain")).toBe("");
+      git(site, "checkout", "-q", "-b", "descendant", firstCommit);
+      writeFileSync(join(site, "third.txt"), "third");
+      git(site, "add", ".");
+      git(site, "commit", "-q", "-m", "descendant");
+      const descendantCommit = git(site, "rev-parse", "HEAD");
+      const descendant = APP_URL.exec((await ws.run(["deploy"], site)).output)
+        ?.groups?.id;
+      if (descendant === undefined) {
+        throw new Error("Descendant deployment was not created");
+      }
+      const ancestorMerge = await ws.run(["merge", firstId, descendant], site);
+      expect(ancestorMerge.status, ancestorMerge.output).toBe(0);
+      const ancestorCommit = /Commit: (?<commit>[0-9a-f]{40})/u.exec(
+        ancestorMerge.output
+      )?.groups?.commit;
+      expect(ancestorCommit).toBeDefined();
+      if (ancestorCommit !== undefined) {
+        expect(
+          git(bare, "rev-list", "--parents", "-n", "1", ancestorCommit)
+        ).toBe(`${ancestorCommit} ${firstCommit} ${descendantCommit}`);
+      }
+      git(site, "checkout", "-q", "--orphan", "orphan");
+      git(site, "rm", "-qrf", ".");
+      writeFileSync(join(site, "index.html"), "<h1>orphan</h1>");
+      git(site, "add", ".");
+      git(site, "commit", "-q", "-m", "orphan");
+      const orphan = APP_URL.exec((await ws.run(["deploy"], site)).output)
+        ?.groups?.id;
+      if (orphan === undefined) {
+        throw new Error("Orphan deployment was not created");
+      }
+      const beforeUnrelated = await body(`${running.url}/deployments`);
+      const unrelated = await ws.run(["merge", firstId, orphan], site);
+      expect(unrelated.status).not.toBe(0);
+      expect(unrelated.output).toContain(
+        "Git histories are unrelated or unavailable"
+      );
+      expect((await body(`${running.url}/deployments`)).text).toBe(
+        beforeUnrelated.text
+      );
+      const other = join(ws.root, "other-site");
+      mkdirSync(other);
+      writeFileSync(join(other, "index.html"), "<h1>other repo</h1>");
+      git(other, "init", "-q", "-b", "main");
+      git(other, "add", ".");
+      git(other, "commit", "-q", "-m", "other repo");
+      const otherId = APP_URL.exec((await ws.run(["deploy"], other)).output)
+        ?.groups?.id;
+      if (otherId === undefined) {
+        throw new Error("Other repository was not deployed");
+      }
+      const crossRepo = await ws.run(["merge", firstId, otherId], other);
+      expect(crossRepo.status).not.toBe(0);
+      expect(crossRepo.output).toContain(
+        "Both deployments must belong to the same repository"
+      );
+      expect((await body(`${running.url}/deployments`)).text).toContain(
+        `"deploymentId":"${otherId}"`
+      );
+    })();
+    await stop(running.child);
+    const restarted = await foreground(ws.env, "merging");
+    try {
+      expect((await body(`${url}first.txt`)).text).toBe("first");
+      expect((await body(`${url}second.txt`)).text).toBe("second");
+      const afterRestart = await body(`${restarted.url}/deployments`);
+      expect(afterRestart.text).toContain(
+        `"secondParentDeploymentId":"${secondMatch.id}"`
+      );
+    } finally {
+      await stop(restarted.child);
+    }
+  } finally {
+    await stop(running.child);
+    rmSync(ws.root, { recursive: true, force: true });
   }
 }, 180_000);

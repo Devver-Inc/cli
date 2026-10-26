@@ -4,12 +4,14 @@ import { join } from "node:path";
 import { Cause, Data, Effect, Exit, Option } from "effect";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 
-import { DeployFailure } from "./api";
+import { DeployFailure, MergeRejected } from "./api";
 import { openDeploymentHost } from "./deployment-host";
 import type { DeployStage } from "./deployment-store";
 import { openDeploymentStore } from "./deployment-store";
 import {
   addWorktree,
+  mergeCommits,
+  pinCommit,
   removeDeploymentRef,
   removeWorktree,
   syncCommit,
@@ -181,6 +183,7 @@ export const openDeployer = (name: string) =>
             repositoryId: source.repositoryId,
             commit: input.commit,
             parentDeploymentId: null,
+            secondParentDeploymentId: null,
             worktree,
           });
           recorded = true;
@@ -220,6 +223,7 @@ export const openDeployer = (name: string) =>
             repositoryId: source.repositoryId,
             commit: input.commit,
             parentDeploymentId: null,
+            secondParentDeploymentId: null,
             url: host.url(deploymentId),
           };
         }).pipe(
@@ -242,6 +246,103 @@ export const openDeployer = (name: string) =>
                       )
                     );
                   }
+                })
+          )
+        );
+      });
+
+    const merge = (firstDeploymentId: string, secondDeploymentId: string) =>
+      Effect.gen(function* () {
+        if (firstDeploymentId === secondDeploymentId) {
+          return yield* new MergeRejected({
+            message: "Choose two different deployments to merge",
+          });
+        }
+        const first = yield* store.read(firstDeploymentId);
+        const second = yield* store.read(secondDeploymentId);
+        if (first === undefined || second === undefined) {
+          return yield* new MergeRejected({
+            message: "A source deployment was not found",
+          });
+        }
+        if (first.repositoryId !== second.repositoryId) {
+          return yield* new MergeRejected({
+            message: "Both deployments must belong to the same repository",
+          });
+        }
+        if (first.status !== "ready" || second.status !== "ready") {
+          return yield* new MergeRejected({
+            message: "Both source deployments must be ready",
+          });
+        }
+        if (first.commit === second.commit) {
+          return yield* new MergeRejected({
+            message: "Both deployments already have the same revision",
+          });
+        }
+        const bare = join(
+          instanceDirectory,
+          "repositories",
+          `${first.repositoryId}.git`
+        );
+        const commit = yield* attempt(
+          "git",
+          async () => await mergeCommits(bare, first.commit, second.commit)
+        );
+        const deploymentId = randomUUID();
+        const worktree = join(instanceDirectory, "worktrees", deploymentId);
+        let recorded = false;
+        return yield* Effect.gen(function* () {
+          yield* store.record({
+            deploymentId,
+            repositoryId: first.repositoryId,
+            commit,
+            parentDeploymentId: firstDeploymentId,
+            secondParentDeploymentId: secondDeploymentId,
+            worktree,
+          });
+          recorded = true;
+          yield* Effect.uninterruptible(
+            attempt("git", async () => {
+              await pinCommit(bare, deploymentId, commit);
+            })
+          );
+          const added = yield* Effect.uninterruptible(
+            attempt(
+              "git",
+              async () =>
+                await addWorktree({
+                  bare,
+                  worktrees: join(instanceDirectory, "worktrees"),
+                  deploymentId,
+                  commit,
+                })
+            )
+          );
+          yield* publish(deploymentId, added);
+          yield* store.markReady(deploymentId);
+          return {
+            deploymentId,
+            repositoryId: first.repositoryId,
+            commit,
+            parentDeploymentId: firstDeploymentId,
+            secondParentDeploymentId: secondDeploymentId,
+            url: host.url(deploymentId),
+          };
+        }).pipe(
+          Effect.onExit((exit) =>
+            Exit.isSuccess(exit) || !recorded
+              ? Effect.void
+              : Effect.gen(function* () {
+                  yield* unpublish(deploymentId);
+                  yield* Effect.promise(async () => {
+                    await removeWorktree(bare, worktree).catch(() => undefined);
+                    await removeDeploymentRef(bare, deploymentId);
+                  }).pipe(
+                    Effect.onExit(() =>
+                      store.markFailed(deploymentId, failureStage(exit))
+                    )
+                  );
                 })
           )
         );
@@ -291,6 +392,7 @@ export const openDeployer = (name: string) =>
                   repositoryId,
                   commit,
                   parentDeploymentId,
+                  secondParentDeploymentId,
                   status,
                   stage,
                   displayName,
@@ -299,6 +401,7 @@ export const openDeployer = (name: string) =>
                   repositoryId,
                   commit,
                   parentDeploymentId,
+                  secondParentDeploymentId,
                   status,
                   stage,
                   displayName,
@@ -312,7 +415,13 @@ export const openDeployer = (name: string) =>
             })
       )
     );
-    return { appPort: host.proxyPort, deploy, statuses, rename: store.rename };
+    return {
+      appPort: host.proxyPort,
+      deploy,
+      merge,
+      statuses,
+      rename: store.rename,
+    };
   }).pipe(
     Effect.mapError((error) =>
       error instanceof DeploymentStartupError

@@ -18,9 +18,12 @@ export type DeployStage = typeof DeployStageSchema.Type;
 
 const identity = {
   deploymentId: Schema.String.check(Schema.isUUID(4)),
-  repositoryId: Schema.String.check(Schema.isNonEmpty()),
+  repositoryId: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
   commit: Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/u)),
   parentDeploymentId: Schema.NullOr(Schema.String.check(Schema.isUUID(4))),
+  secondParentDeploymentId: Schema.NullOr(
+    Schema.String.check(Schema.isUUID(4))
+  ),
   worktree: Schema.String.check(Schema.isNonEmpty()),
 };
 
@@ -119,12 +122,15 @@ export const openDeploymentStore = (path: string) =>
     if (columns.some((column) => column.name === "sitePort")) {
       yield* sql`ALTER TABLE deployments DROP COLUMN sitePort`;
     }
+    if (!columns.some((column) => column.name === "secondParentDeploymentId")) {
+      yield* sql`ALTER TABLE deployments ADD COLUMN secondParentDeploymentId TEXT REFERENCES deployments(deploymentId)`;
+    }
     yield* sql`CREATE TABLE IF NOT EXISTS instance (
       key TEXT PRIMARY KEY NOT NULL,
       value TEXT NOT NULL
     ) STRICT`;
     const select = sql`SELECT deploymentId, repositoryId, commitSha AS "commit", parentDeploymentId,
-      worktree, status, stage, displayName, createdAt FROM deployments`;
+      secondParentDeploymentId, worktree, status, stage, displayName, createdAt FROM deployments`;
     const markStatus = (
       deploymentId: string,
       status: string,
@@ -137,9 +143,9 @@ export const openDeploymentStore = (path: string) =>
           const deployment =
             yield* Schema.decodeEffect(NewDeploymentSchema)(input);
           yield* sql`INSERT INTO deployments
-            (deploymentId, repositoryId, commitSha, parentDeploymentId, worktree, status, stage, createdAt)
+            (deploymentId, repositoryId, commitSha, parentDeploymentId, secondParentDeploymentId, worktree, status, stage, createdAt)
             VALUES (${deployment.deploymentId}, ${deployment.repositoryId}, ${deployment.commit},
-              ${deployment.parentDeploymentId}, ${deployment.worktree}, 'preparing', NULL, ${new Date().toISOString()})`;
+              ${deployment.parentDeploymentId}, ${deployment.secondParentDeploymentId}, ${deployment.worktree}, 'preparing', NULL, ${new Date().toISOString()})`;
         }),
       rename: (deploymentId: string, displayName: string) =>
         Effect.gen(function* () {

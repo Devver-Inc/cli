@@ -15,6 +15,7 @@ export const LocalDeploymentSchema = Schema.Struct({
   repositoryId: Schema.String,
   commit: Commit,
   parentDeploymentId: Schema.NullOr(DeploymentId),
+  secondParentDeploymentId: Schema.optional(Schema.NullOr(DeploymentId)),
   url: Schema.String,
 });
 
@@ -26,6 +27,7 @@ const LocalDeploymentStatuses = Schema.Array(
     ),
     commit: Schema.optional(Commit),
     parentDeploymentId: Schema.optional(Schema.NullOr(DeploymentId)),
+    secondParentDeploymentId: Schema.optional(Schema.NullOr(DeploymentId)),
     displayName: Schema.optional(Schema.NullOr(Schema.String)),
     status: Schema.Literals(["preparing", "ready", "failed", "degraded"]),
     stage: Schema.NullOr(
@@ -51,6 +53,19 @@ export const listLocalDeployments = Effect.gen(function* () {
 });
 
 const RenameResponse = Schema.Struct({ displayName: Schema.String });
+
+export const mergeLocalDeployments = (
+  firstDeploymentId: string,
+  secondDeploymentId: string
+) =>
+  Effect.gen(function* () {
+    const api = yield* ApiClient;
+    return yield* api.post(
+      "/deployments/merge",
+      { firstDeploymentId, secondDeploymentId },
+      LocalDeploymentSchema
+    );
+  });
 
 export const renameLocalDeployment = (
   deploymentId: string,
