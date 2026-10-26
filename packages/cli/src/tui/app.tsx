@@ -685,7 +685,8 @@ function treeRow(
   marked: boolean,
   connector: string
 ): React.ReactNode {
-  const depth = entry.secondParentId === undefined ? entry.depth : 0;
+  // Lane art replaces tree indentation: merge ordering can separate a child from its parent row.
+  const depth = connector === "" ? entry.depth : 0;
   const indent = "  ".repeat(depth);
   const branch = depth === 0 ? "" : `${"│ ".repeat(depth - 1)}└─ `;
   let marker = " ";

@@ -543,9 +543,9 @@ test("v selects two deployments and m merges them with connected parents", async
       value.includes("Merged 33333333")
     );
     expect(calls).toEqual([[first, second]]);
-    expect(frame).toContain("●    11111111 ready");
-    expect(frame).toContain("│ ●  22222222 ready");
-    expect(frame).toContain("●─┘  33333333 ready");
+    expect(frame).toContain("●      11111111 ready");
+    expect(frame).toContain("│ ●    22222222 ready");
+    expect(frame).toContain("└─┴─●  33333333 ready");
     expect(frame).not.toContain("11111111 + 22222222");
     expect(highlightedRows(setup.captureSpans())).toEqual([]);
     await act(async () => {
@@ -553,9 +553,9 @@ test("v selects two deployments and m merges them with connected parents", async
       await Promise.resolve();
     });
     const parent = await setup.waitForFrame((value) =>
-      value.includes("◆ │ ●  22222222 ready")
+      value.includes("◆ │ ●    22222222 ready")
     );
-    expect(parent).toContain("◆ │ ●  22222222 ready");
+    expect(parent).toContain("◆ │ ●    22222222 ready");
   } finally {
     await act(async () => {
       setup.renderer.destroy();
