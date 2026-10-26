@@ -5,6 +5,42 @@ import { testRender } from "@opentui/react/test-utils";
 import { act } from "react";
 
 import { App } from "../src/tui/app";
+import { theme } from "../src/tui/theme";
+
+const hex = (color: { r: number; g: number; b: number }) =>
+  `#${[color.r, color.g, color.b]
+    .map((channel) =>
+      Math.round(channel * 255)
+        .toString(16)
+        .padStart(2, "0")
+    )
+    .join("")}`;
+
+/** Deployment IDs whose row is highlighted edge to edge, as visual selection. */
+const highlightedRows = (frame: {
+  cols: number;
+  lines: readonly {
+    spans: readonly { text: string; bg: { r: number; g: number; b: number } }[];
+  }[];
+}) =>
+  frame.lines
+    .filter((line) => {
+      const highlighted = line.spans.filter(
+        (span) => hex(span.bg) === theme.selection
+      );
+      const covered = highlighted.reduce(
+        (total, span) => total + span.text.length,
+        0
+      );
+      // The row box spans the deployments panel, inside its one-column border and padding.
+      return highlighted.length > 0 && covered >= frame.cols - 4;
+    })
+    .map(
+      (line) =>
+        /(?<id>[0-9a-f]{8}) ready/u.exec(
+          line.spans.map((span) => span.text).join("")
+        )?.groups?.id
+    );
 
 test("all targets show a newer release after the TUI starts", async () => {
   for (const target of [
@@ -477,6 +513,7 @@ test("v selects two deployments and m merges them with connected parents", async
       await Promise.resolve();
     });
     await setup.waitForFrame((frame) => frame.includes("◈ 11111111 ready"));
+    expect(highlightedRows(setup.captureSpans())).toEqual(["11111111"]);
     await act(async () => {
       setup.mockInput.pressKey("j");
       await Promise.resolve();
@@ -487,6 +524,10 @@ test("v selects two deployments and m merges them with connected parents", async
       await Promise.resolve();
     });
     await setup.waitForFrame((frame) => frame.includes("◈ 22222222 ready"));
+    expect(highlightedRows(setup.captureSpans())).toEqual([
+      "11111111",
+      "22222222",
+    ]);
     expect(calls).toHaveLength(0);
     await act(async () => {
       setup.mockInput.pressKey("m");
@@ -506,6 +547,7 @@ test("v selects two deployments and m merges them with connected parents", async
     expect(frame).toContain("│ ●  22222222 ready");
     expect(frame).toContain("└─●  33333333 ready");
     expect(frame).not.toContain("11111111 + 22222222");
+    expect(highlightedRows(setup.captureSpans())).toEqual([]);
     await act(async () => {
       setup.mockInput.pressKey("2");
       await Promise.resolve();

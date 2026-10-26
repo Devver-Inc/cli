@@ -5,4 +5,5 @@ export const theme = {
   mint: "#9ad2b5",
   amber: "#f0c67b",
   rose: "#e4a5a3",
+  selection: "#33443c",
 } as const;
