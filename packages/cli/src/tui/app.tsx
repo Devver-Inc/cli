@@ -12,6 +12,7 @@ import type { LocalDeploymentStatus } from "../api/local-deploy.requests";
 import { openBrowser } from "../auth/browser";
 import type { Organization } from "../auth/session";
 import type { Candidate } from "../cli/update";
+import { deploymentGraph } from "./deployment-graph";
 import { visibleDeployments } from "./deployments";
 import { actionFor } from "./keys";
 import type { shortcuts } from "./keys";
@@ -680,15 +681,19 @@ function buildTree(rows: readonly FlatDeployment[]): TreeNode[] {
 
 function treeRow(
   entry: FlatDeployment & { readonly depth: number },
-  selected: boolean
+  selected: boolean,
+  marked: boolean,
+  connector: string
 ): React.ReactNode {
-  const indent = "  ".repeat(entry.depth);
-  const branch = entry.depth === 0 ? "" : `${"│ ".repeat(entry.depth - 1)}└─ `;
-  const marker = selected ? "◆" : " ";
-  const ancestry =
-    entry.secondParentId === undefined
-      ? ""
-      : `↖ ${entry.parentId?.slice(0, 8) ?? "?"} + ${entry.secondParentId.slice(0, 8)}  `;
+  const depth = entry.secondParentId === undefined ? entry.depth : 0;
+  const indent = "  ".repeat(depth);
+  const branch = depth === 0 ? "" : `${"│ ".repeat(depth - 1)}└─ `;
+  let marker = " ";
+  if (marked) {
+    marker = selected ? "◈" : "✓";
+  } else if (selected) {
+    marker = "◆";
+  }
   let color: ColorInput = theme.amber;
   if (selected) {
     color = theme.mint;
@@ -702,13 +707,26 @@ function treeRow(
       key={entry.id}
       wrapMode="none"
     >
-      {`${marker} ${indent}${branch}${ancestry}${entry.displayName !== null && entry.displayName !== undefined && entry.displayName !== "" ? `${entry.displayName} (${entry.id.slice(0, 8)})` : entry.id.slice(0, 8)} ${entry.status}`}
+      {`${marker} `}
+      {connector === "" ? (
+        ""
+      ) : (
+        <span fg={selected ? theme.mint : theme.amber}>{connector}</span>
+      )}
+      {`${indent}${branch}${entry.displayName !== null && entry.displayName !== undefined && entry.displayName !== "" ? `${entry.displayName} (${entry.id.slice(0, 8)})` : entry.id.slice(0, 8)} ${entry.status}`}
       {entry.stage === null || entry.stage === undefined
         ? ""
         : ` (${entry.stage})`}
       {entry.commit === undefined ? "" : `  commit ${entry.commit.slice(0, 8)}`}
     </text>
   );
+}
+
+function isRepeatedSelection(
+  key: KeyEvent,
+  action: keyof typeof shortcuts | undefined
+) {
+  return key.repeated === true && (action === "merge" || action === "select");
 }
 
 function LocalApp({
@@ -726,10 +744,9 @@ function LocalApp({
   >({ kind: "loading" });
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState("");
-  const [mergeSelection, setMergeSelection] = useState<
-    { readonly first: string; readonly second?: string } | undefined
-  >();
+  const [mergeSelection, setMergeSelection] = useState<readonly string[]>([]);
   const [merging, setMerging] = useState(false);
+  const mergingRef = useRef(false);
   const [editor, setEditor] = useState<
     | { readonly kind: "idle" }
     | { readonly kind: "editing"; readonly id: string; readonly value: string }
@@ -761,7 +778,7 @@ function LocalApp({
     };
   }, [target.loadDeployments]);
 
-  const rows =
+  const diagram = deploymentGraph(
     result.kind === "loaded"
       ? flatten(
           buildTree(
@@ -780,7 +797,9 @@ function LocalApp({
             )
           )
         )
-      : [];
+      : []
+  );
+  const rows = diagram.map(({ entry }) => entry);
 
   useEffect(() => {
     if (selectedId === undefined && rows.length > 0) {
@@ -958,75 +977,92 @@ function LocalApp({
   }
 
   function confirmMerge() {
-    if (mergeSelection?.second === undefined) {
+    if (mergingRef.current) {
+      return;
+    }
+    const [first, second] = mergeSelection;
+    if (first === undefined || second === undefined) {
+      setStatus("Select two ready deployments with v before merging.");
       return;
     }
     if (target.mergeDeployments === undefined) {
       setStatus("This server does not support merging deployments.");
-      setMergeSelection(undefined);
       return;
     }
+    mergingRef.current = true;
     setMerging(true);
-    void target
-      .mergeDeployments(mergeSelection.first, mergeSelection.second)
-      .then(
-        (merged) => {
-          setResult((previous) =>
-            previous.kind === "loaded"
-              ? {
-                  kind: "loaded",
-                  deployments: [
-                    ...previous.deployments,
-                    {
-                      ...merged,
-                      displayName: null,
-                      status: "ready",
-                      stage: null,
-                    },
-                  ],
-                }
-              : previous
-          );
-          setSelectedId(merged.deploymentId);
-          setMergeSelection(undefined);
-          setMerging(false);
-          setStatus(
-            `Merged ${merged.deploymentId.slice(0, 8)}. Press o to open.`
-          );
-        },
-        () => {
-          setMerging(false);
-          setMergeSelection(undefined);
-          setStatus(
-            "Merge failed. Check devver merge for details; both sources are unchanged."
-          );
-        }
-      );
+    void target.mergeDeployments(first, second).then(
+      (merged) => {
+        setResult((previous) =>
+          previous.kind === "loaded"
+            ? {
+                kind: "loaded",
+                deployments: [
+                  ...previous.deployments,
+                  {
+                    ...merged,
+                    displayName: null,
+                    status: "ready",
+                    stage: null,
+                  },
+                ],
+              }
+            : previous
+        );
+        setSelectedId(merged.deploymentId);
+        setMergeSelection([]);
+        mergingRef.current = false;
+        setMerging(false);
+        setStatus(
+          `Merged ${merged.deploymentId.slice(0, 8)}. Press o to open.`
+        );
+      },
+      () => {
+        mergingRef.current = false;
+        setMerging(false);
+        setStatus(
+          "Merge failed. Check devver merge for details; both sources are unchanged."
+        );
+      }
+    );
   }
 
-  function selectMerge() {
+  function toggleMergeSelection() {
     const current = rows.find((row) => row.id === selectedId);
-    if (current?.status !== "ready" || current.repositoryId === undefined) {
-      setStatus("Select a ready deployment to merge.");
+    if (current === undefined) {
       return;
     }
-    if (mergeSelection === undefined) {
-      setMergeSelection({ first: current.id });
-      setStatus("Select a second ready deployment and press m.");
-    } else if (
-      mergeSelection.first === current.id ||
-      rows.find((row) => row.id === mergeSelection.first)?.repositoryId !==
-        current.repositoryId
-    ) {
-      setStatus("Select a different deployment from the same repository.");
-    } else {
-      setMergeSelection({ ...mergeSelection, second: current.id });
-      setStatus("Press Enter to merge these deployments, or Esc to cancel.");
+    if (mergeSelection.includes(current.id)) {
+      setMergeSelection(mergeSelection.filter((id) => id !== current.id));
+      setStatus("Deployment deselected.");
+      return;
     }
+    if (current.status !== "ready" || current.repositoryId === undefined) {
+      setStatus("Only ready deployments can be selected for merging.");
+      return;
+    }
+    const first = rows.find((row) => row.id === mergeSelection[0]);
+    if (first !== undefined && first.repositoryId !== current.repositoryId) {
+      setStatus("Select deployments from the same repository.");
+      return;
+    }
+    if (mergeSelection.length === 2) {
+      setStatus("Two deployments are selected. Press v to deselect one.");
+      return;
+    }
+    setMergeSelection([...mergeSelection, current.id]);
+    setStatus(
+      mergeSelection.length === 1
+        ? "Two selected. Press m to merge, or Esc to clear selection."
+        : "Select another ready deployment with v."
+    );
   }
 
   useKeyboard((key) => {
     const action = actionFor(key);
+    if (isRepeatedSelection(key, action)) {
+      return;
+    }
     if (editor.kind !== "idle") {
       if (action === "cancel" && editor.kind === "editing") {
         key.preventDefault();
@@ -1041,21 +1077,19 @@ function LocalApp({
       onExit();
       return;
     }
-    if (merging) {
+    if (mergingRef.current) {
       return;
     }
-    if (action === "cancel" && mergeSelection !== undefined) {
-      setMergeSelection(undefined);
-      setStatus("Merge cancelled.");
-      return;
-    }
-    if (action === "confirm" && mergeSelection?.second !== undefined) {
-      confirmMerge();
+    if (action === "cancel" && mergeSelection.length > 0) {
+      setMergeSelection([]);
+      setStatus("Merge selection cleared.");
       return;
     }
     if (result.kind === "loaded" && rows.length > 0) {
-      if (action === "merge") {
-        selectMerge();
+      if (action === "select") {
+        toggleMergeSelection();
+      } else if (action === "merge") {
+        confirmMerge();
       } else if (action === "rename") {
         const current = rows.find((row) => row.id === selectedId) ?? rows[0];
         if (current !== undefined) {
@@ -1073,13 +1107,15 @@ function LocalApp({
   });
 
   let hint =
-    "j/k/h/l move · 1/2 parents · o open · c copy · r rename · m merge · q quit";
+    "j/k/h/l move · o open · c copy · r rename · v select · m merge · q quit";
+  if (rows.find((row) => row.id === selectedId)?.secondParentId !== undefined) {
+    hint =
+      "h/1 first parent · 2 second parent · o open · v select · m merge · q quit";
+  }
   if (editor.kind === "editing") {
     hint = "Enter save · Esc cancel";
-  } else if (mergeSelection?.second !== undefined) {
-    hint = "Enter merge · Esc cancel";
-  } else if (mergeSelection !== undefined) {
-    hint = "Select another ready deployment · m choose · Esc cancel";
+  } else if (mergeSelection.length > 0) {
+    hint = `${mergeSelection.length}/2 selected · v toggle · m merge · Esc clear`;
   }
 
   return (
@@ -1140,8 +1176,13 @@ function LocalApp({
                 : "No deployments for this repository. Run devver deploy here."}
             </text>
           )}
-          {rows.map((row): React.ReactNode =>
-            treeRow(row, row.id === selectedId)
+          {diagram.map(({ entry, connector }): React.ReactNode =>
+            treeRow(
+              entry,
+              entry.id === selectedId,
+              mergeSelection.includes(entry.id),
+              connector
+            )
           )}
         </scrollbox>
       </box>
