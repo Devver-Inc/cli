@@ -427,12 +427,13 @@ test("local deployments render as a tree with selection navigation", async () =>
   }
 });
 
-test("m confirms a merge and shows both navigable parents", async () => {
+test("v selects two deployments and m merges them with connected parents", async () => {
   const first = "11111111-1111-4111-8111-111111111111";
   const second = "22222222-2222-4222-8222-222222222222";
   const merged = "33333333-3333-4333-8333-333333333333";
   const repositoryId = "a".repeat(64);
   const calls: string[][] = [];
+  let finishMerge: (() => void) | undefined;
   const setup = await testRender(
     <App
       onExit={() => undefined}
@@ -453,6 +454,9 @@ test("m confirms a merge and shows both navigable parents", async () => {
           })),
         mergeDeployments: async (a, b) => {
           calls.push([a, b]);
+          await new Promise<void>((resolve) => {
+            finishMerge = resolve;
+          });
           return {
             deploymentId: merged,
             repositoryId,
@@ -469,38 +473,47 @@ test("m confirms a merge and shows both navigable parents", async () => {
   try {
     await setup.waitForFrame((frame) => frame.includes("11111111 ready"));
     await act(async () => {
-      setup.mockInput.pressKey("m");
+      setup.mockInput.pressKey("v");
       await Promise.resolve();
     });
-    await setup.waitForFrame((frame) => frame.includes("Select a second"));
+    await setup.waitForFrame((frame) => frame.includes("◈ 11111111 ready"));
     await act(async () => {
       setup.mockInput.pressKey("j");
       await Promise.resolve();
     });
     await setup.waitForFrame((frame) => frame.includes("◆ 22222222 ready"));
     await act(async () => {
+      setup.mockInput.pressKey("v");
+      await Promise.resolve();
+    });
+    await setup.waitForFrame((frame) => frame.includes("◈ 22222222 ready"));
+    expect(calls).toHaveLength(0);
+    await act(async () => {
+      setup.mockInput.pressKey("m");
       setup.mockInput.pressKey("m");
       await Promise.resolve();
     });
-    await setup.waitForFrame((frame) => frame.includes("Press Enter to merge"));
-    expect(calls).toHaveLength(0);
+    expect(calls).toEqual([[first, second]]);
     await act(async () => {
-      setup.mockInput.pressEnter();
+      finishMerge?.();
       await Promise.resolve();
     });
     const frame = await setup.waitForFrame((value) =>
       value.includes("Merged 33333333")
     );
     expect(calls).toEqual([[first, second]]);
-    expect(frame).toContain("↖ 11111111 + 22222222");
+    expect(frame).toContain("●    11111111 ready");
+    expect(frame).toContain("│ ●  22222222 ready");
+    expect(frame).toContain("└─●  33333333 ready");
+    expect(frame).not.toContain("11111111 + 22222222");
     await act(async () => {
       setup.mockInput.pressKey("2");
       await Promise.resolve();
     });
     const parent = await setup.waitForFrame((value) =>
-      value.includes("◆ 22222222 ready")
+      value.includes("◆ │ ●  22222222 ready")
     );
-    expect(parent).toContain("◆ 22222222 ready");
+    expect(parent).toContain("◆ │ ●  22222222 ready");
   } finally {
     await act(async () => {
       setup.renderer.destroy();
