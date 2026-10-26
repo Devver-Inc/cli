@@ -701,24 +701,31 @@ function treeRow(
     color = theme.ink;
   }
   return (
-    <text
-      attributes={selected ? TextAttributes.BOLD : TextAttributes.NONE}
-      fg={color}
+    <box
+      backgroundColor={marked ? theme.selection : terminalBackground}
+      flexDirection="row"
+      height={1}
       key={entry.id}
-      wrapMode="none"
+      width="100%"
     >
-      {`${marker} `}
-      {connector === "" ? (
-        ""
-      ) : (
-        <span fg={selected ? theme.mint : theme.amber}>{connector}</span>
-      )}
-      {`${indent}${branch}${entry.displayName !== null && entry.displayName !== undefined && entry.displayName !== "" ? `${entry.displayName} (${entry.id.slice(0, 8)})` : entry.id.slice(0, 8)} ${entry.status}`}
-      {entry.stage === null || entry.stage === undefined
-        ? ""
-        : ` (${entry.stage})`}
-      {entry.commit === undefined ? "" : `  commit ${entry.commit.slice(0, 8)}`}
-    </text>
+      <text
+        attributes={selected ? TextAttributes.BOLD : TextAttributes.NONE}
+        fg={color}
+        wrapMode="none"
+      >
+        {`${marker} `}
+        {connector === "" ? (
+          ""
+        ) : (
+          <span fg={selected ? theme.mint : theme.amber}>{connector}</span>
+        )}
+        {`${indent}${branch}${entry.displayName !== null && entry.displayName !== undefined && entry.displayName !== "" ? `${entry.displayName} (${entry.id.slice(0, 8)})` : entry.id.slice(0, 8)} ${entry.status}`}
+        {entry.stage === null || entry.stage === undefined
+          ? ""
+          : ` (${entry.stage})`}
+        {entry.commit === undefined ? "" : `  commit ${entry.commit.slice(0, 8)}`}
+      </text>
+    </box>
   );
 }
 
