@@ -38,6 +38,19 @@ interface LocalTarget {
   readonly renameDeployment?:
     | ((id: string, name: string) => Promise<{ readonly displayName: string }>)
     | undefined;
+  readonly mergeDeployments?:
+    | ((
+        first: string,
+        second: string
+      ) => Promise<{
+        readonly deploymentId: string;
+        readonly repositoryId: string;
+        readonly commit: string;
+        readonly parentDeploymentId: string | null;
+        readonly secondParentDeploymentId?: string | null | undefined;
+        readonly url: string;
+      }>)
+    | undefined;
 }
 
 interface CloudTarget {
@@ -613,6 +626,7 @@ interface FlatDeployment {
   readonly id: string;
   readonly displayName: string | null | undefined;
   readonly parentId: string | undefined;
+  readonly secondParentId: string | undefined;
   readonly repositoryId: string | undefined;
   readonly commit: string | undefined;
   readonly status: LocalDeploymentStatus["status"];
@@ -671,6 +685,10 @@ function treeRow(
   const indent = "  ".repeat(entry.depth);
   const branch = entry.depth === 0 ? "" : `${"│ ".repeat(entry.depth - 1)}└─ `;
   const marker = selected ? "◆" : " ";
+  const ancestry =
+    entry.secondParentId === undefined
+      ? ""
+      : `↖ ${entry.parentId?.slice(0, 8) ?? "?"} + ${entry.secondParentId.slice(0, 8)}  `;
   let color: ColorInput = theme.amber;
   if (selected) {
     color = theme.mint;
@@ -684,7 +702,7 @@ function treeRow(
       key={entry.id}
       wrapMode="none"
     >
-      {`${marker} ${indent}${branch}${entry.displayName !== null && entry.displayName !== undefined && entry.displayName !== "" ? `${entry.displayName} (${entry.id.slice(0, 8)})` : entry.id.slice(0, 8)} ${entry.status}`}
+      {`${marker} ${indent}${branch}${ancestry}${entry.displayName !== null && entry.displayName !== undefined && entry.displayName !== "" ? `${entry.displayName} (${entry.id.slice(0, 8)})` : entry.id.slice(0, 8)} ${entry.status}`}
       {entry.stage === null || entry.stage === undefined
         ? ""
         : ` (${entry.stage})`}
@@ -708,6 +726,10 @@ function LocalApp({
   >({ kind: "loading" });
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState("");
+  const [mergeSelection, setMergeSelection] = useState<
+    { readonly first: string; readonly second?: string } | undefined
+  >();
+  const [merging, setMerging] = useState(false);
   const [editor, setEditor] = useState<
     | { readonly kind: "idle" }
     | { readonly kind: "editing"; readonly id: string; readonly value: string }
@@ -748,6 +770,7 @@ function LocalApp({
                 id: entry.deploymentId,
                 displayName: entry.displayName,
                 parentId: entry.parentDeploymentId ?? undefined,
+                secondParentId: entry.secondParentDeploymentId ?? undefined,
                 repositoryId: entry.repositoryId,
                 commit: entry.commit,
                 status: entry.status,
@@ -806,6 +829,39 @@ function LocalApp({
     );
   }
 
+  function openSelected(current: FlatDeployment | undefined) {
+    const url = current?.url;
+    if (url === undefined) {
+      setStatus(
+        "This server does not report deployment URLs. Re-create it from a current build."
+      );
+      return;
+    }
+    if (url === null) {
+      setStatus("This deployment is not ready, so it has no URL to open.");
+      return;
+    }
+    const opener = target.openInBrowser ?? openBrowser;
+    void opener(url).then((opened) => {
+      setStatus(
+        opened
+          ? `Opened ${url}`
+          : "Could not open a browser for this deployment."
+      );
+    });
+  }
+
+  function selectParent(
+    current: FlatDeployment | undefined,
+    action: "firstParent" | "secondParent"
+  ) {
+    const parent =
+      action === "firstParent" ? current?.parentId : current?.secondParentId;
+    if (parent !== undefined) {
+      setSelectedId(parent);
+    }
+  }
+
   function navigate(action: keyof typeof shortcuts | undefined) {
     const index = rows.findIndex((row) => row.id === selectedId);
     const current = rows[index === -1 ? 0 : index];
@@ -820,7 +876,10 @@ function LocalApp({
         setSelectedId(previous.id);
       }
     } else if (action === "right") {
-      const child = rows.find((row) => row.parentId === current?.id);
+      const child = rows.find(
+        (row) =>
+          row.parentId === current?.id || row.secondParentId === current?.id
+      );
       const next = child ?? rows[(index + 1) % rows.length];
       if (next !== undefined) {
         setSelectedId(next.id);
@@ -834,28 +893,12 @@ function LocalApp({
       } else {
         setSelectedId(current.parentId);
       }
+    } else if (action === "firstParent" || action === "secondParent") {
+      selectParent(current, action);
     } else if (action === "copy") {
       copySelected(current);
     } else if (action === "open") {
-      const url = current?.url;
-      if (url === undefined) {
-        setStatus(
-          "This server does not report deployment URLs. Re-create it from a current build."
-        );
-        return;
-      }
-      if (url === null) {
-        setStatus("This deployment is not ready, so it has no URL to open.");
-        return;
-      }
-      const opener = target.openInBrowser ?? openBrowser;
-      void opener(url).then((opened) => {
-        setStatus(
-          opened
-            ? `Opened ${url}`
-            : "Could not open a browser for this deployment."
-        );
-      });
+      openSelected(current);
     }
   }
 
@@ -914,6 +957,74 @@ function LocalApp({
     );
   }
 
+  function confirmMerge() {
+    if (mergeSelection?.second === undefined) {
+      return;
+    }
+    if (target.mergeDeployments === undefined) {
+      setStatus("This server does not support merging deployments.");
+      setMergeSelection(undefined);
+      return;
+    }
+    setMerging(true);
+    void target
+      .mergeDeployments(mergeSelection.first, mergeSelection.second)
+      .then(
+        (merged) => {
+          setResult((previous) =>
+            previous.kind === "loaded"
+              ? {
+                  kind: "loaded",
+                  deployments: [
+                    ...previous.deployments,
+                    {
+                      ...merged,
+                      displayName: null,
+                      status: "ready",
+                      stage: null,
+                    },
+                  ],
+                }
+              : previous
+          );
+          setSelectedId(merged.deploymentId);
+          setMergeSelection(undefined);
+          setMerging(false);
+          setStatus(
+            `Merged ${merged.deploymentId.slice(0, 8)}. Press o to open.`
+          );
+        },
+        () => {
+          setMerging(false);
+          setMergeSelection(undefined);
+          setStatus(
+            "Merge failed. Check devver merge for details; both sources are unchanged."
+          );
+        }
+      );
+  }
+
+  function selectMerge() {
+    const current = rows.find((row) => row.id === selectedId);
+    if (current?.status !== "ready" || current.repositoryId === undefined) {
+      setStatus("Select a ready deployment to merge.");
+      return;
+    }
+    if (mergeSelection === undefined) {
+      setMergeSelection({ first: current.id });
+      setStatus("Select a second ready deployment and press m.");
+    } else if (
+      mergeSelection.first === current.id ||
+      rows.find((row) => row.id === mergeSelection.first)?.repositoryId !==
+        current.repositoryId
+    ) {
+      setStatus("Select a different deployment from the same repository.");
+    } else {
+      setMergeSelection({ ...mergeSelection, second: current.id });
+      setStatus("Press Enter to merge these deployments, or Esc to cancel.");
+    }
+  }
+
   useKeyboard((key) => {
     const action = actionFor(key);
     if (editor.kind !== "idle") {
@@ -930,8 +1041,22 @@ function LocalApp({
       onExit();
       return;
     }
+    if (merging) {
+      return;
+    }
+    if (action === "cancel" && mergeSelection !== undefined) {
+      setMergeSelection(undefined);
+      setStatus("Merge cancelled.");
+      return;
+    }
+    if (action === "confirm" && mergeSelection?.second !== undefined) {
+      confirmMerge();
+      return;
+    }
     if (result.kind === "loaded" && rows.length > 0) {
-      if (action === "rename") {
+      if (action === "merge") {
+        selectMerge();
+      } else if (action === "rename") {
         const current = rows.find((row) => row.id === selectedId) ?? rows[0];
         if (current !== undefined) {
           setEditor({
@@ -946,6 +1071,16 @@ function LocalApp({
       }
     }
   });
+
+  let hint =
+    "j/k/h/l move · 1/2 parents · o open · c copy · r rename · m merge · q quit";
+  if (editor.kind === "editing") {
+    hint = "Enter save · Esc cancel";
+  } else if (mergeSelection?.second !== undefined) {
+    hint = "Enter merge · Esc cancel";
+  } else if (mergeSelection !== undefined) {
+    hint = "Select another ready deployment · m choose · Esc cancel";
+  }
 
   return (
     <box
@@ -1031,6 +1166,7 @@ function LocalApp({
         </box>
       )}
       {editor.kind === "saving" && <text fg={theme.muted}>Saving name…</text>}
+      {merging && <text fg={theme.muted}>Merging deployments…</text>}
       {update !== undefined && (
         <text fg={theme.mint} wrapMode="none">
           {`devver --update · v${update.version} available`}
@@ -1050,10 +1186,7 @@ function LocalApp({
           minWidth={0}
           wrapMode="none"
         >
-          {status ||
-            (editor.kind === "editing"
-              ? "Enter save · Esc cancel"
-              : "j/k/h/l move · o open · c copy · r rename · q quit")}
+          {status || hint}
         </text>
         <text fg={theme.muted} wrapMode="none">
           {version !== undefined && version !== "" ? `v${version}` : ""}

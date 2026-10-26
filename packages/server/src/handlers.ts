@@ -7,6 +7,7 @@ import {
   CONTROL_PROTOCOL_VERSION,
   DeployFailure,
   DeploymentNotFound,
+  MergeRejected,
 } from "./api";
 import type { openDeployer } from "./deploy";
 import type { loadInstance } from "./identity";
@@ -45,6 +46,21 @@ export const deploymentHandlers = (deployer: Deployer) =>
                 })
           )
         )
+      )
+      .handle("merge", ({ payload }) =>
+        deployer
+          .merge(payload.firstDeploymentId, payload.secondDeploymentId)
+          .pipe(
+            Effect.mapError((error) =>
+              error instanceof MergeRejected || error instanceof DeployFailure
+                ? error
+                : new DeployFailure({
+                    stage: "server",
+                    message:
+                      "server: the deployment merge could not be completed",
+                  })
+            )
+          )
       )
       .handle("rename", ({ params, payload }) =>
         deployer.rename(params.deploymentId, payload.displayName).pipe(

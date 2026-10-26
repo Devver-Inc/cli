@@ -82,6 +82,18 @@ export async function verifiedSource(source: string, commit: string) {
   };
 }
 
+export async function pinCommit(
+  bare: string,
+  deploymentId: string,
+  commit: string
+) {
+  await git(bare, "update-ref", [
+    "update-ref",
+    `refs/devver/deployments/${deploymentId}`,
+    commit,
+  ]);
+}
+
 export async function syncCommit(options: {
   readonly repositories: string;
   readonly repositoryId: string;
@@ -107,12 +119,57 @@ export async function syncCommit(options: {
       );
     }
   }
-  await git(bare, "update-ref", [
-    "update-ref",
-    `refs/devver/deployments/${options.deploymentId}`,
-    options.commit,
-  ]);
+  await pinCommit(bare, options.deploymentId, options.commit);
   return bare;
+}
+
+export async function mergeCommits(
+  bare: string,
+  first: string,
+  second: string
+) {
+  const base = await git(bare, "merge-base", [
+    "merge-base",
+    first,
+    second,
+  ]).catch(() => {
+    throw new Error("Git histories are unrelated or unavailable");
+  });
+  if (!COMMIT.test(base)) {
+    throw new Error("Git histories are unrelated");
+  }
+  let tree: string;
+  try {
+    tree = await git(bare, "merge-tree", [
+      "merge-tree",
+      "--write-tree",
+      first,
+      second,
+    ]);
+  } catch {
+    throw new Error("Merge conflicts prevent combining these revisions");
+  }
+  if (!COMMIT.test(tree)) {
+    throw new Error("Git merge did not produce a tree");
+  }
+  const commit = await git(bare, "commit-tree", [
+    "-c",
+    "user.name=Devver",
+    "-c",
+    "user.email=devver@localhost",
+    "commit-tree",
+    tree,
+    "-p",
+    first,
+    "-p",
+    second,
+    "-m",
+    "Merge Devver deployments",
+  ]);
+  if (!COMMIT.test(commit)) {
+    throw new Error("Git merge did not produce a commit");
+  }
+  return commit;
 }
 
 export async function addWorktree(options: {

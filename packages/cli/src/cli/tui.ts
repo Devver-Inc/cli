@@ -9,6 +9,7 @@ import pkg from "../../../../package.json" with { type: "json" };
 import { ApiClient } from "../api/client";
 import {
   listLocalDeployments,
+  mergeLocalDeployments,
   renameLocalDeployment,
 } from "../api/local-deploy.requests";
 import { getProjects } from "../api/projects.requests";
@@ -65,6 +66,12 @@ export const launchTui = (project?: string, apiUrl = Option.none<string>()) =>
               server: local.name,
               workspace: project ?? basename(process.cwd()),
               repositoryId,
+              mergeDeployments: async (first, second) =>
+                await runWithContext(
+                  mergeLocalDeployments(first, second).pipe(
+                    Effect.provideService(ApiClient, api)
+                  )
+                ),
               renameDeployment: async (id, name) =>
                 await runWithContext(
                   renameLocalDeployment(id, name).pipe(
