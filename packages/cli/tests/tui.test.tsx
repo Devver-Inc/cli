@@ -545,7 +545,7 @@ test("v selects two deployments and m merges them with connected parents", async
     expect(calls).toEqual([[first, second]]);
     expect(frame).toContain("●    11111111 ready");
     expect(frame).toContain("│ ●  22222222 ready");
-    expect(frame).toContain("└─●  33333333 ready");
+    expect(frame).toContain("●─┘  33333333 ready");
     expect(frame).not.toContain("11111111 + 22222222");
     expect(highlightedRows(setup.captureSpans())).toEqual([]);
     await act(async () => {

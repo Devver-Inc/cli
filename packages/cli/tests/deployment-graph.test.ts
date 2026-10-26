@@ -22,7 +22,7 @@ test("a merge has two visible lines even when its second parent was below it in 
   expect(graph.map(({ connector }) => connector)).toEqual([
     "●    ",
     "│ ●  ",
-    "└─●  ",
+    "●─┘  ",
   ]);
 });
 
@@ -41,9 +41,13 @@ test("overlapping merges get separate lanes and do not duplicate a deployment", 
     "c",
     "second-merge",
   ]);
-  expect(graph[0]?.connector).toContain("●   ●");
-  expect(graph[2]?.connector).toContain("└─● │");
-  expect(graph[4]?.connector).toContain("    └─●");
+  expect(graph.map(({ connector }) => connector)).toEqual([
+    "●   ●    ",
+    "│ ● │    ",
+    "●─┘ │    ",
+    "    │ ●  ",
+    "    ●─┘  ",
+  ]);
 });
 
 test("an absent parent never gets a fabricated line", () => {

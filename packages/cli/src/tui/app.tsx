@@ -714,11 +714,8 @@ function treeRow(
         wrapMode="none"
       >
         {`${marker} `}
-        {connector === "" ? (
-          ""
-        ) : (
-          <span fg={selected ? theme.mint : theme.amber}>{connector}</span>
-        )}
+        {/* One colour keeps a lane continuous across rows of differing status. */}
+        {connector === "" ? "" : <span fg={theme.muted}>{connector}</span>}
         {`${indent}${branch}${entry.displayName !== null && entry.displayName !== undefined && entry.displayName !== "" ? `${entry.displayName} (${entry.id.slice(0, 8)})` : entry.id.slice(0, 8)} ${entry.status}`}
         {entry.stage === null || entry.stage === undefined
           ? ""

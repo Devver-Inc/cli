@@ -32,8 +32,8 @@ export function deploymentGraph<T extends DeploymentRow>(rows: readonly T[]) {
 
   const occupiedUntil: number[] = [];
   const connections: {
-    start: number;
-    later: number;
+    first: number;
+    second: number;
     end: number;
     slot: number;
   }[] = [];
@@ -54,13 +54,12 @@ export function deploymentGraph<T extends DeploymentRow>(rows: readonly T[]) {
     ) {
       continue;
     }
-    const start = Math.min(first, second);
     let slot = 0;
-    while ((occupiedUntil[slot] ?? -1) >= start) {
+    while ((occupiedUntil[slot] ?? -1) >= Math.min(first, second)) {
       slot += 1;
     }
     occupiedUntil[slot] = end;
-    connections.push({ start, later: Math.max(first, second), end, slot });
+    connections.push({ first, second, end, slot });
   }
   if (connections.length === 0) {
     return ordered.map((entry) => ({ entry, connector: "" }));
@@ -69,18 +68,25 @@ export function deploymentGraph<T extends DeploymentRow>(rows: readonly T[]) {
   const width = occupiedUntil.length * 4 - 1;
   return ordered.map((entry, index) => {
     const cells = Array.from({ length: width }, () => " ");
-    for (const { start, later, end, slot } of connections) {
-      const left = slot * 4;
-      const right = left + 2;
+    for (const { first, second, end, slot } of connections) {
+      // The merge continues its first parent's lane; the second parent's lane bends into it.
+      const main = slot * 4;
+      const side = main + 2;
       if (index === end) {
-        cells[left] = "└";
-        cells[left + 1] = "─";
-        cells[right] = "●";
-      } else if (index >= start && index < end) {
-        cells[left] = index === start ? "●" : "│";
-        if (index >= later) {
-          cells[right] = index === later ? "●" : "│";
-        }
+        cells[main] = "●";
+        cells[main + 1] = "─";
+        cells[side] = "┘";
+        continue;
+      }
+      if (index === first) {
+        cells[main] = "●";
+      } else if (index > first && index < end) {
+        cells[main] = "│";
+      }
+      if (index === second) {
+        cells[side] = "●";
+      } else if (index > second && index < end) {
+        cells[side] = "│";
       }
     }
     return { entry, connector: `${cells.join("")}  ` };
