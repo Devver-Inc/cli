@@ -10,6 +10,7 @@ import type { DeployStage } from "./deployment-store";
 import { openDeploymentStore } from "./deployment-store";
 import {
   addWorktree,
+  firstParentDeployment,
   mergeCommits,
   pinCommit,
   removeDeploymentRef,
@@ -175,6 +176,26 @@ export const openDeployer = (name: string) =>
           async () => await verifiedSource(input.source, input.commit)
         );
         const worktree = join(instanceDirectory, "worktrees", deploymentId);
+        const { deployments, unreadable } = yield* store.list;
+        if (unreadable > 0) {
+          return yield* new DeployFailure({
+            stage: "server",
+            message: "server: deployment records could not be read",
+          });
+        }
+        const parentDeploymentId = yield* attempt(
+          "git",
+          async () =>
+            await firstParentDeployment(
+              source.path,
+              input.commit,
+              deployments.filter(
+                (entry) =>
+                  entry.repositoryId === source.repositoryId &&
+                  entry.status === "ready"
+              )
+            )
+        );
         let bare: string | undefined;
         let recorded = false;
         return yield* Effect.gen(function* () {
@@ -182,7 +203,7 @@ export const openDeployer = (name: string) =>
             deploymentId,
             repositoryId: source.repositoryId,
             commit: input.commit,
-            parentDeploymentId: null,
+            parentDeploymentId,
             secondParentDeploymentId: null,
             worktree,
           });
@@ -222,7 +243,7 @@ export const openDeployer = (name: string) =>
             deploymentId,
             repositoryId: source.repositoryId,
             commit: input.commit,
-            parentDeploymentId: null,
+            parentDeploymentId,
             secondParentDeploymentId: null,
             url: host.url(deploymentId),
           };

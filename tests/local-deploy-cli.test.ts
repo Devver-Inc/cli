@@ -400,6 +400,12 @@ test("merge creates a two-parent revision without changing either source checkou
     }
     expect(rows).toContainEqual(
       expect.objectContaining({
+        deploymentId: secondMatch.id,
+        parentDeploymentId: null,
+      })
+    );
+    expect(rows).toContainEqual(
+      expect.objectContaining({
         deploymentId: id,
         parentDeploymentId: firstMatch.id,
         secondParentDeploymentId: secondMatch.id,

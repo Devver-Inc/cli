@@ -123,6 +123,35 @@ export async function syncCommit(options: {
   return bare;
 }
 
+export async function firstParentDeployment(
+  source: string,
+  commit: string,
+  candidates: readonly {
+    readonly commit: string;
+    readonly deploymentId: string;
+  }[]
+): Promise<string | null> {
+  if (candidates.length === 0) {
+    return null;
+  }
+  const byCommit = new Map(
+    candidates.map((entry) => [entry.commit, entry.deploymentId])
+  );
+  const [head, ...ancestors] = (
+    await git(source, "rev-list", ["rev-list", "--first-parent", commit])
+  ).split("\n");
+  if (head !== commit) {
+    throw new Error("Git could not inspect the commit ancestry");
+  }
+  for (const ancestor of ancestors) {
+    const deploymentId = byCommit.get(ancestor);
+    if (deploymentId !== undefined) {
+      return deploymentId;
+    }
+  }
+  return null;
+}
+
 export async function mergeCommits(
   bare: string,
   first: string,
