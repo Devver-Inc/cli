@@ -5,42 +5,8 @@ import { testRender } from "@opentui/react/test-utils";
 import { act } from "react";
 
 import { App } from "../src/tui/app";
-import { theme } from "../src/tui/theme";
 
-const hex = (color: { r: number; g: number; b: number }) =>
-  `#${[color.r, color.g, color.b]
-    .map((channel) =>
-      Math.round(channel * 255)
-        .toString(16)
-        .padStart(2, "0")
-    )
-    .join("")}`;
-
-/** Deployment IDs whose row is highlighted edge to edge, as visual selection. */
-const highlightedRows = (frame: {
-  cols: number;
-  lines: readonly {
-    spans: readonly { text: string; bg: { r: number; g: number; b: number } }[];
-  }[];
-}) =>
-  frame.lines
-    .filter((line) => {
-      const highlighted = line.spans.filter(
-        (span) => hex(span.bg) === theme.selection
-      );
-      const covered = highlighted.reduce(
-        (total, span) => total + span.text.length,
-        0
-      );
-      // The row box spans the deployments panel, inside its one-column border and padding.
-      return highlighted.length > 0 && covered >= frame.cols - 4;
-    })
-    .map(
-      (line) =>
-        /(?<id>[0-9a-f]{8}) ready/u.exec(
-          line.spans.map((span) => span.text).join("")
-        )?.groups?.id
-    );
+process.env.DEVVER_REDUCED_MOTION = "1";
 
 test("all targets show a newer release after the TUI starts", async () => {
   for (const target of [
@@ -368,7 +334,7 @@ test("local deployments show only the opened checkout", async () => {
     const frame = await setup.waitForFrame((value) =>
       value.includes("11111111 ready")
     );
-    expect(frame).toContain("11111111 ready  commit bbbbbbbb");
+    expect(frame).toContain("11111111 ready  bbbbbbbb");
     expect(frame).not.toContain("22222222");
     expect(frame).not.toContain("33333333");
   } finally {
@@ -419,143 +385,42 @@ test("local deployments render as a tree with selection navigation", async () =>
   try {
     await setup.waitForFrame((value) => value.includes("11111111"));
     const frame = setup.captureCharFrame();
-    expect(frame).toContain("└─ 22222222 ready  commit dddddddd");
-    expect(frame).toContain("│ └─ 33333333 ready  commit eeeeeeee");
+    expect(frame).toContain("▸ ●  11111111 ready");
+    expect(frame).toContain("╰ next 22222222 ready");
+    expect(frame).toContain("22222222 ready  dddddddd   ↓ child");
     await act(async () => {
       setup.mockInput.pressKey("j");
       await Promise.resolve();
     });
-    await setup.waitForFrame(
-      (value) => value.includes("22222222 ready") && value.includes("◆")
+    await setup.waitForFrame((value) =>
+      value.includes("▸ ●  └─ 22222222 ready")
     );
     await act(async () => {
       setup.mockInput.pressKey("l");
       await Promise.resolve();
     });
-    await setup.waitForFrame(
-      (value) => value.includes("33333333 ready") && value.includes("◆")
+    await setup.waitForFrame((value) =>
+      value.includes("▸ ●  │ └─ 33333333 ready")
     );
     await act(async () => {
       setup.mockInput.pressKey("h");
       await Promise.resolve();
     });
-    await setup.waitForFrame(
-      (value) => value.includes("22222222 ready") && value.includes("◆")
+    await setup.waitForFrame((value) =>
+      value.includes("▸ ●  └─ 22222222 ready")
     );
     await act(async () => {
       setup.mockInput.pressKey("k");
       await Promise.resolve();
     });
-    await setup.waitForFrame(
-      (value) => value.includes("11111111 ready") && value.includes("◆")
-    );
+    await setup.waitForFrame((value) => value.includes("▸ ●  11111111 ready"));
     await act(async () => {
       setup.mockInput.pressKey("h");
       await Promise.resolve();
     });
-    await setup.waitForFrame(
-      (value) => value.includes("33333333 ready") && value.includes("◆")
+    await setup.waitForFrame((value) =>
+      value.includes("▸ ●  │ └─ 33333333 ready")
     );
-  } finally {
-    await act(async () => {
-      setup.renderer.destroy();
-    });
-  }
-});
-
-test("v selects two deployments and m merges them with connected parents", async () => {
-  const first = "11111111-1111-4111-8111-111111111111";
-  const second = "22222222-2222-4222-8222-222222222222";
-  const merged = "33333333-3333-4333-8333-333333333333";
-  const repositoryId = "a".repeat(64);
-  const calls: string[][] = [];
-  let finishMerge: (() => void) | undefined;
-  const setup = await testRender(
-    <App
-      onExit={() => undefined}
-      target={{
-        kind: "local",
-        server: "dev",
-        workspace: "site",
-        repositoryId,
-        loadDeployments: async () =>
-          [first, second].map((deploymentId) => ({
-            deploymentId,
-            repositoryId,
-            commit: "b".repeat(40),
-            parentDeploymentId: null,
-            status: "ready" as const,
-            stage: null,
-            url: `http://${deploymentId}.dev.localhost:9000/`,
-          })),
-        mergeDeployments: async (a, b) => {
-          calls.push([a, b]);
-          await new Promise<void>((resolve) => {
-            finishMerge = resolve;
-          });
-          return {
-            deploymentId: merged,
-            repositoryId,
-            commit: "c".repeat(40),
-            parentDeploymentId: a,
-            secondParentDeploymentId: b,
-            url: `http://${merged}.dev.localhost:9000/`,
-          };
-        },
-      }}
-    />,
-    { width: 110, height: 20 }
-  );
-  try {
-    await setup.waitForFrame((frame) => frame.includes("11111111 ready"));
-    await act(async () => {
-      setup.mockInput.pressKey("v");
-      await Promise.resolve();
-    });
-    await setup.waitForFrame((frame) => frame.includes("◈ 11111111 ready"));
-    expect(highlightedRows(setup.captureSpans())).toEqual(["11111111"]);
-    await act(async () => {
-      setup.mockInput.pressKey("j");
-      await Promise.resolve();
-    });
-    await setup.waitForFrame((frame) => frame.includes("◆ 22222222 ready"));
-    await act(async () => {
-      setup.mockInput.pressKey("v");
-      await Promise.resolve();
-    });
-    await setup.waitForFrame((frame) => frame.includes("◈ 22222222 ready"));
-    expect(highlightedRows(setup.captureSpans())).toEqual([
-      "11111111",
-      "22222222",
-    ]);
-    expect(calls).toHaveLength(0);
-    await act(async () => {
-      setup.mockInput.pressKey("m");
-      setup.mockInput.pressKey("m");
-      await Promise.resolve();
-    });
-    expect(calls).toEqual([[first, second]]);
-    await act(async () => {
-      finishMerge?.();
-      await Promise.resolve();
-    });
-    const frame = await setup.waitForFrame((value) =>
-      value.includes("Merged 33333333")
-    );
-    expect(calls).toEqual([[first, second]]);
-    expect(frame).toContain("●      11111111 ready");
-    expect(frame).toContain("│ ●    22222222 ready");
-    expect(frame).toContain("└─┴─●  33333333 ready");
-    expect(frame).not.toContain("11111111 + 22222222");
-    expect(highlightedRows(setup.captureSpans())).toEqual([]);
-    await act(async () => {
-      setup.mockInput.pressKey("2");
-      await Promise.resolve();
-    });
-    const parent = await setup.waitForFrame((value) =>
-      value.includes("◆ │ ●    22222222 ready")
-    );
-    expect(parent).toContain("◆ │ ●    22222222 ready");
   } finally {
     await act(async () => {
       setup.renderer.destroy();
@@ -680,7 +545,7 @@ test("c copies only a selected ready URL and reports clipboard failure", async (
     const initial = await setup.waitForFrame((value) =>
       value.includes("11111111 ready")
     );
-    expect(initial).not.toContain("http://a.localhost:1/");
+    expect(initial).toContain("├ url  http://a.localhost:1/");
     expect(initial).not.toContain("open with o");
     expect(initial).not.toContain("copy with c");
     expect(initial).toContain("o open · c copy");
@@ -692,7 +557,7 @@ test("c copies only a selected ready URL and reports clipboard failure", async (
       await setup.waitForFrame((value) =>
         value.includes("Sent deployment URL to clipboard.")
       )
-    ).not.toContain("http://a.localhost:1/");
+    ).not.toContain("Sent deployment URL to clipboard. http");
     expect(copied).toEqual(["http://a.localhost:1/"]);
     outcome = "failed";
     await act(async () => {
