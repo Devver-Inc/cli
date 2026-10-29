@@ -9,7 +9,7 @@ import { createRoot } from "@opentui/react";
 import { Effect } from "effect";
 
 import { App } from "./app";
-import type { AppProps } from "./app";
+import type { AppProps } from "./target";
 
 export type TuiOptions = Omit<AppProps, "onExit">;
 

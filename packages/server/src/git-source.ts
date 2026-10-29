@@ -128,6 +128,16 @@ export async function mergeCommits(
   first: string,
   second: string
 ) {
+  const version = /^git version (?<major>\d+)\.(?<minor>\d+)/u.exec(
+    await git(bare, "version", ["--version"])
+  )?.groups;
+  if (
+    version === undefined ||
+    Number(version.major) < 2 ||
+    (Number(version.major) === 2 && Number(version.minor) < 38)
+  ) {
+    throw new Error("Merging deployments requires Git 2.38 or newer");
+  }
   const base = await git(bare, "merge-base", [
     "merge-base",
     first,

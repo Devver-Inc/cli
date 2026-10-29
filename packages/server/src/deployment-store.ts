@@ -18,7 +18,7 @@ export type DeployStage = typeof DeployStageSchema.Type;
 
 const identity = {
   deploymentId: Schema.String.check(Schema.isUUID(4)),
-  repositoryId: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
+  repositoryId: Schema.String.check(Schema.isNonEmpty()),
   commit: Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/u)),
   parentDeploymentId: Schema.NullOr(Schema.String.check(Schema.isUUID(4))),
   secondParentDeploymentId: Schema.NullOr(
@@ -27,7 +27,10 @@ const identity = {
   worktree: Schema.String.check(Schema.isNonEmpty()),
 };
 
-const NewDeploymentSchema = Schema.Struct(identity);
+const NewDeploymentSchema = Schema.Struct({
+  ...identity,
+  repositoryId: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
+});
 const PortSchema = Schema.NumberFromString.check(
   Schema.isInt(),
   Schema.isBetween({ minimum: 1, maximum: 65_535 })

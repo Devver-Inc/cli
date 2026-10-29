@@ -301,6 +301,25 @@ test("server migrates existing deployment records to nullable second-parent line
   }
 }, 180_000);
 
+async function assertSameRevisionRejected(
+  ws: ReturnType<typeof workspace>,
+  site: string,
+  url: string,
+  firstId: string,
+  firstCommit: string
+) {
+  git(site, "checkout", "-q", "--detach", firstCommit);
+  const deployed = await ws.run(["deploy"], site);
+  expect(deployed.status, deployed.output).toBe(0);
+  const sameRevision = APP_URL.exec(deployed.output)?.groups?.id;
+  expect(sameRevision).toBeDefined();
+  const before = await body(`${url}/deployments`);
+  const identical = await ws.run(["merge", firstId, sameRevision ?? ""], site);
+  expect(identical.status).not.toBe(0);
+  expect(identical.output).toContain("same revision");
+  expect((await body(`${url}/deployments`)).text).toBe(before.text);
+}
+
 test("merge creates a two-parent revision without changing either source checkout or app", async () => {
   if (process.platform === "win32") {
     return;
@@ -393,6 +412,13 @@ test("merge creates a two-parent revision without changing either source checkou
       site
     );
     expect(duplicate.status).not.toBe(0);
+    await assertSameRevisionRejected(
+      ws,
+      site,
+      running.url,
+      firstId,
+      firstCommit
+    );
 
     await (async () => {
       git(site, "checkout", "-q", "-b", "conflict-a", base);
