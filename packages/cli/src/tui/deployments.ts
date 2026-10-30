@@ -16,9 +16,11 @@ export interface FlatDeployment {
   readonly displayName: string | null | undefined;
   readonly parentId: string | undefined;
   readonly secondParentId: string | undefined;
-  readonly depth?: number;
+  readonly branch?: string;
   readonly repositoryId: string | undefined;
   readonly commit: string | undefined;
+  readonly commitSubject: string | undefined;
+  readonly createdAt: string | undefined;
   readonly status: LocalDeploymentStatus["status"];
   readonly stage: LocalDeploymentStatus["stage"];
   readonly url: string | null | undefined;
@@ -28,14 +30,22 @@ interface TreeNode extends FlatDeployment {
   readonly children: readonly TreeNode[];
 }
 
+// An ancestor keeps its bar only while a sibling still follows below; the last child leaves a blank trail.
 export function flatten(
   nodes: readonly TreeNode[],
-  depth = 0
+  prefix?: string
 ): FlatDeployment[] {
   const flattened: FlatDeployment[] = [];
-  for (const node of nodes) {
-    flattened.push({ ...node, depth });
-    for (const row of flatten(node.children, depth + 1)) {
+  for (const [at, node] of nodes.entries()) {
+    const last = at === nodes.length - 1;
+    flattened.push({
+      ...node,
+      branch: prefix === undefined ? "" : `${prefix}└─ `,
+    });
+    for (const row of flatten(
+      node.children,
+      prefix === undefined ? "" : `${prefix}${last ? "  " : "│ "}`
+    )) {
       flattened.push(row);
     }
   }

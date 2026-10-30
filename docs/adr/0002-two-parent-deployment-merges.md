@@ -1,3 +1,0 @@
-# Merged deployments have two parents
-
-A merge of two ready deployments from one Devver repository creates a new deployment and a new Git merge commit from their pinned revisions in the server-owned bare repository. Both source deployments remain unchanged and both are recorded as lineage parents; the result appears once in the deployment browser. This makes lineage a graph rather than a strict tree, but avoids falsely attributing the combined code to just one source. A conflict, unrelated Git histories or identical revisions creates no deployment; conflict resolution and applying the result to a developer checkout are separate explicit actions. The first implementation targets the local server, not cloud.

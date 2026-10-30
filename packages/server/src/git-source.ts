@@ -123,6 +123,35 @@ export async function syncCommit(options: {
   return bare;
 }
 
+/** Subjects are a display nicety: unknown or unreadable revisions simply go unnamed. */
+export async function commitSubjects(
+  bare: string,
+  commits: readonly string[]
+): Promise<ReadonlyMap<string, string>> {
+  const subjects = new Map<string, string>();
+  const revisions = [...new Set(commits)].filter((commit) =>
+    COMMIT.test(commit)
+  );
+  if (revisions.length === 0) {
+    return subjects;
+  }
+  const output = await git(bare, "log", [
+    "log",
+    "--no-walk",
+    "--ignore-missing",
+    "--format=%H %s",
+    ...revisions,
+    "--",
+  ]).catch(() => "");
+  for (const line of output.split("\n")) {
+    const subject = line.slice(41).trim();
+    if (line[40] === " " && subject !== "") {
+      subjects.set(line.slice(0, 40), subject);
+    }
+  }
+  return subjects;
+}
+
 export async function firstParentDeployment(
   source: string,
   commit: string,

@@ -26,6 +26,8 @@ const LocalDeploymentStatuses = Schema.Array(
       Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u))
     ),
     commit: Schema.optional(Commit),
+    commitSubject: Schema.optional(Schema.NullOr(Schema.String)),
+    createdAt: Schema.optional(Schema.String),
     parentDeploymentId: Schema.optional(Schema.NullOr(DeploymentId)),
     secondParentDeploymentId: Schema.optional(Schema.NullOr(DeploymentId)),
     displayName: Schema.optional(Schema.NullOr(Schema.String)),

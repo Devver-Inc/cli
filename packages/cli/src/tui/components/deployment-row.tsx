@@ -7,26 +7,44 @@ import { intensity } from "../graph/focus";
 import { shade, terminalBackground, theme } from "../theme";
 import { gutter, laneCells, nodeFloor, STATUS_COLORS } from "./lanes";
 
-function rowLabel(entry: FlatDeployment) {
-  const named =
-    entry.displayName === null ||
-    entry.displayName === undefined ||
-    entry.displayName === ""
-      ? entry.id.slice(0, 8)
-      : `${entry.displayName} (${entry.id.slice(0, 8)})`;
+const SUBJECT_WIDTH = 48;
+
+function subjectOf(entry: FlatDeployment) {
+  const subject = entry.commitSubject?.trim();
+  if (subject === undefined || subject === "") {
+    return undefined;
+  }
+  return subject.length > SUBJECT_WIDTH
+    ? `${subject.slice(0, SUBJECT_WIDTH - 1)}…`
+    : subject;
+}
+
+function branchOf(entry: FlatDeployment) {
+  return entry.secondParentId === undefined ? (entry.branch ?? "") : "";
+}
+
+// The lane glyph already carries a ready deployment; only an unfinished or broken one spells its state out.
+function stateOf(entry: FlatDeployment) {
   const stage =
     entry.stage === null || entry.stage === undefined
       ? ""
       : ` (${entry.stage})`;
-  const commit =
-    entry.commit === undefined ? "" : `  ${entry.commit.slice(0, 8)}`;
-  const depth = entry.secondParentId === undefined ? (entry.depth ?? 0) : 0;
-  const branch = depth === 0 ? "" : `${"│ ".repeat(depth - 1)}└─ `;
-  return `${branch}${named} ${entry.status}${stage}${commit}`;
+  return entry.status === "ready" ? "" : `  ${entry.status}${stage}`;
+}
+
+// Two deployments of one commit read alike on purpose: renaming one is how they are told apart.
+function nameOf(entry: FlatDeployment) {
+  const named = entry.displayName?.trim();
+  const label = named === undefined || named === "" ? subjectOf(entry) : named;
+  return label ?? entry.commit?.slice(0, 8) ?? entry.id.slice(0, 8);
+}
+
+function rowLabel(entry: FlatDeployment) {
+  return `${branchOf(entry)}${nameOf(entry)}${stateOf(entry)}`;
 }
 
 function describe(entry: FlatDeployment | undefined) {
-  return entry === undefined ? "–" : `${entry.id.slice(0, 8)} ${entry.status}`;
+  return entry === undefined ? "–" : `${nameOf(entry)}${stateOf(entry)}`;
 }
 
 function echoFor(
@@ -97,7 +115,9 @@ function LineageCard({
           <text wrapMode="none">
             {"  "}
             {bars}
-            <span fg={shade(theme.mint, 0.85)}>{`  ${marker}`}</span>
+            <span fg={shade(theme.mint, 0.85)}>
+              {`  ${" ".repeat(branchOf(entry).length)}${marker}`}
+            </span>
             <span fg={shade(theme.ink, 0.8)}>{body}</span>
           </text>
         </box>

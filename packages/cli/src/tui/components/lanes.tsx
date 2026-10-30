@@ -64,7 +64,7 @@ export function gutter(
 ): readonly React.ReactNode[] {
   return cells.map((cell, at): React.ReactNode => {
     const value = lit(cell.lane);
-    const char = cell.down || cell.kind === "node" ? "│" : " ";
+    const char = cell.down ? "│" : " ";
     return (
       <span fg={shade(theme.muted, value)} key={`${at}-gutter`}>
         {value < SOLID_AT ? (DASHED.get(char) ?? char) : char}

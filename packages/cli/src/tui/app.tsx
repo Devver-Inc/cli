@@ -11,6 +11,7 @@ import { ApiError } from "../api/client";
 import type { LocalDeploymentStatus } from "../api/local-deploy.requests";
 import { openBrowser } from "../auth/browser";
 import type { Candidate } from "../cli/update";
+import { DeploymentDetails } from "./components/deployment-details";
 import { DeploymentRow } from "./components/deployment-row";
 import { glyphFor } from "./components/lanes";
 import { ListPlaceholder } from "./components/list-placeholder";
@@ -254,6 +255,36 @@ function isRepeatedSelection(
   return key.repeated === true && (action === "merge" || action === "select");
 }
 
+// Two short lines stay readable in 80 columns, where one list of every key did not.
+function hintFor({
+  details,
+  editing,
+  merge,
+  merged,
+}: {
+  readonly details: boolean;
+  readonly editing: boolean;
+  readonly merge: number;
+  readonly merged: boolean;
+}) {
+  if (details) {
+    return { hint: "Esc or d closes these details", more: "" };
+  }
+  if (editing) {
+    return { hint: "Enter save · Esc cancel", more: "" };
+  }
+  if (merge > 0) {
+    return {
+      hint: `${merge}/2 selected · v toggle · m merge · Esc clear`,
+      more: "",
+    };
+  }
+  const more = "r rename · v select · m merge";
+  return merged
+    ? { hint: "1/h first parent · 2 second parent · d details · q quit", more }
+    : { hint: "j/k/h/l move · d details · o open · c copy · q quit", more };
+}
+
 function LocalApp({
   update,
   target,
@@ -270,6 +301,7 @@ function LocalApp({
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState("");
   const [mergeSelection, setMergeSelection] = useState<readonly string[]>([]);
+  const [details, setDetails] = useState(false);
   const [merging, setMerging] = useState(false);
   const mergingRef = useRef(false);
   const [editor, setEditor] = useState<
@@ -315,6 +347,8 @@ function LocalApp({
                 secondParentId: entry.secondParentDeploymentId ?? undefined,
                 repositoryId: entry.repositoryId,
                 commit: entry.commit,
+                commitSubject: entry.commitSubject ?? undefined,
+                createdAt: entry.createdAt,
                 status: entry.status,
                 stage: entry.stage,
                 url: entry.url,
@@ -537,6 +571,25 @@ function LocalApp({
     );
   }
 
+  function browse(action: keyof typeof shortcuts | undefined) {
+    if (action === "details") {
+      setDetails(current !== undefined);
+    } else if (action === "select") {
+      toggleMergeSelection();
+    } else if (action === "merge") {
+      confirmMerge();
+    } else if (action === "rename" && current !== undefined) {
+      setEditor({
+        kind: "editing",
+        id: current.id,
+        value: current.displayName ?? "",
+      });
+      setStatus("");
+    } else if (action !== "rename") {
+      navigate(action);
+    }
+  }
+
   useKeyboard((key) => {
     const action = actionFor(key);
     if (isRepeatedSelection(key, action)) {
@@ -564,37 +617,24 @@ function LocalApp({
       setStatus("Merge selection cleared.");
       return;
     }
-    if (result.kind === "loaded" && rows.length > 0) {
-      if (action === "select") {
-        toggleMergeSelection();
-      } else if (action === "merge") {
-        confirmMerge();
-      } else if (action === "rename") {
-        if (current !== undefined) {
-          setEditor({
-            kind: "editing",
-            id: current.id,
-            value: current.displayName ?? "",
-          });
-          setStatus("");
-        }
-      } else {
-        navigate(action);
+    if (details) {
+      if (action === "details" || action === "cancel") {
+        setDetails(false);
       }
+      return;
+    }
+    if (result.kind === "loaded" && rows.length > 0) {
+      browse(action);
     }
   });
 
-  let hint =
-    "j/k/h/l move · o open · c copy · r rename · v select · m merge · q quit";
-  if (rows.find((row) => row.id === selectedId)?.secondParentId !== undefined) {
-    hint =
-      "h/1 first parent · 2 second parent · o open · v select · m merge · q quit";
-  }
-  if (editor.kind === "editing") {
-    hint = "Enter save · Esc cancel";
-  } else if (mergeSelection.length > 0) {
-    hint = `${mergeSelection.length}/2 selected · v toggle · m merge · Esc clear`;
-  }
+  const { hint, more } = hintFor({
+    details,
+    editing: editor.kind === "editing",
+    merge: mergeSelection.length,
+    merged:
+      rows.find((row) => row.id === selectedId)?.secondParentId !== undefined,
+  });
 
   return (
     <box
@@ -651,6 +691,9 @@ function LocalApp({
             ))}
         </scrollbox>
       </box>
+      {details && current !== undefined && (
+        <DeploymentDetails byId={byId} entry={current} />
+      )}
       {editor.kind === "editing" && (
         <box height={1} flexDirection="row">
           <text fg={theme.mint}>Rename: </text>
@@ -681,21 +724,25 @@ function LocalApp({
       <box
         borderColor={theme.line}
         borderStyle="single"
-        flexDirection="row"
-        height={3}
-        justifyContent="space-between"
+        flexDirection="column"
+        height={4}
         paddingX={1}
       >
-        <text
-          fg={status === "" ? theme.muted : theme.rose}
-          flexGrow={1}
-          minWidth={0}
-          wrapMode="none"
-        >
-          {status || hint}
-        </text>
-        <text fg={theme.muted} wrapMode="none">
-          {version !== undefined && version !== "" ? `v${version}` : ""}
+        <box flexDirection="row" height={1} justifyContent="space-between">
+          <text
+            fg={status === "" ? theme.muted : theme.rose}
+            flexGrow={1}
+            minWidth={0}
+            wrapMode="none"
+          >
+            {status || hint}
+          </text>
+          <text fg={theme.muted} wrapMode="none">
+            {version !== undefined && version !== "" ? `v${version}` : ""}
+          </text>
+        </box>
+        <text fg={theme.muted} height={1} wrapMode="none">
+          {more}
         </text>
       </box>
     </box>
