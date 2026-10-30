@@ -6,6 +6,8 @@
 
 [Get started](#get-started) · [Cloud or local](#cloud-or-local) · [Install](#install) · [Contribute](#contribute)
 
+[![CI](https://img.shields.io/github/actions/workflow/status/Devver-Inc/cli/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/Devver-Inc/cli/actions/workflows/ci.yml) [![npm package](https://img.shields.io/badge/npm-package-cb3837?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@devver-inc/cli) [![GitHub Releases](https://img.shields.io/badge/GitHub-Releases-5e81ac?style=flat-square&logo=github&logoColor=white)](https://github.com/Devver-Inc/cli/releases)
+
 ![Devver workflow: deploy to test locally or in the cloud, share, get feedback, and move to the next feature](docs/assets/devver-banner.svg)
 
 </div>
