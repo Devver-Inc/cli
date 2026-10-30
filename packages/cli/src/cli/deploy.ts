@@ -8,7 +8,7 @@ import {
   listRepos,
 } from "../api/deploy.requests";
 import { getProjectById } from "../api/projects.requests";
-import { checkForConfigFile, readConfigFile } from "../config";
+import { readConfigFile } from "../config";
 import { readConfig } from "../config/api";
 import { getDeploymentEnv, mergeEnv } from "../config/secrets";
 import {
@@ -138,7 +138,6 @@ export const resolveDbLinks = (projectId: string) =>
   });
 
 const cloudDeploy = Effect.gen(function* () {
-  yield* Effect.tryPromise(checkForConfigFile);
   const config = yield* Effect.try(() => readConfigFile());
   if (config === null) {
     return yield* new DeploymentError({
@@ -213,7 +212,13 @@ export const deploy = Command.make(
         });
       }
       const config = yield* Effect.try(() => readConfigFile());
-      if (config !== null && "static" in config) {
+      if (config === null) {
+        return yield* new DeploymentError({
+          message:
+            "Config file not found. Run 'devver init' to create one for a supported target, or add a verified .devver.yaml manually.",
+        });
+      }
+      if ("static" in config) {
         return yield* new DeploymentError({
           message:
             "Static config is only supported for local deployments. Select a local server with 'devver attach' before deploying.",

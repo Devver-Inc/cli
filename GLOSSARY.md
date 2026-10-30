@@ -8,7 +8,11 @@ Terms for local deployment and optional public publishing.
 
 **CLI target**: The server instance explicitly selected for CLI control. _Avoid_: Public route
 
-**Deployment**: A published revision of a project with an identity that persists across amendments. _Avoid_: Server instance
+**App**: A runnable part of a repository that can be deployed independently. An app can have more than one service. _Avoid_: Package, service
+
+**Service**: One running process within an app, such as an HTTP server or worker. _Avoid_: App
+
+**Deployment**: A published revision of one app with an identity that persists across amendments. _Avoid_: Server instance
 
 **Root deployment**: An independent deployment with no parent. Sharing a repository or Git history with another deployment does not make it a child.
 
