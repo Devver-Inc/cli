@@ -1,6 +1,8 @@
 name: Release
 
 on:
+  pull_request:
+    types: [closed]
   workflow_dispatch:
     inputs:
       tag:
@@ -10,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: stable-release
@@ -18,17 +21,19 @@ concurrency:
 jobs:
   plan:
     name: Plan release
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'release/v')) }}
     runs-on: ubuntu-latest
     outputs:
-      tag: ${{ steps.plan.outputs.tag || steps.resume.outputs.tag }}
-      version: ${{ steps.plan.outputs.version || steps.resume.outputs.version }}
+      tag: ${{ steps.merged.outputs.tag || steps.resume.outputs.tag }}
+      version: ${{ steps.merged.outputs.version || steps.resume.outputs.version }}
     steps:
       - name: Require main
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         run: test "$GITHUB_REF" = refs/heads/main
 
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || 'main' }}
+          ref: ${{ inputs.tag || github.event.pull_request.merge_commit_sha || 'main' }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -53,9 +58,9 @@ jobs:
           node-version: "26.5.0"
       - run: bun install --frozen-lockfile && bun run check:version
       - run: git branch develop origin/develop
-        if: ${{ !inputs.tag }}
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.tag }}
       - name: Apply reviewed changesets
-        if: ${{ !inputs.tag }}
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.tag }}
         run: |
           bunx changeset status
           bunx changeset version
@@ -63,30 +68,56 @@ jobs:
           bun run sync:version
           bun run check:version
           bun run check && bun run scripts/build-npm-fixture.ts && bun run test
-      - name: Commit the release and tag the exact commit
-        id: plan
-        if: ${{ !inputs.tag }}
+      - name: Open release PR
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.tag }}
         env:
-          RELEASE_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
         run: |
           set -euo pipefail
+          test -n "$GH_TOKEN" || { echo 'Configure RELEASE_PR_TOKEN with repository Contents and Pull requests write access' >&2; exit 1; }
           VERSION=$(node -p "require('./package.json').version")
           TAG="v$VERSION"
+          BRANCH="release/$TAG"
           git diff --quiet --exit-code && { echo 'No release changes found' >&2; exit 1; }
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add package.json packages/cli/package.json packages/cli/CHANGELOG.md packages/cli-darwin-arm64/package.json packages/cli-linux-x64/package.json packages/server/package.json package-lock.json bun.lock .changeset
           git diff --exit-code
           git commit -m "chore: release $TAG"
-          git tag "$TAG"
-          git remote set-url origin "https://x-access-token:${RELEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git push --atomic origin HEAD:main "$TAG"
+          gh auth setup-git
+          git push origin "HEAD:refs/heads/$BRANCH"
+          if ! gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
+            gh pr create --base main --head "$BRANCH" --title "chore: release $TAG" --body "Release $TAG. Merge this PR to tag and publish the release."
+          fi
+      - name: Tag merged release
+        id: merged
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v$VERSION"
+          test "$BRANCH" = "release/$TAG"
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.merge_commit_sha }}"
+          git merge-base --is-ancestor HEAD origin/main
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            test "$(git rev-parse "refs/tags/$TAG^{commit}")" = "$(git rev-parse HEAD)"
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email 'github-actions[bot]@users.noreply.github.com'
+            git tag "$TAG"
+            gh auth setup-git
+            git push origin "$TAG"
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build ${{ matrix.target }}
     needs: plan
+    if: ${{ needs.plan.outputs.tag != '' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
