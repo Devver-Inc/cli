@@ -75,7 +75,8 @@ jobs:
           git diff --quiet --exit-code && { echo 'No release changes found' >&2; exit 1; }
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add package.json packages/cli/package.json packages/cli/CHANGELOG.md packages/server/package.json package-lock.json bun.lock .changeset
+          git add package.json packages/cli/package.json packages/cli/CHANGELOG.md packages/cli-darwin-arm64/package.json packages/cli-linux-x64/package.json packages/server/package.json package-lock.json bun.lock .changeset
+          git diff --exit-code
           git commit -m "chore: release $TAG"
           git tag "$TAG"
           git remote set-url origin "https://x-access-token:${RELEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"

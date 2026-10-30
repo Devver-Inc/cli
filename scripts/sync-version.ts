@@ -141,6 +141,30 @@ if (check) {
       `${JSON.stringify({ ...document, version }, null, 2)}\n`
     );
   }
+  const bunLockPath = "bun.lock";
+  const bunLockSource = readFileSync(bunLockPath, "utf-8");
+  const workspaceVersions =
+    /(?<prefix>"packages\/(?:cli|cli-darwin-arm64|cli-linux-x64|server)": \{\s*"name": "[^"]+",\s*"version": ")[^"]+/gu;
+  const platformPins =
+    /(?<prefix>"@devver-inc\/cli-(?:darwin-arm64|linux-x64)": ")[^"]+/gu;
+  if (
+    [...bunLockSource.matchAll(workspaceVersions)].length !== 4 ||
+    [...bunLockSource.matchAll(platformPins)].length !== 2
+  ) {
+    throw new Error("Cannot synchronize Bun workspace versions");
+  }
+  writeFileSync(
+    bunLockPath,
+    bunLockSource
+      .replaceAll(
+        workspaceVersions,
+        (_match, prefix: string) => `${prefix}${version}`
+      )
+      .replaceAll(
+        platformPins,
+        (_match, prefix: string) => `${prefix}${version}`
+      )
+  );
   const installed = spawnSync("bun", ["install"], { stdio: "inherit" });
   if (installed.status === 0) {
     const npmLock = spawnSync(
