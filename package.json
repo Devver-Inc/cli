@@ -1,6 +1,6 @@
 {
   "name": "devver-workspace",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "description": "Deploy and try your app in seconds",
   "keywords": [
