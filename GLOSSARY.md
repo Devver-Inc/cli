@@ -10,9 +10,11 @@ Terms for local deployment and optional public publishing.
 
 **Deployment**: A published revision of a project with an identity that persists across amendments. _Avoid_: Server instance
 
-**Root deployment**: An independent deployment with no parent. Sharing a repository or Git history with another deployment does not make it a child.
+**Root deployment**: A deployment with no earlier ready deployment on the same repository's primary Git history. Git commits without a deployment ancestor remain roots.
 
-**Child deployment**: A deployment explicitly forked from a particular parent deployment. _Avoid_: Next revision, newer deployment
+**Child deployment**: A deployment linked to an earlier deployed revision on its primary Git history. _Avoid_: Next revision, newer deployment
+
+**Merged deployment**: A new deployment whose code combines two deployments of the same repository and whose lineage names both as parents. Neither source deployment is replaced. _Avoid_: Amended deployment
 
 **Public route**: A stable public address for one deployment, managed by a publishing service. It does not grant access to the server's control interface. _Avoid_: CLI target, control URL
 

@@ -662,6 +662,9 @@ async function exercise() {
       source.first,
       "<h1>revision A</h1>"
     );
+    writeFileSync(join(source.site, "intermediate.txt"), "not deployed");
+    git(source.site, "add", "intermediate.txt");
+    git(source.site, "commit", "-q", "-m", "undeployed revision");
     writeFileSync(join(source.site, "index.html"), "<h1>revision B</h1>");
     git(source.site, "add", "index.html");
     git(source.site, "commit", "-q", "-m", "revision B");
@@ -681,14 +684,18 @@ async function exercise() {
         })
       )
     )(JSON.parse(listing.text));
-    for (const { id } of [first, second]) {
-      expect(
-        deployments.find(({ deploymentId }) => deploymentId === id)
-      ).toEqual({
-        deploymentId: id,
-        parentDeploymentId: null,
-      });
-    }
+    expect(
+      deployments.find(({ deploymentId }) => deploymentId === first.id)
+    ).toEqual({
+      deploymentId: first.id,
+      parentDeploymentId: null,
+    });
+    expect(
+      deployments.find(({ deploymentId }) => deploymentId === second.id)
+    ).toEqual({
+      deploymentId: second.id,
+      parentDeploymentId: first.id,
+    });
     await isolatedRouting(first, second, controlUrl, recorded.port);
     await failedDeployments(
       ws,

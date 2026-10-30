@@ -1,6 +1,5 @@
-import { RGBA, TextAttributes } from "@opentui/core";
+import { TextAttributes } from "@opentui/core";
 import type {
-  ColorInput,
   InputRenderable,
   KeyEvent,
   ScrollBoxRenderable,
@@ -8,456 +7,31 @@ import type {
 import { useKeyboard } from "@opentui/react";
 import { useEffect, useRef, useState } from "react";
 
+import { ApiError } from "../api/client";
 import type { LocalDeploymentStatus } from "../api/local-deploy.requests";
 import { openBrowser } from "../auth/browser";
-import type { Organization } from "../auth/session";
 import type { Candidate } from "../cli/update";
-import { visibleDeployments } from "./deployments";
+import { DeploymentDetails } from "./components/deployment-details";
+import { DeploymentRow } from "./components/deployment-row";
+import { glyphFor } from "./components/lanes";
+import { ListPlaceholder } from "./components/list-placeholder";
+import {
+  OrganizationPicker,
+  useOrganizationSelection,
+} from "./components/organization-picker";
+import {
+  ProjectPicker,
+  useProjectSelection,
+} from "./components/project-picker";
+import { useLineageWave } from "./components/wave";
+import { buildTree, flatten, visibleDeployments } from "./deployments";
+import type { FlatDeployment } from "./deployments";
+import { deploymentGraph } from "./graph/deployment-graph";
+import { lineage, reachOf } from "./graph/focus";
 import { actionFor } from "./keys";
 import type { shortcuts } from "./keys";
-import { theme } from "./theme";
-
-const terminalBackground = RGBA.defaultBackground();
-const scrollbarOptions = {
-  trackOptions: {
-    backgroundColor: terminalBackground,
-    foregroundColor: theme.muted,
-  },
-};
-
-interface LocalTarget {
-  readonly kind: "local";
-  readonly server: string;
-  readonly workspace: string;
-  readonly repositoryId?: string | undefined;
-  readonly openInBrowser?: ((url: string) => Promise<boolean>) | undefined;
-  readonly copyUrl?: ((url: string) => Promise<boolean>) | undefined;
-  readonly loadDeployments: () => Promise<
-    readonly LocalDeploymentStatus[] | null
-  >;
-  readonly renameDeployment?:
-    | ((id: string, name: string) => Promise<{ readonly displayName: string }>)
-    | undefined;
-}
-
-interface CloudTarget {
-  readonly kind: "cloud";
-  readonly project?: string | undefined;
-  readonly currentProjectId?: string | null | undefined;
-  readonly loadProjects?:
-    | (() => Promise<readonly { id: string; name: string }[]>)
-    | undefined;
-  readonly onSwitchProject?: ((id: string) => Promise<void>) | undefined;
-  readonly organizations?: readonly Organization[] | undefined;
-  readonly currentOrganization?: string | null | undefined;
-  readonly onSwitchOrganization?:
-    | ((current: string | null, id: string) => Promise<void>)
-    | undefined;
-}
-
-export interface AppProps {
-  readonly target: CloudTarget | LocalTarget | { readonly kind: "none" };
-  readonly version?: string | undefined;
-  readonly update?: Candidate | undefined;
-  readonly checkUpdate?: (() => Promise<Candidate | undefined>) | undefined;
-  readonly onExit: () => void;
-}
-
-function useOrganizationSelection({
-  organizations = [],
-  currentOrganization = null,
-  onSwitchOrganization,
-}: Pick<
-  CloudTarget,
-  "organizations" | "currentOrganization" | "onSwitchOrganization"
->) {
-  const [orgId, setOrgId] = useState(currentOrganization);
-  const [confirmedId, setConfirmedId] = useState(
-    currentOrganization ?? organizations[0]?.id
-  );
-  const [orgPicker, setOrgPicker] = useState(false);
-  const [orgIndex, setOrgIndex] = useState(0);
-  const [orgError, setOrgError] = useState("");
-  const [switching, setSwitching] = useState(false);
-  const switchingRef = useRef(false);
-  const orgList = useRef<ScrollBoxRenderable>(null);
-  const currentOrg =
-    organizations.find((org) => org.id === orgId) ??
-    (orgId !== null && orgId !== "" ? undefined : organizations[0]);
-
-  useEffect(() => {
-    if (orgError === "") {
-      return undefined;
-    }
-    const timer = setTimeout(() => {
-      setOrgError("");
-    }, 4000);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [orgError]);
-
-  useEffect(() => {
-    if (!orgPicker) {
-      return undefined;
-    }
-    const choice = organizations[orgIndex];
-    const timer = setTimeout(() => {
-      if (choice !== undefined) {
-        orgList.current?.scrollChildIntoView(`organization-${choice.id}`);
-      }
-    }, 0);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [orgPicker, orgIndex, organizations]);
-
-  function open() {
-    setOrgIndex(
-      Math.max(
-        0,
-        organizations.findIndex((org) => org.id === currentOrg?.id)
-      )
-    );
-    setOrgError("");
-    setOrgPicker(true);
-  }
-
-  function handle(
-    action: keyof typeof shortcuts | undefined,
-    key: KeyEvent,
-    onExit: () => void
-  ) {
-    if (switchingRef.current) {
-      return;
-    }
-    if (action === "cancel") {
-      setOrgPicker(false);
-    } else if (action === "up") {
-      setOrgIndex((index) => Math.max(0, index - 1));
-    } else if (action === "down") {
-      setOrgIndex((index) => Math.min(organizations.length - 1, index + 1));
-    } else if (action === "confirm") {
-      const choice = organizations[orgIndex];
-      if (choice === undefined || onSwitchOrganization === undefined) {
-        return;
-      }
-      if (choice.id === currentOrg?.id) {
-        setOrgPicker(false);
-        return;
-      }
-      switchingRef.current = true;
-      setSwitching(true);
-      setOrgError("");
-      setOrgId(choice.id);
-      setOrgPicker(false);
-      onSwitchOrganization(orgId, choice.id)
-        .then(() => {
-          setConfirmedId(choice.id);
-        })
-        .catch(() => {
-          setOrgId(orgId);
-          setOrgError("Could not switch organization. Check your selection.");
-        })
-        .finally(() => {
-          switchingRef.current = false;
-          setSwitching(false);
-        });
-    } else if (action === "quit" && key.ctrl) {
-      onExit();
-    }
-  }
-
-  return {
-    orgId,
-    confirmedId,
-    orgPicker,
-    orgIndex,
-    orgError,
-    switching,
-    orgList,
-    currentOrg,
-    open,
-    handle,
-  };
-}
-
-function OrganizationPicker({
-  organizations,
-  currentOrg,
-  orgIndex,
-  orgList,
-  switching,
-  orgError,
-}: {
-  readonly organizations: readonly Organization[];
-  readonly currentOrg?: Organization | undefined;
-  readonly orgIndex: number;
-  readonly orgList: React.RefObject<ScrollBoxRenderable | null>;
-  readonly switching: boolean;
-  readonly orgError: string;
-}): React.ReactNode {
-  return (
-    <box
-      border
-      borderColor={theme.line}
-      flexDirection="column"
-      flexGrow={1}
-      minHeight={0}
-      paddingX={1}
-      title=" organizations "
-      titleColor={theme.mint}
-    >
-      <text fg={theme.muted} height={1} wrapMode="none">
-        Select organization · ↑/↓ · Enter · Esc
-      </text>
-      <scrollbox
-        flexGrow={1}
-        minHeight={0}
-        ref={orgList}
-        scrollbarOptions={scrollbarOptions}
-      >
-        {organizations.length === 0 && (
-          <text fg={theme.amber}>
-            No organizations available. Run devver auth login.
-          </text>
-        )}
-        {organizations.map((org, index): React.ReactNode => (
-          <text
-            attributes={
-              index === orgIndex ? TextAttributes.BOLD : TextAttributes.NONE
-            }
-            fg={index === orgIndex ? theme.mint : theme.ink}
-            id={`organization-${org.id}`}
-            key={org.id}
-          >
-            {index === orgIndex ? "◆" : " "} {org.name}
-            {org.id === currentOrg?.id ? " (current)" : ""}
-          </text>
-        ))}
-      </scrollbox>
-      {switching && <text fg={theme.muted}>Switching organization…</text>}
-      {orgError !== "" && <text fg={theme.rose}>{orgError}</text>}
-    </box>
-  );
-}
-
-function useProjectSelection({
-  currentProjectId = null,
-  loadProjects,
-  onSwitchProject,
-  organizationId,
-  initialOrganizationId,
-}: Pick<
-  CloudTarget,
-  "currentProjectId" | "loadProjects" | "onSwitchProject"
-> & {
-  organizationId?: string | undefined;
-  initialOrganizationId: string | null;
-}) {
-  const [projects, setProjects] = useState<
-    readonly { id: string; name: string }[]
-  >([]);
-  const [projectId, setProjectId] = useState(currentProjectId);
-  const [picker, setPicker] = useState(false);
-  const [index, setIndex] = useState(0);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const busyRef = useRef(false);
-  const list = useRef<ScrollBoxRenderable>(null);
-  const currentOrganizationRef = useRef(organizationId);
-  currentOrganizationRef.current = organizationId;
-
-  useEffect(() => {
-    if (
-      loadProjects === undefined ||
-      organizationId === undefined ||
-      organizationId === ""
-    ) {
-      setProjects([]);
-      return undefined;
-    }
-    let active = true;
-    setError("");
-    setLoading(true);
-    setProjects([]);
-    if (organizationId !== initialOrganizationId) {
-      setProjectId(null);
-    }
-    loadProjects()
-      .then((result) => {
-        if (active) {
-          setProjects(result);
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setError("Could not load projects. Reopen the selector to retry.");
-          setLoading(false);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [organizationId, loadProjects, initialOrganizationId]);
-
-  useEffect(() => {
-    if (!picker) {
-      return undefined;
-    }
-    const choice = projects[index];
-    const timer = setTimeout(() => {
-      if (choice !== undefined) {
-        list.current?.scrollChildIntoView(`project-${choice.id}`);
-      }
-    }, 0);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [picker, index, projects]);
-
-  function open() {
-    setIndex(
-      Math.max(
-        0,
-        projects.findIndex((entry) => entry.id === projectId)
-      )
-    );
-    setPicker(true);
-    if (
-      loadProjects !== undefined &&
-      organizationId !== undefined &&
-      organizationId !== ""
-    ) {
-      setError("");
-      setLoading(true);
-      const requestedOrganization = organizationId;
-      loadProjects()
-        .then((result) => {
-          if (currentOrganizationRef.current === requestedOrganization) {
-            setProjects(result);
-            setLoading(false);
-          }
-        })
-        .catch(() => {
-          if (currentOrganizationRef.current === requestedOrganization) {
-            setError("Could not load projects. Try again.");
-            setLoading(false);
-          }
-        });
-    } else {
-      setError("Select an organization first.");
-    }
-  }
-
-  function handle(
-    action: keyof typeof shortcuts | undefined,
-    key: KeyEvent,
-    onExit: () => void
-  ) {
-    if (busyRef.current) {
-      return;
-    }
-    if (action === "cancel") {
-      setPicker(false);
-    } else if (action === "up") {
-      setIndex((value) => Math.max(0, value - 1));
-    } else if (action === "down") {
-      setIndex((value) => Math.min(projects.length - 1, value + 1));
-    } else if (action === "confirm") {
-      const choice = projects[index];
-      if (choice === undefined || onSwitchProject === undefined) {
-        return;
-      }
-      if (choice.id === projectId) {
-        setPicker(false);
-        return;
-      }
-      busyRef.current = true;
-      setBusy(true);
-      onSwitchProject(choice.id)
-        .then(() => {
-          setProjectId(choice.id);
-          setPicker(false);
-        })
-        .catch(() => {
-          setError("Could not switch project. Try again.");
-        })
-        .finally(() => {
-          busyRef.current = false;
-          setBusy(false);
-        });
-    } else if (action === "quit" && key.ctrl) {
-      onExit();
-    }
-  }
-  return {
-    projects,
-    projectId,
-    loading,
-    picker,
-    index,
-    error,
-    busy,
-    list,
-    open,
-    handle,
-  };
-}
-
-function ProjectPicker({
-  projects,
-  projectId,
-  index,
-  error,
-  busy,
-  loading,
-  list,
-}: ReturnType<typeof useProjectSelection>): React.ReactNode {
-  return (
-    <box
-      border
-      borderColor={theme.line}
-      flexDirection="column"
-      flexGrow={1}
-      minHeight={0}
-      paddingX={1}
-      title=" projects "
-      titleColor={theme.mint}
-    >
-      <text fg={theme.muted} height={1} wrapMode="none">
-        Select project · ↑/↓ · Enter · Esc
-      </text>
-      <scrollbox
-        flexGrow={1}
-        minHeight={0}
-        ref={list}
-        scrollbarOptions={scrollbarOptions}
-      >
-        {loading && <text fg={theme.muted}>Loading projects…</text>}
-        {!loading && projects.length === 0 && error === "" && (
-          <text fg={theme.muted}>
-            No projects available in this organization.
-          </text>
-        )}
-        {projects.map((entry, position): React.ReactNode => (
-          <text
-            fg={position === index ? theme.mint : theme.ink}
-            id={`project-${entry.id}`}
-            key={entry.id}
-          >
-            {position === index ? "◆" : " "} {entry.name}
-            {entry.id === projectId ? " (current)" : ""}
-          </text>
-        ))}
-      </scrollbox>
-      {busy && <text fg={theme.muted}>Switching project…</text>}
-      {error !== "" && <text fg={theme.rose}>{error}</text>}
-    </box>
-  );
-}
+import type { AppProps, CloudTarget, LocalTarget } from "./target";
+import { scrollbarOptions, terminalBackground, theme } from "./theme";
 
 function headerLabels(
   org: ReturnType<typeof useOrganizationSelection>,
@@ -609,88 +183,106 @@ function CloudApp({
   );
 }
 
-interface FlatDeployment {
-  readonly id: string;
-  readonly displayName: string | null | undefined;
-  readonly parentId: string | undefined;
-  readonly repositoryId: string | undefined;
-  readonly commit: string | undefined;
-  readonly status: LocalDeploymentStatus["status"];
-  readonly stage: LocalDeploymentStatus["stage"];
-  // undefined: the server did not report a URL field; null: reported as none.
-  readonly url: string | null | undefined;
-}
-
-interface TreeNode extends FlatDeployment {
-  readonly children: readonly TreeNode[];
-}
-
-// One row per node, depth-first in source order, each indented past its parent.
-function flatten(
-  nodes: readonly TreeNode[],
-  depth = 0
-): (FlatDeployment & { readonly depth: number })[] {
-  const flattened: (FlatDeployment & { readonly depth: number })[] = [];
-  for (const node of nodes) {
-    flattened.push({ ...node, depth });
-    for (const row of flatten(node.children, depth + 1)) {
-      flattened.push(row);
+function copyUrl(
+  entry: FlatDeployment | undefined,
+  target: LocalTarget,
+  setStatus: (message: string) => void
+) {
+  const url = entry?.url;
+  if (
+    entry?.status !== "ready" ||
+    url === undefined ||
+    url === null ||
+    url === ""
+  ) {
+    setStatus("This deployment has no ready URL to copy.");
+    return;
+  }
+  if (target.copyUrl === undefined) {
+    setStatus("Could not copy the deployment URL.");
+    return;
+  }
+  void target.copyUrl(url).then(
+    (copied) => {
+      setStatus(
+        copied
+          ? "Sent deployment URL to clipboard."
+          : "Could not copy the deployment URL."
+      );
+    },
+    () => {
+      setStatus("Could not copy the deployment URL.");
     }
-  }
-  return flattened;
-}
-
-// A deployment hangs under its parentDeploymentId when the list contains it;
-// anything else (null parent, unknown parent, cross-repository) is a root.
-function buildTree(rows: readonly FlatDeployment[]): TreeNode[] {
-  const byId = new Map<string, FlatDeployment & { children: TreeNode[] }>();
-  for (const row of rows) {
-    byId.set(row.id, { ...row, children: [] });
-  }
-  const roots: (FlatDeployment & { children: TreeNode[] })[] = [];
-  for (const row of rows) {
-    const parent =
-      row.parentId === undefined ? undefined : byId.get(row.parentId);
-    const node = byId.get(row.id);
-    if (node === undefined) {
-      continue;
-    }
-    if (parent === undefined || parent === node) {
-      roots.push(node);
-    } else {
-      parent.children.push(node);
-    }
-  }
-  return roots;
-}
-
-function treeRow(
-  entry: FlatDeployment & { readonly depth: number },
-  selected: boolean
-): React.ReactNode {
-  const indent = "  ".repeat(entry.depth);
-  const branch = entry.depth === 0 ? "" : `${"│ ".repeat(entry.depth - 1)}└─ `;
-  const marker = selected ? "◆" : " ";
-  let color: ColorInput = theme.amber;
-  if (selected) {
-    color = theme.mint;
-  } else if (entry.status === "ready") {
-    color = theme.ink;
-  }
-  return (
-    <text
-      attributes={selected ? TextAttributes.BOLD : TextAttributes.NONE}
-      fg={color}
-      key={entry.id}
-      wrapMode="none"
-    >
-      {`${marker} ${indent}${branch}${entry.displayName !== null && entry.displayName !== undefined && entry.displayName !== "" ? `${entry.displayName} (${entry.id.slice(0, 8)})` : entry.id.slice(0, 8)} ${entry.status}`}
-      {entry.stage === null || entry.stage === undefined
-        ? ""
-        : ` (${entry.stage})`}
-      {entry.commit === undefined ? "" : `  commit ${entry.commit.slice(0, 8)}`}
-    </text>
   );
+}
+
+function openUrl(
+  entry: FlatDeployment | undefined,
+  target: LocalTarget,
+  setStatus: (message: string) => void
+) {
+  const url = entry?.url;
+  if (url === undefined) {
+    setStatus(
+      "This server does not report deployment URLs. Re-create it from a current build."
+    );
+    return;
+  }
+  if (url === null) {
+    setStatus("This deployment is not ready, so it has no URL to open.");
+    return;
+  }
+  const opener = target.openInBrowser ?? openBrowser;
+  void opener(url).then((opened) => {
+    setStatus(
+      opened ? `Opened ${url}` : "Could not open a browser for this deployment."
+    );
+  });
+}
+
+function isSameRevision(error: unknown): error is ApiError {
+  return (
+    error instanceof ApiError &&
+    error.status === 400 &&
+    error.message.startsWith("Both deployments already have the same revision")
+  );
+}
+
+function isRepeatedSelection(
+  key: KeyEvent,
+  action: keyof typeof shortcuts | undefined
+) {
+  return key.repeated === true && (action === "merge" || action === "select");
+}
+
+// Two short lines stay readable in 80 columns, where one list of every key did not.
+function hintFor({
+  details,
+  editing,
+  merge,
+  merged,
+}: {
+  readonly details: boolean;
+  readonly editing: boolean;
+  readonly merge: number;
+  readonly merged: boolean;
+}) {
+  if (details) {
+    return { hint: "Esc or d closes these details", more: "" };
+  }
+  if (editing) {
+    return { hint: "Enter save · Esc cancel", more: "" };
+  }
+  if (merge > 0) {
+    return {
+      hint: `${merge}/2 selected · v toggle · m merge · Esc clear`,
+      more: "",
+    };
+  }
+  const more = "r rename · v select · m merge";
+  return merged
+    ? { hint: "1/h first parent · 2 second parent · d details · q quit", more }
+    : { hint: "j/k/h/l move · d details · o open · c copy · q quit", more };
 }
 
 function LocalApp({
@@ -708,6 +300,10 @@ function LocalApp({
   >({ kind: "loading" });
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState("");
+  const [mergeSelection, setMergeSelection] = useState<readonly string[]>([]);
+  const [details, setDetails] = useState(false);
+  const [merging, setMerging] = useState(false);
+  const mergingRef = useRef(false);
   const [editor, setEditor] = useState<
     | { readonly kind: "idle" }
     | { readonly kind: "editing"; readonly id: string; readonly value: string }
@@ -739,7 +335,7 @@ function LocalApp({
     };
   }, [target.loadDeployments]);
 
-  const rows =
+  const diagram = deploymentGraph(
     result.kind === "loaded"
       ? flatten(
           buildTree(
@@ -748,8 +344,11 @@ function LocalApp({
                 id: entry.deploymentId,
                 displayName: entry.displayName,
                 parentId: entry.parentDeploymentId ?? undefined,
+                secondParentId: entry.secondParentDeploymentId ?? undefined,
                 repositoryId: entry.repositoryId,
                 commit: entry.commit,
+                commitSubject: entry.commitSubject ?? undefined,
+                createdAt: entry.createdAt,
                 status: entry.status,
                 stage: entry.stage,
                 url: entry.url,
@@ -757,13 +356,15 @@ function LocalApp({
             )
           )
         )
-      : [];
-
-  useEffect(() => {
-    if (selectedId === undefined && rows.length > 0) {
-      setSelectedId(rows[0]?.id);
-    }
-  }, [rows, selectedId]);
+      : [],
+    glyphFor
+  );
+  const rows = diagram.map(({ entry }) => entry);
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const current = rows.find((row) => row.id === selectedId) ?? rows[0];
+  const distances = lineage(rows, current?.id);
+  const reach = reachOf(distances);
+  const progress = useLineageWave(current?.id);
 
   useEffect(() => {
     if (status === "") {
@@ -777,38 +378,17 @@ function LocalApp({
     };
   }, [status]);
 
-  function copySelected(current: FlatDeployment | undefined) {
-    const url = current?.url;
-    if (
-      current?.status !== "ready" ||
-      url === undefined ||
-      url === null ||
-      url === ""
-    ) {
-      setStatus("This deployment has no ready URL to copy.");
-      return;
+  function selectParent(action: "firstParent" | "secondParent") {
+    const parent =
+      action === "firstParent" ? current?.parentId : current?.secondParentId;
+    if (parent !== undefined) {
+      setSelectedId(parent);
     }
-    if (target.copyUrl === undefined) {
-      setStatus("Could not copy the deployment URL.");
-      return;
-    }
-    void target.copyUrl(url).then(
-      (copied) => {
-        setStatus(
-          copied
-            ? "Sent deployment URL to clipboard."
-            : "Could not copy the deployment URL."
-        );
-      },
-      () => {
-        setStatus("Could not copy the deployment URL.");
-      }
-    );
   }
 
   function navigate(action: keyof typeof shortcuts | undefined) {
-    const index = rows.findIndex((row) => row.id === selectedId);
-    const current = rows[index === -1 ? 0 : index];
+    const found = rows.findIndex((row) => row.id === current?.id);
+    const index = found === -1 ? 0 : found;
     if (action === "down") {
       const next = rows[(index + 1) % rows.length];
       if (next !== undefined) {
@@ -820,7 +400,10 @@ function LocalApp({
         setSelectedId(previous.id);
       }
     } else if (action === "right") {
-      const child = rows.find((row) => row.parentId === current?.id);
+      const child = rows.find(
+        (row) =>
+          row.parentId === current?.id || row.secondParentId === current?.id
+      );
       const next = child ?? rows[(index + 1) % rows.length];
       if (next !== undefined) {
         setSelectedId(next.id);
@@ -834,28 +417,12 @@ function LocalApp({
       } else {
         setSelectedId(current.parentId);
       }
+    } else if (action === "firstParent" || action === "secondParent") {
+      selectParent(action);
     } else if (action === "copy") {
-      copySelected(current);
+      copyUrl(current, target, setStatus);
     } else if (action === "open") {
-      const url = current?.url;
-      if (url === undefined) {
-        setStatus(
-          "This server does not report deployment URLs. Re-create it from a current build."
-        );
-        return;
-      }
-      if (url === null) {
-        setStatus("This deployment is not ready, so it has no URL to open.");
-        return;
-      }
-      const opener = target.openInBrowser ?? openBrowser;
-      void opener(url).then((opened) => {
-        setStatus(
-          opened
-            ? `Opened ${url}`
-            : "Could not open a browser for this deployment."
-        );
-      });
+      openUrl(current, target, setStatus);
     }
   }
 
@@ -914,8 +481,114 @@ function LocalApp({
     );
   }
 
+  function confirmMerge() {
+    if (mergingRef.current) {
+      return;
+    }
+    const [first, second] = mergeSelection;
+    if (first === undefined || second === undefined) {
+      setStatus("Select two ready deployments with v before merging.");
+      return;
+    }
+    if (target.mergeDeployments === undefined) {
+      setStatus("This server does not support merging deployments.");
+      return;
+    }
+    mergingRef.current = true;
+    setMerging(true);
+    void target.mergeDeployments(first, second).then(
+      (merged) => {
+        setResult((previous) =>
+          previous.kind === "loaded"
+            ? {
+                kind: "loaded",
+                deployments: [
+                  ...previous.deployments,
+                  {
+                    ...merged,
+                    displayName: null,
+                    status: "ready",
+                    stage: null,
+                  },
+                ],
+              }
+            : previous
+        );
+        setSelectedId(merged.deploymentId);
+        setMergeSelection([]);
+        mergingRef.current = false;
+        setMerging(false);
+        setStatus(
+          `Merged ${merged.deploymentId.slice(0, 8)}. Press o to open.`
+        );
+      },
+      // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Promise rejection is external; only the known HTTP error is inspected.
+      (error: unknown) => {
+        mergingRef.current = false;
+        setMerging(false);
+        setStatus(
+          isSameRevision(error)
+            ? "Both deployments already have the same revision"
+            : "Merge failed. Check devver merge for details; both sources are unchanged."
+        );
+      }
+    );
+  }
+
+  function toggleMergeSelection() {
+    if (current === undefined) {
+      return;
+    }
+    if (mergeSelection.includes(current.id)) {
+      setMergeSelection(mergeSelection.filter((id) => id !== current.id));
+      setStatus("Deployment deselected.");
+      return;
+    }
+    if (current.status !== "ready" || current.repositoryId === undefined) {
+      setStatus("Only ready deployments can be selected for merging.");
+      return;
+    }
+    const first = rows.find((row) => row.id === mergeSelection[0]);
+    if (first !== undefined && first.repositoryId !== current.repositoryId) {
+      setStatus("Select deployments from the same repository.");
+      return;
+    }
+    if (mergeSelection.length === 2) {
+      setStatus("Two deployments are selected. Press v to deselect one.");
+      return;
+    }
+    setMergeSelection([...mergeSelection, current.id]);
+    setStatus(
+      mergeSelection.length === 1
+        ? "Two selected. Press m to merge, or Esc to clear selection."
+        : "Select another ready deployment with v."
+    );
+  }
+
+  function browse(action: keyof typeof shortcuts | undefined) {
+    if (action === "details") {
+      setDetails(current !== undefined);
+    } else if (action === "select") {
+      toggleMergeSelection();
+    } else if (action === "merge") {
+      confirmMerge();
+    } else if (action === "rename" && current !== undefined) {
+      setEditor({
+        kind: "editing",
+        id: current.id,
+        value: current.displayName ?? "",
+      });
+      setStatus("");
+    } else if (action !== "rename") {
+      navigate(action);
+    }
+  }
+
   useKeyboard((key) => {
     const action = actionFor(key);
+    if (isRepeatedSelection(key, action)) {
+      return;
+    }
     if (editor.kind !== "idle") {
       if (action === "cancel" && editor.kind === "editing") {
         key.preventDefault();
@@ -930,21 +603,30 @@ function LocalApp({
       onExit();
       return;
     }
-    if (result.kind === "loaded" && rows.length > 0) {
-      if (action === "rename") {
-        const current = rows.find((row) => row.id === selectedId) ?? rows[0];
-        if (current !== undefined) {
-          setEditor({
-            kind: "editing",
-            id: current.id,
-            value: current.displayName ?? "",
-          });
-          setStatus("");
-        }
-      } else {
-        navigate(action);
-      }
+    if (mergingRef.current) {
+      return;
     }
+    if (action === "cancel" && mergeSelection.length > 0) {
+      setMergeSelection([]);
+      setStatus("Merge selection cleared.");
+      return;
+    }
+    if (details) {
+      if (action === "details" || action === "cancel") {
+        setDetails(false);
+      }
+      return;
+    }
+    if (result.kind === "loaded" && rows.length > 0) {
+      browse(action);
+    }
+  });
+
+  const { hint, more } = hintFor({
+    details,
+    editing: editor.kind === "editing",
+    merge: mergeSelection.length,
+    merged: current?.secondParentId !== undefined,
   });
 
   return (
@@ -983,33 +665,28 @@ function LocalApp({
           ref={list}
           scrollbarOptions={scrollbarOptions}
         >
-          {result.kind === "loading" && (
-            <text fg={theme.muted}>Loading deployments…</text>
-          )}
-          {result.kind === "failed" && (
-            <text fg={theme.rose}>
-              Could not load deployments from this server. Run devver server
-              status.
-            </text>
-          )}
-          {result.kind === "unsupported" && (
-            <text fg={theme.muted}>
-              Deployment listing is unavailable on this server. Use a server
-              created with a current build.
-            </text>
-          )}
-          {result.kind === "loaded" && rows.length === 0 && (
-            <text fg={theme.muted}>
-              {target.repositoryId === undefined
-                ? "No deployments on this server. Run devver deploy from a Git checkout."
-                : "No deployments for this repository. Run devver deploy here."}
-            </text>
-          )}
-          {rows.map((row): React.ReactNode =>
-            treeRow(row, row.id === selectedId)
-          )}
+          <ListPlaceholder
+            empty={rows.length === 0}
+            kind={result.kind}
+            repositoryId={target.repositoryId}
+          />
+          {current !== undefined &&
+            diagram.map(({ entry, cells }): React.ReactNode => (
+              <DeploymentRow
+                byId={byId}
+                cells={cells}
+                current={current}
+                entry={entry}
+                key={entry.id}
+                focus={{ distances, progress, reach }}
+                marked={mergeSelection.includes(entry.id)}
+              />
+            ))}
         </scrollbox>
       </box>
+      {details && current !== undefined && (
+        <DeploymentDetails byId={byId} entry={current} />
+      )}
       {editor.kind === "editing" && (
         <box height={1} flexDirection="row">
           <text fg={theme.mint}>Rename: </text>
@@ -1031,6 +708,7 @@ function LocalApp({
         </box>
       )}
       {editor.kind === "saving" && <text fg={theme.muted}>Saving name…</text>}
+      {merging && <text fg={theme.muted}>Merging deployments…</text>}
       {update !== undefined && (
         <text fg={theme.mint} wrapMode="none">
           {`devver --update · v${update.version} available`}
@@ -1039,24 +717,25 @@ function LocalApp({
       <box
         borderColor={theme.line}
         borderStyle="single"
-        flexDirection="row"
-        height={3}
-        justifyContent="space-between"
+        flexDirection="column"
+        height={4}
         paddingX={1}
       >
-        <text
-          fg={status === "" ? theme.muted : theme.rose}
-          flexGrow={1}
-          minWidth={0}
-          wrapMode="none"
-        >
-          {status ||
-            (editor.kind === "editing"
-              ? "Enter save · Esc cancel"
-              : "j/k/h/l move · o open · c copy · r rename · q quit")}
-        </text>
-        <text fg={theme.muted} wrapMode="none">
-          {version !== undefined && version !== "" ? `v${version}` : ""}
+        <box flexDirection="row" height={1} justifyContent="space-between">
+          <text
+            fg={status === "" ? theme.muted : theme.rose}
+            flexGrow={1}
+            minWidth={0}
+            wrapMode="none"
+          >
+            {status || hint}
+          </text>
+          <text fg={theme.muted} wrapMode="none">
+            {version !== undefined && version !== "" ? `v${version}` : ""}
+          </text>
+        </box>
+        <text fg={theme.muted} height={1} wrapMode="none">
+          {more}
         </text>
       </box>
     </box>
