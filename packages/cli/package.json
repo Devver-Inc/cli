@@ -1,6 +1,6 @@
 {
   "name": "@devver-inc/cli",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": false,
   "description": "Deploy and try your app in seconds",
   "keywords": [
@@ -54,7 +54,7 @@
     "xdg-basedir": "^5.1.0"
   },
   "optionalDependencies": {
-    "@devver-inc/cli-darwin-arm64": "0.0.1",
-    "@devver-inc/cli-linux-x64": "0.0.1"
+    "@devver-inc/cli-darwin-arm64": "0.1.0",
+    "@devver-inc/cli-linux-x64": "0.1.0"
   }
 }
