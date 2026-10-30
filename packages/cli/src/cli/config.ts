@@ -100,14 +100,22 @@ export const init = Command.make("init", {}, () =>
       yield* Console.log("✓ Config file already exists (.devver.yaml)");
       return;
     }
+    const target = yield* Effect.tryPromise(readConfig);
     const detection = yield* Effect.tryPromise(async () => detectProject());
     yield* Console.log("\nProject detection:");
-    if (detection.results.length === 0) {
-      yield* Console.log("  No frameworks detected");
-    } else {
-      for (const result of detection.results) {
-        yield* Console.log(`  ✓ ${result.detected.displayName}`);
-      }
+    for (const project of detection.projects) {
+      yield* Console.log(
+        `  ${project.root}: ${project.stack.framework ?? "unknown"} (${project.stack.category})`
+      );
+    }
+    if (target["local-target"] === undefined) {
+      // oxlint-disable-next-line typescript/consistent-return -- A failed Effect exits init before writing a config.
+      return yield* new ConfigCommandError({
+        message:
+          target["cloud-target"] === true
+            ? "Cloud config generation requires a reviewed deployment recipe. Add a verified .devver.yaml manually; no config was written."
+            : "No target selected. Run 'devver attach <url>' for a local server or 'devver cloud', then run 'devver init' again. No config was written.",
+      });
     }
     yield* Effect.try(() => {
       writeConfigFile(detection);
