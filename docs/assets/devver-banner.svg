@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="360" viewBox="0 0 960 360" role="img" aria-labelledby="title desc">
+  <title id="title">Devver — deploy a commit, keep its history</title>
+  <desc id="desc">A dark terminal-inspired banner with a branching deployment graph.</desc>
+  <defs>
+    <linearGradient id="surface" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#121c30"/>
+      <stop offset="1" stop-color="#080d18"/>
+    </linearGradient>
+    <linearGradient id="lane" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#7de8d1"/>
+      <stop offset="1" stop-color="#97a7ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="360" rx="20" fill="url(#surface)"/>
+  <rect x="1" y="1" width="958" height="358" rx="19" fill="none" stroke="#293449" stroke-width="2"/>
+  <circle cx="44" cy="44" r="5" fill="#7de8d1"/>
+  <text x="62" y="49" fill="#e5edf6" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="17" font-weight="700" letter-spacing="2">DEVVER</text>
+  <text x="44" y="124" fill="#8d9cb4" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" letter-spacing="2">LOCAL-FIRST DEPLOYMENTS</text>
+  <text x="44" y="183" fill="#f3f6fa" font-family="system-ui, -apple-system, sans-serif" font-size="41" font-weight="700">Ship a commit.</text>
+  <text x="44" y="235" fill="#7de8d1" font-family="system-ui, -apple-system, sans-serif" font-size="41" font-weight="700">Keep its history.</text>
+  <text x="46" y="281" fill="#a8b5c9" font-family="system-ui, -apple-system, sans-serif" font-size="16">Deploy, compare, and merge from your terminal.</text>
+  <rect x="580" y="56" width="337" height="248" rx="13" fill="#0c1525" stroke="#30425a"/>
+  <path d="M580 69a13 13 0 0 1 13-13h311a13 13 0 0 1 13 13v25H580z" fill="#1b293d"/>
+  <circle cx="601" cy="75" r="4" fill="#fb817c"/>
+  <circle cx="618" cy="75" r="4" fill="#f4c877"/>
+  <circle cx="635" cy="75" r="4" fill="#7de8d1"/>
+  <text x="722" y="80" fill="#a8b5c9" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" letter-spacing="1">LINEAGE</text>
+  <path d="M618 124v144M618 174h52M670 174c0 54 47 54 62 54M618 268c62 0 68-40 114-40" fill="none" stroke="#4c6384" stroke-width="2"/>
+  <path d="M618 124v50h52M670 174c0 54 47 54 62 54" fill="none" stroke="url(#lane)" stroke-width="3"/>
+  <circle cx="618" cy="124" r="7" fill="#7de8d1"/>
+  <circle cx="670" cy="174" r="7" fill="#97a7ff"/>
+  <circle cx="618" cy="268" r="7" fill="#637795"/>
+  <circle cx="732" cy="228" r="8" fill="#7de8d1" stroke="#0c1525" stroke-width="2"/>
+  <text x="641" y="130" fill="#e5edf6" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">first deploy</text>
+  <text x="690" y="180" fill="#e5edf6" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">preview</text>
+  <text x="638" y="274" fill="#a8b5c9" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">another idea</text>
+  <text x="752" y="234" fill="#e5edf6" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">merge</text>
+</svg>
