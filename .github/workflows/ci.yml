@@ -59,10 +59,20 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           BASE: ${{ github.base_ref }}
+          BRANCH: ${{ github.head_ref }}
+          RELEASE_PR: ${{ github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/v') }}
         run: |
           set -euo pipefail
           git fetch --no-tags origin "$BASE:refs/remotes/origin/$BASE"
-          if ! git diff --diff-filter=A --name-only "origin/$BASE...HEAD" -- '.changeset/*.md' | grep -q .; then
+          if [ "$RELEASE_PR" = true ]; then
+            VERSION=$(node -p "require('./package.json').version")
+            BASE_VERSION=$(git show "origin/$BASE:package.json" | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).version')
+            test "$BRANCH" = "release/v$VERSION"
+            test "$VERSION" != "$BASE_VERSION"
+            grep -Fxq "## $VERSION" packages/cli/CHANGELOG.md
+            git diff --diff-filter=AM --name-only "origin/$BASE...HEAD" -- packages/cli/CHANGELOG.md | grep -Fxq packages/cli/CHANGELOG.md
+            git diff --diff-filter=D --name-only "origin/$BASE...HEAD" -- '.changeset/*.md' | grep -q .
+          elif ! git diff --diff-filter=A --name-only "origin/$BASE...HEAD" -- '.changeset/*.md' | grep -q .; then
             echo 'Add a changeset with mise run bump, or an empty one with mise run no-release.' >&2
             exit 1
           fi
@@ -83,7 +93,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Validate PR changesets
-        if: github.event_name == 'pull_request'
+        if: ${{ github.event_name == 'pull_request' && !(github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/v')) }}
         run: bunx changeset status --since "origin/$GITHUB_BASE_REF"
 
       - name: Build and test CLI workspace
