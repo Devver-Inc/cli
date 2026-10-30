@@ -23,7 +23,6 @@ function branchOf(entry: FlatDeployment) {
   return entry.secondParentId === undefined ? (entry.branch ?? "") : "";
 }
 
-// The lane glyph already carries a ready deployment; only an unfinished or broken one spells its state out.
 function stateOf(entry: FlatDeployment) {
   const stage =
     entry.stage === null || entry.stage === undefined
@@ -32,7 +31,6 @@ function stateOf(entry: FlatDeployment) {
   return entry.status === "ready" ? "" : `  ${entry.status}${stage}`;
 }
 
-// Two deployments of one commit read alike on purpose: renaming one is how they are told apart.
 function nameOf(entry: FlatDeployment) {
   const named = entry.displayName?.trim();
   const label = named === undefined || named === "" ? subjectOf(entry) : named;

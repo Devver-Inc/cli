@@ -367,12 +367,6 @@ function LocalApp({
   const progress = useLineageWave(current?.id);
 
   useEffect(() => {
-    if (selectedId === undefined && rows.length > 0) {
-      setSelectedId(rows[0]?.id);
-    }
-  }, [rows, selectedId]);
-
-  useEffect(() => {
     if (status === "") {
       return undefined;
     }
@@ -393,7 +387,7 @@ function LocalApp({
   }
 
   function navigate(action: keyof typeof shortcuts | undefined) {
-    const found = rows.findIndex((row) => row.id === selectedId);
+    const found = rows.findIndex((row) => row.id === current?.id);
     const index = found === -1 ? 0 : found;
     if (action === "down") {
       const next = rows[(index + 1) % rows.length];
@@ -632,8 +626,7 @@ function LocalApp({
     details,
     editing: editor.kind === "editing",
     merge: mergeSelection.length,
-    merged:
-      rows.find((row) => row.id === selectedId)?.secondParentId !== undefined,
+    merged: current?.secondParentId !== undefined,
   });
 
   return (

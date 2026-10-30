@@ -19,7 +19,6 @@ function nameOnly(entry: FlatDeployment | undefined) {
     : `${named} (${entry.id.slice(0, 8)})`;
 }
 
-// Servers record an ISO instant; an unparsable one is shown as it arrived rather than as a wrong date.
 function when(createdAt: string | undefined) {
   if (createdAt === undefined) {
     return "not reported by this server";

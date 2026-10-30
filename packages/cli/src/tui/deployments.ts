@@ -30,7 +30,6 @@ interface TreeNode extends FlatDeployment {
   readonly children: readonly TreeNode[];
 }
 
-// An ancestor keeps its bar only while a sibling still follows below; the last child leaves a blank trail.
 export function flatten(
   nodes: readonly TreeNode[],
   prefix?: string

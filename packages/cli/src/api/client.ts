@@ -142,7 +142,6 @@ export const ApiClientLive = Layer.effect(
   })
 );
 
-/** Full layer: ApiClient + HTTP transport. Provide AuthToken and ApiBaseUrl before use. */
 export const ApiClientLayer = ApiClientLive.pipe(
   Layer.provide(FetchHttpClient.layer)
 );

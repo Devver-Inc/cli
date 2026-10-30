@@ -123,7 +123,6 @@ export async function syncCommit(options: {
   return bare;
 }
 
-/** Subjects are a display nicety: unknown or unreadable revisions simply go unnamed. */
 export async function commitSubjects(
   bare: string,
   commits: readonly string[]

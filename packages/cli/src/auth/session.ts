@@ -119,8 +119,6 @@ export async function logout(): Promise<string | undefined> {
 export const serveCallback = (handle: (requestUrl: string) => Promise<void>) =>
   Effect.gen(function* () {
     const completed = yield* Deferred.make<undefined, AuthCallbackError>();
-    // The HTTP callback resolves the Deferred outside the Effect runtime, so it
-    // must fork with this scope's services instead of a fresh runtime.
     const services = yield* Effect.context();
     const runFork = Effect.runForkWith(services);
 
