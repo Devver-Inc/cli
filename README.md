@@ -2,53 +2,64 @@
 
 # Devver
 
-**Deploy a commit. Explore what comes next.**
+**The fast lane from code to feedback.**
 
-[Get started](#get-started) · [How it works](#how-it-works) · [Install](#install) · [Contribute](#contribute)
+[Get started](#get-started) · [Cloud or local](#cloud-or-local) · [Install](#install) · [Contribute](#contribute)
 
-[![CI](https://img.shields.io/github/actions/workflow/status/Devver-Inc/cli/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/Devver-Inc/cli/actions/workflows/ci.yml) [![npm](https://img.shields.io/npm/v/@devver-inc/cli?style=flat-square&label=npm)](https://www.npmjs.com/package/@devver-inc/cli) [![Releases](https://img.shields.io/github/v/release/Devver-Inc/cli?style=flat-square&label=release)](https://github.com/Devver-Inc/cli/releases)
-
-![Illustration of Devver deployment lineage: a first deploy branches into previews and merges](docs/assets/devver-banner.svg)
+![Devver workflow: deploy to test locally or in the cloud, share, get feedback, and move to the next feature](docs/assets/devver-banner.svg)
 
 </div>
 
-Devver gives each deployed Git revision its own URL. Start with a local server on your machine, try different versions side by side, and follow their history in a terminal UI. An ordinary deploy follows the nearest ready ancestor; an explicit merge creates a new revision without changing your checkout.
+Devver is a test deployment service for the space between writing code and shipping a feature. Deploy a revision in the cloud to share with your team, or run it locally to test on your own machine. Get a URL, collect feedback through the tools your team already uses, iterate with people and agents, then move on to the next feature.
 
-> [!IMPORTANT]
-> Local deployments run with **your user account's permissions**. Only deploy code you trust; local servers are not a sandbox. Their API and proxy bind to loopback.
+Cloud and local are explicit choices. A local URL stays on your machine; use the cloud when teammates need to open the deployment.
 
 ## Get started
 
-Install the CLI with Node and npm, then create a named local server:
+Install the CLI, then choose where you want to test:
 
 ```sh
 npm install -g @devver-inc/cli
-devver new server demo
 ```
 
-From a **Git checkout containing a committed static site** (for example, an `index.html` at its root), deploy and open the resulting URL:
+### Test locally
+
+For a Git checkout containing a committed static site (for example, an `index.html` at its root):
 
 ```sh
-cd /path/to/your/project
-devver deploy --open
-devver
+devver new server demo    # once; creates and attaches a local server
+cd /path/to/your/site
+devver deploy --open       # deploy the committed revision and open its URL
 ```
 
-The last command opens the deployment graph. The server stays attached for future commands; run `devver server status` to inspect it, `devver detach` to clear your selection, or `devver attach <url>` to select a different verified local server. URLs and deployment state belong to the server instance, not your current shell.
+Open `devver` to browse previous deployments. The local server stays attached for future commands; use `devver server status` to inspect it or `devver detach` to clear the selection.
 
-Local deployment currently serves static sites. For another target, `devver cloud` selects the official cloud API; cloud commands use `devver auth login` to sign in. Selecting cloud never silently switches a local server to a remote one.
+### Share through the cloud
 
-## How it works
+From a Git checkout with a Devver cloud project:
 
-```text
-Git checkout ── committed revision ──► local server ──► deployment URL
-                                          │
-                                          └─► terminal lineage: deploy / branch / merge
+```sh
+devver cloud
+devver auth login
+devver project list        # select your project
+devver init                # create the project's config if needed
+devver deploy              # prints the deployment URL
 ```
 
-- **Pinned revisions.** Each deploy pins a Git commit in the server's own repository and leaves your working tree alone. Multiple deployments can use the same commit.
-- **History you can navigate.** The TUI shows parent and child relationships, status, URLs, and merge connections. Open it with `devver`; use `d` for details or `o` to open a ready deployment.
-- **Separate targets.** Local instances run on your machine without an account. Cloud is opt-in with `devver cloud`; `devver detach` selects neither.
+Send the cloud URL to teammates or use it in your agent-assisted review workflow. Cloud deployment needs an account, project, and supported project configuration; `--open` currently works only for local deployments.
+
+## Cloud or local
+
+|  | Local | Cloud |
+| :-- | :-- | :-- |
+| **Best for** | Testing a committed static site on your own machine | Sharing a test deployment with your team |
+| **Setup** | `devver new server <name>`; no account | `devver cloud` and `devver auth login` |
+| **URL** | Loopback; not publicly shareable | Share the URL printed by `devver deploy` |
+
+Every deployment gives you a concrete revision to test and discuss. In the terminal UI, you can navigate local deployment history and explicitly merge two ready versions without changing your checkout. Devver does **not** collect feedback for you; share the cloud URL in the conversations and tools where your team already works.
+
+> [!IMPORTANT]
+> Local deployments run with **your user account's permissions**. Only deploy code you trust; local servers are not a sandbox. Their API and proxy bind to loopback.
 
 See [AGENTS.md](AGENTS.md) for the CLI/server architecture, [packages/README.md](packages/README.md) for package boundaries, and [GitHub issues](https://github.com/Devver-Inc/cli/issues) for work in progress.
 
