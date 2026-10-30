@@ -1,37 +1,88 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing stable v* tag to resume a failed publish (leave empty for a new release)"
+        required: false
+        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: stable-release
+  cancel-in-progress: false
 
 jobs:
   plan:
     name: Plan release
     runs-on: ubuntu-latest
     outputs:
-      tag: ${{ steps.plan.outputs.tag }}
-      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag || steps.resume.outputs.tag }}
+      version: ${{ steps.plan.outputs.version || steps.resume.outputs.version }}
     steps:
+      - name: Require main
+        run: test "$GITHUB_REF" = refs/heads/main
+
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.tag || 'main' }}
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Determine version
-        id: plan
+      - name: Verify an existing stable release tag
+        id: resume
+        if: ${{ inputs.tag }}
+        env:
+          TAG: ${{ inputs.tag }}
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          VERSION="${TAG#v}"
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$TAG^{commit}")"
+          git merge-base --is-ancestor HEAD origin/main
+          VERSION=$(node -p "require('./package.json').version")
+          test "$TAG" = "v$VERSION"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Planning release for $TAG (version $VERSION)"
+
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.5.0"
+      - run: bun install --frozen-lockfile && bun run check:version
+      - run: git branch develop origin/develop
+        if: ${{ !inputs.tag }}
+      - name: Apply reviewed changesets
+        if: ${{ !inputs.tag }}
+        run: |
+          bunx changeset status
+          bunx changeset version
+          bun run scripts/adopt-cli-version.ts
+          bun run sync:version
+          bun run check:version
+          bun run check && bun run scripts/build-npm-fixture.ts && bun run test
+      - name: Commit the release and tag the exact commit
+        id: plan
+        if: ${{ !inputs.tag }}
+        env:
+          RELEASE_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v$VERSION"
+          git diff --quiet --exit-code && { echo 'No release changes found' >&2; exit 1; }
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add package.json packages/cli/package.json packages/cli/CHANGELOG.md packages/cli-darwin-arm64/package.json packages/cli-linux-x64/package.json packages/server/package.json package-lock.json bun.lock .changeset
+          git diff --exit-code
+          git commit -m "chore: release $TAG"
+          git tag "$TAG"
+          git remote set-url origin "https://x-access-token:${RELEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --atomic origin HEAD:main "$TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build ${{ matrix.target }}
@@ -45,37 +96,41 @@ jobs:
             os: macos-latest
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.tag }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.5.0"
+
+      - name: Synchronize release versions and locks
+        run: bun run sync:version && bun run check:version
+
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
+
+      - name: Smoke packaged CLI and server without Bun (Unix)
+        if: runner.os != 'Windows'
+        run: bun test tests/server-artifacts.test.ts
 
       - name: Build standalone binary
         run: |
-          bun run scripts/build.ts
+          bun run build
         shell: bash
 
       - name: Create archive (Unix)
         if: runner.os != 'Windows'
         run: |
-          tar czf devver-cli-${{ matrix.target }}.tar.gz devver
+          tar czf devver-cli-${{ matrix.target }}.tar.gz devver servers
           shasum -a 256 devver-cli-${{ matrix.target }}.tar.gz > devver-cli-${{ matrix.target }}.tar.gz.sha256
-
-      - name: Create archive (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          7z a devver-cli-${{ matrix.target }}.zip devver.exe
-          (Get-FileHash devver-cli-${{ matrix.target }}.zip -Algorithm SHA256).Hash.ToLower() + "  devver-cli-${{ matrix.target }}.zip" | Out-File -Encoding utf8 devver-cli-${{ matrix.target }}.zip.sha256
 
       - name: Upload artifact (Unix)
         if: runner.os != 'Windows'
@@ -86,21 +141,14 @@ jobs:
             devver-cli-${{ matrix.target }}.tar.gz
             devver-cli-${{ matrix.target }}.tar.gz.sha256
 
-      - name: Upload artifact (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: devver-cli-${{ matrix.target }}
-          path: |
-            devver-cli-${{ matrix.target }}.zip
-            devver-cli-${{ matrix.target }}.zip.sha256
-
   release:
     name: Create GitHub Release
     needs: [plan, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.tag }}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -115,9 +163,8 @@ jobs:
       - name: Generate release notes from changelog
         id: changelog
         run: |
-          if [ -f CHANGELOG.md ]; then
-            # Extract the latest version's changelog
-            awk '/^## \[/{if(p) exit; p=1; next} p' CHANGELOG.md > release_notes.md
+          if [ -f packages/cli/CHANGELOG.md ]; then
+            awk '/^## /{if(p) exit; p=1; next} p' packages/cli/CHANGELOG.md > release_notes.md
           else
             echo "Release ${{ needs.plan.outputs.tag }}" > release_notes.md
           fi
@@ -136,26 +183,50 @@ jobs:
     name: Publish to npm
     needs: [plan, release]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.tag }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Setup Node (npm auth)
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          registry-url: 'https://registry.npmjs.org'
+          node-version: "26.5.0"
+          registry-url: https://registry.npmjs.org
+
+      - name: Synchronize release versions and locks
+        run: bun run sync:version && bun run check:version
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
-      - name: Build package
-        run: bun run build
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: devver-cli-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Assemble and verify npm package
+        run: |
+          bun run build:npm
+          packages/cli/bin/devver --version
+          bun test tests/npm-artifact.test.ts
 
       - name: Publish to npm
-        run: npm publish --access public
+        run: |
+          VERSION='${{ needs.plan.outputs.version }}'
+          for NAME in cli-darwin-arm64 cli-linux-x64 cli; do
+            if [ "$(npm view "@devver-inc/$NAME@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
+              echo "@devver-inc/$NAME@$VERSION is already published"
+            else
+              npm publish --workspace "@devver-inc/$NAME" --access public
+            fi
+          done
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -224,10 +295,12 @@ jobs:
 
             def install
               bin.install "devver"
+              bin.install "servers"
             end
 
             test do
               assert_match version.to_s, shell_output("#{bin}/devver --version")
+              assert_predicate bin/"servers"/version.to_s/"devver-server", :executable?
             end
           end
           EOF

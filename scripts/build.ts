@@ -1,26 +1,20 @@
 #!/usr/bin/env bun
 
-/**
- * Build script for devver
- * Compiles the CLI with bundled worker support
- */
+import { rmSync } from "node:fs";
 
 import pkg from "../package.json";
+import { buildDefines } from "./stamp";
+import { packageStaticTools } from "./static-tools";
 
-const workerPath = "./src/auth/worker.ts";
-
-const result = await Bun.build({
-  entrypoints: ["./src/index.tsx", workerPath],
-  compile: {
-    outfile: "devver",
-  },
+const config: Bun.BuildConfig = {
+  entrypoints: ["./packages/cli/src/cli/index.ts"],
+  compile: { outfile: "devver" },
   define: {
-    // In the compiled binary, the worker entrypoint is at auth/worker.js
-    // relative to the main entrypoint (index.js) inside $bunfs/root/
-    DEVVER_WORKER_PATH: JSON.stringify("./auth/worker.js"),
-    DEVVER_VERSION: JSON.stringify(pkg.version),
+    ...buildDefines("standalone"),
+    DEVVER_STANDALONE_ENTRY: "true",
   },
-});
+};
+const result = await Bun.build(config);
 
 if (!result.success) {
   console.error("Build failed:");
@@ -30,4 +24,26 @@ if (!result.success) {
   process.exit(1);
 }
 
-console.log(`Build successful! Version: ${pkg.version}`);
+rmSync("servers", { recursive: true, force: true });
+const server = await Bun.build({
+  entrypoints: ["./packages/server/src/index.ts"],
+  compile: {
+    outfile: `servers/${pkg.version}/devver-server${process.platform === "win32" ? ".exe" : ""}`,
+  },
+  define: { DEVVER_STANDALONE_ENTRY: "true", DEVVER_NODE_SQLITE: "false" },
+  external: ["@effect/sql-sqlite-node/SqliteClient"],
+  minify: { syntax: true },
+});
+if (!server.success) {
+  console.error("Standalone server build failed:");
+  for (const log of server.logs) {
+    console.error(log);
+  }
+  process.exit(1);
+}
+
+await packageStaticTools(`servers/${pkg.version}`);
+
+console.log(
+  `Built devver and servers/${pkg.version}/devver-server (version ${pkg.version})`
+);

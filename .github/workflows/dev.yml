@@ -1,0 +1,161 @@
+name: Dev preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Full commit SHA to publish (from this repository)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-${{ github.event.inputs.sha }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.sha }}
+          fetch-depth: 0
+      - name: Verify requested commit and workflow branch
+        id: commit
+        env:
+          REQUESTED_SHA: ${{ github.event.inputs.sha }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
+          git branch develop origin/develop
+          echo "sha=$REQUESTED_SHA" >> "$GITHUB_OUTPUT"
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.5.0"
+      - run: bun run sync:version && bun install --frozen-lockfile && bun run check:version
+      - run: bun run check && bun run typecheck && bun run scripts/build-npm-fixture.ts && bun run test
+      - name: Choose an unused dev version from the selected commit
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET=$(bun run scripts/target-version.ts)
+          VERSION="${TARGET}-dev.build.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  binary:
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    env:
+      DEVVER_RELEASE_COMMIT: ${{ needs.prepare.outputs.sha }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.5.0"
+      - run: bun run sync:version && bun install --frozen-lockfile
+      - name: Stamp dev version
+        run: npm version '${{ needs.prepare.outputs.version }}' --no-git-tag-version && bun run sync:version
+      - name: Smoke packaged CLI and server without Bun (Unix)
+        if: runner.os != 'Windows'
+        run: bun test tests/server-artifacts.test.ts
+        env:
+          DEVVER_RELEASE_CHANNEL: dev
+      - name: Build standalone binary
+        run: bun run build
+        env:
+          DEVVER_RELEASE_CHANNEL: dev
+      - name: Archive (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          tar czf devver-cli-${{ matrix.target }}.tar.gz devver servers
+          shasum -a 256 devver-cli-${{ matrix.target }}.tar.gz > devver-cli-${{ matrix.target }}.tar.gz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: devver-cli-${{ matrix.target }}
+          path: |
+            devver-cli-${{ matrix.target }}.tar.gz
+            devver-cli-${{ matrix.target }}.tar.gz.sha256
+          if-no-files-found: error
+
+  npm:
+    needs: [prepare, binary]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      DEVVER_RELEASE_COMMIT: ${{ needs.prepare.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.4.0"
+          registry-url: https://registry.npmjs.org
+      - uses: oven-sh/setup-bun@v2
+      - run: bun run sync:version && bun install --frozen-lockfile
+      - run: npm version '${{ needs.prepare.outputs.version }}' --no-git-tag-version && bun run sync:version
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: devver-cli-*
+          path: artifacts
+          merge-multiple: true
+      - run: bun run build:npm && packages/cli/bin/devver --version && bun test tests/npm-artifact.test.ts
+      - run: |
+          for NAME in cli-darwin-arm64 cli-linux-x64 cli; do
+            npm publish --workspace "@devver-inc/$NAME" --access public --tag dev
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DEVVER_RELEASE_CHANNEL: dev
+
+  release:
+    needs: [prepare, binary, npm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: devver-cli-*
+          path: artifacts
+          merge-multiple: true
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: dev-${{ needs.prepare.outputs.version }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SHA: ${{ needs.prepare.outputs.sha }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(artifacts/*.tar.gz artifacts/*.sha256)
+          if (( ${#files[@]} != 4 )); then
+            echo 'Missing dev archives or checksums' >&2
+            exit 1
+          fi
+          gh release create "$TAG" "${files[@]}" --target "$SHA" --title "$VERSION" --notes "Dev preview from $SHA. Unstable; opt in explicitly." --prerelease

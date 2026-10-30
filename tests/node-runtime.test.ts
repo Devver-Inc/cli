@@ -1,0 +1,90 @@
+import { expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, dirname, join } from "node:path";
+
+import { Schema } from "effect";
+
+const decodeSummary = Schema.decodeUnknownSync(
+  Schema.Struct({
+    bunGlobal: Schema.Boolean,
+    callback: Schema.Struct({
+      ipv4: Schema.Union([Schema.Finite, Schema.Literals(["unreachable"])]),
+      ipv6: Schema.Union([Schema.Finite, Schema.Literals(["unreachable"])]),
+      page: Schema.Struct({ status: Schema.Finite, complete: Schema.Boolean }),
+      seen: Schema.Array(Schema.String),
+    }),
+    rejected: Schema.Struct({
+      status: Schema.Finite,
+      message: Schema.NullOr(Schema.String),
+    }),
+    gitFailure: Schema.NullOr(Schema.String),
+  }),
+  { onExcessProperty: "error" }
+);
+
+const repo = join(import.meta.dir, "..");
+const driver = join(import.meta.dir, "fixtures", "node-runtime-driver.ts");
+const BUN_API =
+  /\bBun\s*\.\s*(?<api>serve|spawn|stderr|stdout|file|color|build)\b/u;
+
+function nodeEnvironment() {
+  const node = Bun.which("node");
+  if (node === null) {
+    throw new Error(
+      "node is required for the shared-code Node compatibility test"
+    );
+  }
+  const git = Bun.which("git");
+  if (git === null) {
+    throw new Error("git is required: the Node runtime check invokes git");
+  }
+  return { node, path: [dirname(node), dirname(git)].join(delimiter) };
+}
+
+test("auth callback and git run under Node with Bun absent", () => {
+  const { node, path } = nodeEnvironment();
+  const out = mkdtempSync(join(tmpdir(), "devver-node-"));
+  const bundle = join(out, "driver.mjs");
+  try {
+    const build = Bun.spawnSync(
+      [
+        "bun",
+        "build",
+        driver,
+        "--target=node",
+        "--format=esm",
+        `--outfile=${bundle}`,
+      ],
+      { cwd: repo, stdout: "pipe", stderr: "pipe" }
+    );
+    expect(build.exitCode, build.stderr.toString()).toBe(0);
+
+    const code = readFileSync(bundle, "utf-8");
+    expect(code).not.toMatch(BUN_API);
+
+    const run = Bun.spawnSync([node, bundle], {
+      cwd: out,
+      env: { HOME: process.env.HOME ?? out, PATH: path },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(run.exitCode, run.stderr.toString()).toBe(0);
+
+    const lines = run.stdout.toString().trim().split("\n");
+    const summary = decodeSummary(JSON.parse(lines.at(-1) ?? "null"));
+
+    expect(summary.bunGlobal).toBe(false);
+    expect(summary.callback.ipv4).toBe(404);
+    expect(summary.callback.ipv6).toBe(404);
+    expect(summary.callback.page).toEqual({ status: 200, complete: true });
+    expect(summary.callback.seen).toEqual([
+      "http://localhost:9999/callback?code=abc",
+    ]);
+    expect(summary.rejected.status).toBe(400);
+    expect(summary.rejected.message).toContain("callback rejected");
+    expect(summary.gitFailure).toContain("rev-parse");
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+});

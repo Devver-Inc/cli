@@ -1,0 +1,109 @@
+import { expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { Schema } from "effect";
+
+import { idToken } from "./jwt";
+
+const decodeProbe = Schema.decodeUnknownSync(
+  Schema.Struct({
+    token: Schema.optional(Schema.String),
+    message: Schema.optional(Schema.NullOr(Schema.String)),
+    refreshes: Schema.Finite,
+  })
+);
+
+const repo = join(import.meta.dir, "..");
+
+function session(expiresAt: number) {
+  const root = mkdtempSync(join(tmpdir(), "devver-refresh-"));
+  const data = join(root, "data", "devver");
+  mkdirSync(join(data, "logto"), { recursive: true });
+  mkdirSync(join(data, "auth"), { recursive: true });
+  writeFileSync(join(data, "auth", "currentOrganization"), "org-1");
+  writeFileSync(
+    join(data, "logto", "idToken"),
+    idToken({ sub: "user-1", organizations: ["org-1"] })
+  );
+  writeFileSync(
+    join(data, "logto", "accessToken"),
+    JSON.stringify({
+      "@http://localhost:9999#org-1": {
+        token: "stored-token",
+        scope: "",
+        expiresAt,
+      },
+    })
+  );
+  return root;
+}
+
+function probe(root: string, body: string) {
+  const script = `
+    import { mock } from "bun:test";
+    let refreshes = 0;
+    let failRefresh = false;
+    const fake = {
+      isAuthenticated: async () => true,
+      getAccessTokenClaims: async () => ({
+        organizations: [{ id: "org-1", name: "Demo" }],
+      }),
+      getIdTokenClaims: async () => ({ sub: "user-1", organizations: ["org-1"] }),
+      getAccessToken: async () => {
+        refreshes++;
+        if (failRefresh) throw new Error("refresh failed");
+        return "refreshed-token";
+      },
+      signOut: async () => {},
+    };
+    mock.module(${JSON.stringify(join(repo, "packages/cli/src/auth/logto.ts"))}, () => ({
+      createLogtoClient: () => fake,
+    }));
+    const { getAccessToken } = await import(${JSON.stringify(join(repo, "packages/cli/auth.ts"))});
+    const failure = async (work) => {
+      try { await work(); return null; } catch (error) { return error.message; }
+    };
+    ${body}
+  `;
+  const result = Bun.spawnSync(["bun", "-e", script], {
+    cwd: repo,
+    env: {
+      ...process.env,
+      XDG_DATA_HOME: join(root, "data"),
+      XDG_CONFIG_HOME: join(root, "config"),
+      XDG_CACHE_HOME: join(root, "cache"),
+      XDG_STATE_HOME: join(root, "state"),
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(`probe failed: ${result.stderr.toString()}`);
+  }
+  const lines = result.stdout.toString().trim().split("\n");
+  return decodeProbe(JSON.parse(lines.at(-1) ?? "null"));
+}
+
+test("an expired stored token refreshes, and refresh failures propagate", () => {
+  const root = session(Math.floor(Date.now() / 1000) - 60);
+  try {
+    const result = probe(
+      root,
+      `
+      const token = await getAccessToken();
+      failRefresh = true;
+      const message = await failure(() => getAccessToken());
+      console.log(JSON.stringify({ token, message, refreshes }));
+      `
+    );
+    expect(result).toEqual({
+      token: "refreshed-token",
+      message: "refresh failed",
+      refreshes: 2,
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

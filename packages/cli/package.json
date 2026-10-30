@@ -1,0 +1,60 @@
+{
+  "name": "@devver-inc/cli",
+  "version": "0.0.1",
+  "private": false,
+  "description": "Deploy and try your app in seconds",
+  "keywords": [
+    "helper",
+    "utility"
+  ],
+  "homepage": "https://github.com/Devver-Inc/cli#readme",
+  "bugs": {
+    "url": "https://github.com/Devver-Inc/cli/issues"
+  },
+  "license": "MIT",
+  "author": "Your Name",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Devver-Inc/cli.git"
+  },
+  "bin": {
+    "devver": "bin/devver",
+    "devver-server": "bin/devver-server"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "cd ../.. && bun run scripts/build-npm-fixture.ts",
+    "test": "bun test ../../tests/node-runtime.test.ts",
+    "prepack": "test -x bin/devver && test -x bin/devver-server"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.13",
+    "@clack/prompts": "^1.1.0",
+    "@effect/platform-node": "4.0.0",
+    "@effect/platform-node-shared": "4.0.0",
+    "@flystorage/file-storage": "^1.2.2",
+    "@flystorage/local-fs": "^1.2.0",
+    "@logto/node": "^3.1.8",
+    "@opentui/core": "0.6.8",
+    "@opentui/react": "0.6.8",
+    "@types/bun": "^1.3.6",
+    "@types/js-yaml": "^4.0.9",
+    "@types/react": "^19.2.9",
+    "effect": "4.0.0",
+    "js-yaml": "^4.1.1",
+    "ultracite": "^7.1.5",
+    "web-tree-sitter": "0.25.10",
+    "xdg-basedir": "^5.1.0"
+  },
+  "optionalDependencies": {
+    "@devver-inc/cli-darwin-arm64": "0.0.1",
+    "@devver-inc/cli-linux-x64": "0.0.1"
+  }
+}

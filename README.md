@@ -1,190 +1,54 @@
-# react
+# Devver CLI
 
-To install dependencies:
+Install dependencies with `bun install`. Run the CLI from source with automatic restarts using `bun run dev`.
 
-```bash
-bun install
-```
-
-To run:
+To keep a local standalone executable rebuilt as you edit (without replacing your globally installed CLI):
 
 ```bash
-bun dev
+bun run dev:build                 # keep this running in one terminal
+export PATH="$PWD:$PATH"          # in another terminal, from the repo root
+devver --version                  # runs the freshly built ./devver
 ```
 
-This project was created using `bun create tui`. [create-tui](https://git.new/create-tui) is the easiest way to get started with OpenTUI.
+The watcher rebuilds the executable; an already-running process does not restart. The source CLI reports the pending Changesets target and Git commit when you request `--version`; watch-built binaries report the `dev` channel. Release builds stamp their version and commit. npm publishes three packages at the same version: `@devver-inc/cli`, which carries only the POSIX launchers, and the per-platform `@devver-inc/cli-darwin-arm64` and `@devver-inc/cli-linux-x64`, which carry the native CLI and offline server executables. `@devver-inc/cli` lists both as pinned `optionalDependencies`, so `npm install -g @devver-inc/cli` is unchanged and downloads only the matching platform; the server workspace is not published.
 
-# Release Process
+Build with `bun run build` for standalone executables. To assemble the npm platform packages, place both standalone archives and their SHA-256 files in `artifacts/`, then run `bun run build:npm`. For local tests only, `bun run scripts/build-npm-fixture.ts` assembles a host-only fixture; never publish it. The npm packages install with Node but their commands run without Node or Bun. Both distributions package pinned MIT-licensed Pitchfork and Websitino for local static serving; builds download and verify their checksums, while runtime startup never downloads them. **Local static serving requires macOS 14 or newer on Apple Silicon** (or supported Linux x64); Windows standalone publishing and CI are paused pending runtime verification. Older macOS fails rather than attempting to run an incompatible Websitino binary. Run `bun run check`, `bun run typecheck`, and `bun test` from the root.
 
-This project uses automated release management with the following tools:
+After `bun run build`, use `./devver new server <name>` (or put this checkout first on `PATH`); a new server pins this build under its own instance ID, even when the version number has not changed. Existing servers keep their pinned binaries. For an isolated foreground test that cleans up on Ctrl-C, run `mise run dev-local`; it prints a temporary CLI command to use from your website checkout.
 
-## Tools
+## Updating the CLI
 
-- **release-please**: Automates version bumps, changelog generation, and release PR creation
-- **git-cliff**: Generates beautiful changelogs from conventional commits
-- **GitHub Actions**: Automates the entire release pipeline
+A globally installed npm CLI can run `devver --update`. It checks the published npm tag and installs an exact newer version on the same channel: `latest` for stable or `nightly` for nightly. A stable Homebrew installation uses `brew update` and `brew upgrade devver-cli` when its formula has a newer stable version. The terminal UI shows `devver --update` only when it detects a supported installation and a newer release. Source, dev preview, and standalone downloads do not self-update. For those builds, replace the CLI and its matching versioned server together using the original distribution method. Existing supervised servers retain their pinned binaries.
 
-## How it Works
+## Development and release versions
 
-### 1. Conventional Commits
+Every PR must add a `.changeset/*.md` file: run `mise run bump` and select `@devver-inc/cli` with the appropriate patch/minor/major bump, or `mise run no-release` for a change that needs no release. Commit the file with the PR; CI checks for it. Changesets on `develop` determine the planned version shown by `bun run cmd --version`. A local checkout also shows its commit SHA; it does not reserve a published build number. With no pending changesets, local source shows the current stable baseline instead.
 
-All commits must follow the [Conventional Commits](https://www.conventionalcommits.org/) specification:
+`main` is the stable/hotfix line; `develop` is the integration line. Merge work from `develop` into `main` when ready. To release, a maintainer runs the **Release** workflow on `main`. It verifies pending Changesets, versions the CLI, synchronizes the root/server manifests and both locks, runs checks, commits and tags the exact release, then builds binaries, publishes the GitHub Release and npm `latest`, and updates Homebrew. The workflow's scoped `GITHUB_TOKEN` needs `contents: write` to push `main` and its tag (and must satisfy any branch-protection rules); `NPM_TOKEN` publishes to npm, and `CLI_RELEASE_PAT` updates the optional Homebrew tap. If publishing fails after tagging, rerun **Release** on `main` with its existing `v*` tag in the `tag` input; do not calculate a second version. **Merge the generated stable release commit back to `develop` before another dev/nightly publish.** Stable and prerelease artifacts are independent; no dev artifact is renamed into stable.
 
-```
-<type>(<scope>): <description>
-
-[optional body]
-
-[optional footer(s)]
-```
-
-**Types:**
-- `feat`: New feature (triggers minor version bump)
-- `fix`: Bug fix (triggers patch version bump)
-- `refactor`: Code refactoring
-- `docs`: Documentation changes
-- `perf`: Performance improvements
-- `style`: Code style changes
-- `test`: Test additions or changes
-- `chore`: Maintenance tasks
-- `ci`: CI/CD changes
-
-**Breaking Changes:**
-- Add `!` after type: `feat!: breaking change`
-- Or include `BREAKING CHANGE:` in commit footer (triggers major version bump)
-
-**Examples:**
-```bash
-feat(auth): add OAuth2 support
-fix(api): resolve timeout issue in production
-docs: update installation guide
-refactor(core)!: rename main config file
-```
-
-### 2. Automatic Release PR
-
-When commits are pushed to `main`:
-
-1. **release-please** analyzes commits since the last release
-2. Calculates the next version based on conventional commit types
-3. Generates/updates a CHANGELOG.md
-4. Creates/updates a Release PR with version bumps
-
-### 3. Merging the Release PR
-
-When you merge the Release PR:
-
-1. release-please creates a git tag (e.g., `v1.2.3`)
-2. Pushes the tag to trigger the release workflow
-
-### 4. Release Workflow
-
-The release workflow automatically:
-
-1. **Builds** standalone binaries for:
-   - macOS (Intel and Apple Silicon)
-   - Linux (x86_64 and ARM64)
-   - Windows (x86_64)
-
-2. **Creates** a GitHub Release with:
-   - Release notes from CHANGELOG.md
-   - Binary artifacts for all platforms
-   - SHA256 checksums
-
-3. **Publishes** to npm (requires `NPM_TOKEN` secret)
-
-4. **Updates** Homebrew tap (if homebrew-tap repo exists)
-
-## Setup Requirements
-
-### Required Secrets
-
-Add these secrets in GitHub Settings → Secrets and variables → Actions:
-
-- `NPM_TOKEN`: npm authentication token for publishing
-  - Create at: https://www.npmjs.com/settings/YOUR_USERNAME/tokens
-  - Choose "Automation" token type
-
-### Optional: Homebrew Tap
-
-To enable Homebrew publishing:
-
-1. Create a repository named `homebrew-tap` in your organization
-2. The workflow will automatically update the formula
-
-## Manual Release (Emergency)
-
-If you need to create a release manually:
+Nightly runs daily (or manually) on the latest `develop` commit and publishes public `@devver-inc/cli@nightly` plus `nightly-*` GitHub prereleases. An unchanged commit is skipped. A nightly without pending Changesets uses a _provisional_ next-patch prerelease number, not an approved stable plan. A maintainer can run **Dev preview** from `main` with a full repository commit SHA to publish public `@devver-inc/cli@dev` and matching `dev-*` prerelease binaries. Each publish gets a unique workflow run/attempt number; neither prerelease updates npm `latest` or Homebrew.
 
 ```bash
-# 1. Update version in package.json
-npm version patch  # or minor, or major
-
-# 2. Update CHANGELOG.md manually
-
-# 3. Commit and tag
-git add .
-git commit -m "chore(release): v1.2.3"
-git tag v1.2.3
-git push origin main --tags
+npm install -g @devver-inc/cli@dev      # explicit preview
+npm install -g @devver-inc/cli@nightly  # nightly
+npm install -g @devver-inc/cli          # stable
+# npm requires Node to install; devver and devver-server run without either runtime
 ```
 
-## Versioning Strategy
+For CI without Node, pin an actual `nightly-*` or `dev-*` tag from [GitHub Releases](https://github.com/Devver-Inc/cli/releases) with mise's GitHub backend:
 
-Following [Semantic Versioning](https://semver.org/):
+```toml
+[tools."github:Devver-Inc/cli"]
+version = "nightly-1.2.1-nightly.build.42.1"
+version_prefix = ""
+prerelease = true
+```
 
-- **Major (1.0.0)**: Breaking changes
-- **Minor (0.1.0)**: New features (backward compatible)
-- **Patch (0.0.1)**: Bug fixes
+Replace the sample version with a real release tag. The empty prefix prevents mise from adding `v`; do not use `@latest` for prerelease CI installs.
 
-Pre-1.0.0 versions:
-- Breaking changes bump minor version
-- Features and fixes bump patch version
-
-## Changelog Generation
-
-The changelog is automatically generated using **git-cliff** configuration (cliff.toml):
-
-- Groups commits by type
-- Adds emoji for visual clarity
-- Includes scope and breaking change indicators
-- Filters out maintenance commits
-
-## Troubleshooting
-
-### Release PR not created
-
-- Check that commits follow conventional commit format
-- Verify the workflow ran successfully in Actions tab
-- Ensure `main` branch protection allows the GitHub Actions bot
-
-### Build fails
-
-- Check that `bun build --compile` works locally
-- Verify all dependencies are properly declared
-- Check the Actions logs for specific errors
-
-### Homebrew update fails
-
-- Verify the homebrew-tap repository exists
-- Check that the binary URLs are accessible
-- Ensure the formula syntax is valid
-
-## Testing Locally
-
-Test the standalone build:
+## Testing locally
 
 ```bash
-# Build for your platform
-bun build ./src/index.tsx --compile --outfile devver-test
-
-# Test the binary
-./devver-test --version
+bun run build
+./devver --version
 ```
-
-## Resources
-
-- [Conventional Commits](https://www.conventionalcommits.org/)
-- [release-please documentation](https://github.com/googleapis/release-please)
-- [git-cliff documentation](https://git-cliff.org/docs/)
-- [Semantic Versioning](https://semver.org/)

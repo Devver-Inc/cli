@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+script=$0
+while [ -L "$script" ]; do
+  dir=$(CDPATH= cd -- "$(dirname -- "$script")" && pwd -P)
+  link=$(readlink "$script")
+  case $link in
+    /*) script=$link ;;
+    *) script=$dir/$link ;;
+  esac
+done
+root=$(CDPATH= cd -- "$(dirname -- "$script")/.." && pwd -P)
+case "$(uname -s):$(uname -m)" in
+  Darwin:arm64) target=darwin-arm64 ;;
+  Linux:x86_64) target=linux-x64 ;;
+  *) echo "devver-server: unsupported platform $(uname -s):$(uname -m) (requires macOS arm64 or Linux x64)" >&2; exit 1 ;;
+esac
+for home in "$root/../cli-$target" "$root/node_modules/@devver-inc/cli-$target"; do
+  if [ -r "$home/version" ]; then
+    version=$(head -n 1 "$home/version")
+    if [ -x "$home/servers/$version/devver-server" ]; then
+      exec "$home/servers/$version/devver-server" "$@"
+    fi
+  fi
+done
+echo "devver-server: missing platform package @devver-inc/cli-$target; reinstall @devver-inc/cli" >&2
+exit 1
