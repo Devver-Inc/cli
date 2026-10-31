@@ -20,7 +20,7 @@
     },
     "packages/cli": {
       "name": "@devver-inc/cli",
-      "version": "0.0.1",
+      "version": "0.1.0",
       "bin": {
         "devver": "bin/devver",
         "devver-server": "bin/devver-server",
@@ -45,21 +45,21 @@
         "xdg-basedir": "^5.1.0",
       },
       "optionalDependencies": {
-        "@devver-inc/cli-darwin-arm64": "0.0.1",
-        "@devver-inc/cli-linux-x64": "0.0.1",
+        "@devver-inc/cli-darwin-arm64": "0.1.0",
+        "@devver-inc/cli-linux-x64": "0.1.0",
       },
     },
     "packages/cli-darwin-arm64": {
       "name": "@devver-inc/cli-darwin-arm64",
-      "version": "0.0.1",
+      "version": "0.1.0",
     },
     "packages/cli-linux-x64": {
       "name": "@devver-inc/cli-linux-x64",
-      "version": "0.0.1",
+      "version": "0.1.0",
     },
     "packages/server": {
       "name": "@devver/server",
-      "version": "0.0.1",
+      "version": "0.1.0",
       "dependencies": {
         "@effect/platform-node": "4.0.0",
         "@effect/sql-sqlite-bun": "4.0.0",
