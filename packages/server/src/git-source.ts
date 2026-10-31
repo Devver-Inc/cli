@@ -82,6 +82,18 @@ export async function verifiedSource(source: string, commit: string) {
   };
 }
 
+export async function pinCommit(
+  bare: string,
+  deploymentId: string,
+  commit: string
+) {
+  await git(bare, "update-ref", [
+    "update-ref",
+    `refs/devver/deployments/${deploymentId}`,
+    commit,
+  ]);
+}
+
 export async function syncCommit(options: {
   readonly repositories: string;
   readonly repositoryId: string;
@@ -107,12 +119,124 @@ export async function syncCommit(options: {
       );
     }
   }
-  await git(bare, "update-ref", [
-    "update-ref",
-    `refs/devver/deployments/${options.deploymentId}`,
-    options.commit,
-  ]);
+  await pinCommit(bare, options.deploymentId, options.commit);
   return bare;
+}
+
+export async function commitSubjects(
+  bare: string,
+  commits: readonly string[]
+): Promise<ReadonlyMap<string, string>> {
+  const subjects = new Map<string, string>();
+  const revisions = [...new Set(commits)].filter((commit) =>
+    COMMIT.test(commit)
+  );
+  if (revisions.length === 0) {
+    return subjects;
+  }
+  const output = await git(bare, "log", [
+    "log",
+    "--no-walk",
+    "--ignore-missing",
+    "--format=%H %s",
+    ...revisions,
+    "--",
+  ]).catch(() => "");
+  for (const line of output.split("\n")) {
+    const subject = line.slice(41).trim();
+    if (line[40] === " " && subject !== "") {
+      subjects.set(line.slice(0, 40), subject);
+    }
+  }
+  return subjects;
+}
+
+export async function firstParentDeployment(
+  source: string,
+  commit: string,
+  candidates: readonly {
+    readonly commit: string;
+    readonly deploymentId: string;
+  }[]
+): Promise<string | null> {
+  if (candidates.length === 0) {
+    return null;
+  }
+  const byCommit = new Map(
+    candidates.map((entry) => [entry.commit, entry.deploymentId])
+  );
+  const [head, ...ancestors] = (
+    await git(source, "rev-list", ["rev-list", "--first-parent", commit])
+  ).split("\n");
+  if (head !== commit) {
+    throw new Error("Git could not inspect the commit ancestry");
+  }
+  for (const ancestor of ancestors) {
+    const deploymentId = byCommit.get(ancestor);
+    if (deploymentId !== undefined) {
+      return deploymentId;
+    }
+  }
+  return null;
+}
+
+export async function mergeCommits(
+  bare: string,
+  first: string,
+  second: string
+) {
+  const version = /^git version (?<major>\d+)\.(?<minor>\d+)/u.exec(
+    await git(bare, "version", ["--version"])
+  )?.groups;
+  if (
+    version === undefined ||
+    Number(version.major) < 2 ||
+    (Number(version.major) === 2 && Number(version.minor) < 38)
+  ) {
+    throw new Error("Merging deployments requires Git 2.38 or newer");
+  }
+  const base = await git(bare, "merge-base", [
+    "merge-base",
+    first,
+    second,
+  ]).catch(() => {
+    throw new Error("Git histories are unrelated or unavailable");
+  });
+  if (!COMMIT.test(base)) {
+    throw new Error("Git histories are unrelated");
+  }
+  let tree: string;
+  try {
+    tree = await git(bare, "merge-tree", [
+      "merge-tree",
+      "--write-tree",
+      first,
+      second,
+    ]);
+  } catch {
+    throw new Error("Merge conflicts prevent combining these revisions");
+  }
+  if (!COMMIT.test(tree)) {
+    throw new Error("Git merge did not produce a tree");
+  }
+  const commit = await git(bare, "commit-tree", [
+    "-c",
+    "user.name=Devver",
+    "-c",
+    "user.email=devver@localhost",
+    "commit-tree",
+    tree,
+    "-p",
+    first,
+    "-p",
+    second,
+    "-m",
+    "Merge Devver deployments",
+  ]);
+  if (!COMMIT.test(commit)) {
+    throw new Error("Git merge did not produce a commit");
+  }
+  return commit;
 }
 
 export async function addWorktree(options: {

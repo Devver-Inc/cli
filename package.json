@@ -34,6 +34,7 @@
     "lint:boundaries": "depcruise packages tests scripts",
     "typecheck": "tsc --noEmit",
     "test": "bun test --timeout 30000",
+    "test:fast": "bun test packages --timeout 30000",
     "fix": "ultracite fix",
     "sync:version": "bun run scripts/sync-version.ts",
     "check:version": "bun run scripts/sync-version.ts --check",

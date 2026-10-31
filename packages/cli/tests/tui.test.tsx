@@ -6,6 +6,8 @@ import { act } from "react";
 
 import { App } from "../src/tui/app";
 
+process.env.DEVVER_REDUCED_MOTION = "1";
+
 test("all targets show a newer release after the TUI starts", async () => {
   for (const target of [
     { kind: "none" },
@@ -330,11 +332,11 @@ test("local deployments show only the opened checkout", async () => {
   );
   try {
     const frame = await setup.waitForFrame((value) =>
-      value.includes("11111111 ready")
+      value.includes("bbbbbbbb")
     );
-    expect(frame).toContain("11111111 ready  commit bbbbbbbb");
-    expect(frame).not.toContain("22222222");
-    expect(frame).not.toContain("33333333");
+    expect(frame).toContain("bbbbbbbb");
+    expect(frame).not.toContain("dddddddd");
+    expect(frame).not.toContain("eeeeeeee");
   } finally {
     await act(async () => {
       setup.renderer.destroy();
@@ -381,45 +383,91 @@ test("local deployments render as a tree with selection navigation", async () =>
     { width: 90, height: 20 }
   );
   try {
-    await setup.waitForFrame((value) => value.includes("11111111"));
+    await setup.waitForFrame((value) => value.includes("bbbbbbbb"));
     const frame = setup.captureCharFrame();
-    expect(frame).toContain("└─ 22222222 ready  commit dddddddd");
-    expect(frame).toContain("│ └─ 33333333 ready  commit eeeeeeee");
+    expect(frame).toContain("▸ ●  bbbbbbbb");
+    expect(frame).toContain("╰ next dddddddd");
+    expect(frame).toContain("dddddddd   ↓ child");
     await act(async () => {
       setup.mockInput.pressKey("j");
       await Promise.resolve();
     });
-    await setup.waitForFrame(
-      (value) => value.includes("22222222 ready") && value.includes("◆")
-    );
+    await setup.waitForFrame((value) => value.includes("▸ ●  └─ dddddddd"));
     await act(async () => {
       setup.mockInput.pressKey("l");
       await Promise.resolve();
     });
-    await setup.waitForFrame(
-      (value) => value.includes("33333333 ready") && value.includes("◆")
-    );
+    await setup.waitForFrame((value) => value.includes("▸ ●    └─ eeeeeeee"));
     await act(async () => {
       setup.mockInput.pressKey("h");
       await Promise.resolve();
     });
-    await setup.waitForFrame(
-      (value) => value.includes("22222222 ready") && value.includes("◆")
-    );
+    await setup.waitForFrame((value) => value.includes("▸ ●  └─ dddddddd"));
     await act(async () => {
       setup.mockInput.pressKey("k");
       await Promise.resolve();
     });
-    await setup.waitForFrame(
-      (value) => value.includes("11111111 ready") && value.includes("◆")
-    );
+    await setup.waitForFrame((value) => value.includes("▸ ●  bbbbbbbb"));
     await act(async () => {
       setup.mockInput.pressKey("h");
       await Promise.resolve();
     });
-    await setup.waitForFrame(
-      (value) => value.includes("33333333 ready") && value.includes("◆")
+    await setup.waitForFrame((value) => value.includes("▸ ●    └─ eeeeeeee"));
+  } finally {
+    await act(async () => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("d opens deployment details and Esc closes them", async () => {
+  const setup = await testRender(
+    <App
+      onExit={() => undefined}
+      target={{
+        kind: "local",
+        server: "dev",
+        workspace: "site",
+        loadDeployments: async () => [
+          {
+            deploymentId: "11111111-1111-4111-8111-111111111111",
+            repositoryId: "a".repeat(64),
+            commit: "b".repeat(40),
+            commitSubject: "Add the landing page",
+            createdAt: "2026-10-30T18:21:00.000Z",
+            parentDeploymentId: null,
+            status: "ready",
+            stage: null,
+            url: "http://a.localhost:1/",
+          },
+        ],
+      }}
+    />,
+    { width: 90, height: 24 }
+  );
+  try {
+    await setup.waitForFrame((value) => value.includes("Add the landing page"));
+    await act(async () => {
+      setup.mockInput.pressKey("d");
+      await Promise.resolve();
+    });
+    const frame = await setup.waitForFrame((value) =>
+      value.includes("11111111-1111-4111-8111-111111111111")
     );
+    expect(frame).toContain("b".repeat(40));
+    expect(frame).toContain("deployed as a root");
+    expect(frame).toContain("http://a.localhost:1/");
+    await act(async () => {
+      setup.mockInput.pressEscape();
+      await new Promise((resolve) => {
+        setTimeout(resolve, 80);
+      });
+    });
+    await setup.renderOnce();
+    expect(setup.captureCharFrame()).not.toContain(
+      "11111111-1111-4111-8111-111111111111"
+    );
+    expect(setup.captureCharFrame()).toContain("d details");
   } finally {
     await act(async () => {
       setup.renderer.destroy();
@@ -480,7 +528,7 @@ test("o opens a ready deployment URL and reports one without a URL", async () =>
       value.includes("This deployment is not ready, so it has no URL to open.")
     );
     expect(opened).toEqual(["http://a.localhost:1/"]);
-    expect(frame).toContain("22222222 failed (git)");
+    expect(frame).toContain("22222222  failed (git)");
   } finally {
     await act(async () => {
       setup.renderer.destroy();
@@ -542,9 +590,9 @@ test("c copies only a selected ready URL and reports clipboard failure", async (
   );
   try {
     const initial = await setup.waitForFrame((value) =>
-      value.includes("11111111 ready")
+      value.includes("11111111")
     );
-    expect(initial).not.toContain("http://a.localhost:1/");
+    expect(initial).toContain("├ url  http://a.localhost:1/");
     expect(initial).not.toContain("open with o");
     expect(initial).not.toContain("copy with c");
     expect(initial).toContain("o open · c copy");
@@ -556,7 +604,7 @@ test("c copies only a selected ready URL and reports clipboard failure", async (
       await setup.waitForFrame((value) =>
         value.includes("Sent deployment URL to clipboard.")
       )
-    ).not.toContain("http://a.localhost:1/");
+    ).not.toContain("Sent deployment URL to clipboard. http");
     expect(copied).toEqual(["http://a.localhost:1/"]);
     outcome = "failed";
     await act(async () => {
@@ -631,7 +679,7 @@ test("without a Git checkout the TUI does not claim server deployments match", a
     const frame = await setup.waitForFrame((value) =>
       value.includes("44444444")
     );
-    expect(frame).toContain("44444444 ready");
+    expect(frame).toContain("44444444");
     expect(frame).not.toContain("This checkout");
     expect(frame).not.toContain("Other server deployments");
   } finally {

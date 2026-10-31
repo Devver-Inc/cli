@@ -29,11 +29,17 @@ export const DeployRequest = Schema.Struct({
   commit: Commit,
 });
 
+export const MergeRequest = Schema.Struct({
+  firstDeploymentId: DeploymentId,
+  secondDeploymentId: DeploymentId,
+});
+
 export const DeploymentResponse = Schema.Struct({
   deploymentId: DeploymentId,
   repositoryId: Schema.String,
   commit: Commit,
   parentDeploymentId: Schema.NullOr(DeploymentId),
+  secondParentDeploymentId: Schema.NullOr(DeploymentId),
   url: Schema.String,
 });
 
@@ -42,7 +48,10 @@ export const DeploymentStatuses = Schema.Array(
     deploymentId: DeploymentId,
     repositoryId: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
     commit: Commit,
+    commitSubject: Schema.NullOr(Schema.String),
+    createdAt: Schema.String,
     parentDeploymentId: Schema.NullOr(DeploymentId),
+    secondParentDeploymentId: Schema.NullOr(DeploymentId),
     displayName: Schema.NullOr(DisplayName),
     status: Schema.Literals(["preparing", "ready", "failed", "degraded"]),
     stage: Schema.NullOr(DeployStageSchema),
@@ -67,6 +76,12 @@ export class DeploymentNotFound extends Schema.Error<DeploymentNotFound>(
 )(
   { _tag: Schema.tag("DeploymentNotFound"), message: Schema.String },
   { httpApiStatus: 404 }
+) {}
+
+// oxlint-disable-next-line unicorn/throw-new-error -- Schema.Error declares a typed HTTP error.
+export class MergeRejected extends Schema.Error<MergeRejected>("MergeRejected")(
+  { _tag: Schema.tag("MergeRejected"), message: Schema.String },
+  { httpApiStatus: 400 }
 ) {}
 
 export const IdentityResponse = Schema.Struct({
@@ -95,6 +110,13 @@ export const api = HttpApi.make("DevverControl")
           payload: DeployRequest,
           success: DeploymentResponse,
           error: DeployFailure,
+        })
+      )
+      .add(
+        HttpApiEndpoint.post("merge", "/deployments/merge", {
+          payload: MergeRequest,
+          success: DeploymentResponse,
+          error: [MergeRejected, DeployFailure],
         })
       )
       .add(
