@@ -90,18 +90,20 @@ test("init and cloud deploy reject unsupported or missing configs without writin
     writeFileSync(
       join(project, "package.json"),
       JSON.stringify({
-        dependencies: { next: "1" },
-        scripts: { build: "next build", start: "next start" },
+        dependencies: { vite: "1", react: "1" },
+        scripts: { build: "vite build", preview: "vite preview" },
       })
     );
     writeFileSync(configPath, JSON.stringify(localTarget));
     const before = readFileSync(configPath, "utf-8");
     const unsupported = await run("init");
     expect(unsupported.status).not.toBe(0);
-    expect(unsupported.output).toContain(".: next (meta)");
+    expect(unsupported.output).toContain(".: vite (vite)");
     expect(unsupported.output).toContain(
-      "Only a single root static source is supported"
+      "Devver init can't configure vite yet. It currently supports static sites. Add a verified .devver.yaml to deploy anything else. No config was written."
     );
+    expect(unsupported.output).not.toContain("UnknownError");
+    expect(unsupported.output).not.toContain("at writeConfigFile");
     expect(existsSync(join(project, ".devver.yaml"))).toBe(false);
     expect(existsSync(join(project, ".gitignore"))).toBe(false);
     expect(readFileSync(configPath, "utf-8")).toBe(before);
