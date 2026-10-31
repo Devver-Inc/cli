@@ -1,7 +1,7 @@
-import { Console, Data, Effect, Schema } from "effect";
+import { Cause, Console, Data, Effect, Schema } from "effect";
 import { Argument, Command } from "effect/cli";
 
-import { readConfigFile, writeConfigFile } from "../config";
+import { InitAbortError, readConfigFile, writeConfigFile } from "../config";
 import {
   CLOUD_API_URL,
   getConfigValue,
@@ -110,15 +110,19 @@ export const init = Command.make("init", {}, () =>
     }
     if (target["local-target"] === undefined) {
       // oxlint-disable-next-line typescript/consistent-return -- A failed Effect exits init before writing a config.
-      return yield* new ConfigCommandError({
+      return yield* new InitAbortError({
         message:
           target["cloud-target"] === true
             ? "Cloud config generation requires a reviewed deployment recipe. Add a verified .devver.yaml manually; no config was written."
             : "No target selected. Run 'devver attach <url>' for a local server or 'devver cloud', then run 'devver init' again. No config was written.",
       });
     }
-    yield* Effect.try(() => {
-      writeConfigFile(detection);
+    yield* Effect.try({
+      try: () => {
+        writeConfigFile(detection);
+      },
+      catch: (error) =>
+        error instanceof InitAbortError ? error : new Cause.UnknownError(error),
     });
   })
 );

@@ -84,7 +84,7 @@ test("a malformed package does not turn an index into a static project", async (
   });
   expect(() => {
     writeConfigFile(detection, root);
-  }).toThrow("Cannot generate a deployable config");
+  }).toThrow("No config was written");
 });
 
 test.each([
@@ -118,7 +118,7 @@ test("index.html with an unknown build output cannot create a guessed static con
   });
   expect(() => {
     writeConfigFile(detection, root);
-  }).toThrow("Cannot generate a deployable config");
+  }).toThrow("No config was written");
   expect(readConfigFile(root)).toBeNull();
 });
 
@@ -148,7 +148,7 @@ test("ambiguous frameworks cannot create a guessed config", async () => {
   });
   expect(() => {
     writeConfigFile(detection, root);
-  }).toThrow("Cannot generate a deployable config");
+  }).toThrow("No config was written");
   expect(readConfigFile(root)).toBeNull();
 });
 
@@ -162,7 +162,9 @@ test("unknown framework with scripts cannot create a guessed config", async () =
   });
   expect(() => {
     writeConfigFile(detection, root);
-  }).toThrow("Cannot generate a deployable config");
+  }).toThrow(
+    "Devver didn't recognize an app it can configure here. It currently supports static sites."
+  );
 });
 
 test("Vite is identified but does not acquire an invented start command", async () => {
@@ -179,7 +181,9 @@ test("Vite is identified but does not acquire an invented start command", async 
   });
   expect(() => {
     writeConfigFile(detection, root);
-  }).toThrow("Cannot generate a deployable config");
+  }).toThrow(
+    "Devver init can't configure vite yet. It currently supports static sites."
+  );
 });
 
 test("known framework without required scripts cannot create a guessed config", async () => {
@@ -193,7 +197,9 @@ test("known framework without required scripts cannot create a guessed config", 
   });
   expect(() => {
     writeConfigFile(detection, root);
-  }).toThrow("Cannot generate a deployable config");
+  }).toThrow(
+    "Devver init can't configure next yet. It currently supports static sites."
+  );
 });
 
 test("existing config remains unchanged even when detection changes", async () => {
@@ -266,7 +272,7 @@ test("root and nested package have independent stacks and deterministic paths", 
   ]);
   expect(() => {
     writeConfigFile(detection, root);
-  }).toThrow("workspace with nested projects");
+  }).toThrow("This workspace has multiple projects");
   expect(readConfigFile(root)).toBeNull();
 });
 
@@ -288,7 +294,7 @@ test("unknown workspace root does not mask two child projects", async () => {
   ]);
   expect(() => {
     writeConfigFile(detection, root);
-  }).toThrow("workspace with nested projects");
+  }).toThrow("This workspace has multiple projects");
   expect(readConfigFile(root)).toBeNull();
 });
 
@@ -302,7 +308,7 @@ test("a single recognized nested project is reported but not given guessed comma
   });
   expect(() => {
     writeConfigFile(detection, root);
-  }).toThrow("workspace with nested projects");
+  }).toThrow("This workspace has multiple projects");
 });
 
 test("ignored build and node_modules trees and symlink directories are not traversed", async () => {
@@ -332,6 +338,6 @@ test("recognized backend with scripts cannot generate unreviewed commands", asyn
   const detection = await detectProject(root);
   expect(() => {
     writeConfigFile(detection, root);
-  }).toThrow("Only a single root static source is supported");
+  }).toThrow("No config was written");
   expect(readConfigFile(root)).toBeNull();
 });

@@ -2,11 +2,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { cwd } from "node:process";
 
-import { Schema } from "effect";
+import { Data, Schema } from "effect";
 import { dump, load } from "js-yaml";
 
 import "./detectors";
-import type { ProjectDetection } from "./detect";
+import type { PrimaryStack, ProjectDetection } from "./detect";
+
+const localInitSupport: Partial<
+  Record<PrimaryStack["category"], { label: string; config: unknown }>
+> = {
+  static: { label: "static sites", config: { static: { directory: "." } } },
+};
+
+const supportedLabels = Object.values(localInitSupport)
+  .map((entry) => entry.label)
+  .join(", ");
 
 const ServiceConfigSchema = Schema.Struct({
   root: Schema.optional(Schema.String),
@@ -40,6 +50,10 @@ const DevverConfigFileSchema = Schema.Union([
 
 export type ServiceConfig = typeof ServiceConfigSchema.Type;
 export type DevverConfigFile = typeof DevverConfigFileSchema.Type;
+
+export class InitAbortError extends Data.TaggedError("InitAbortError")<{
+  message: string;
+}> {}
 
 const decodeDevverConfigFile = Schema.decodeUnknownSync(DevverConfigFileSchema);
 
@@ -79,20 +93,24 @@ export function writeConfigFile(
 
   const [project] = detection.projects;
   if (detection.projects.length !== 1 || project?.root !== ".") {
-    throw new Error(
-      "Cannot generate a config for a workspace with nested projects. Add a verified .devver.yaml manually."
-    );
+    throw new InitAbortError({
+      message:
+        "This workspace has multiple projects. Devver can't create a local config for them yet. No config was written.",
+    });
   }
 
-  if (project.stack.category !== "static") {
-    throw new Error(
-      `Cannot generate a deployable config for ${project.stack.framework ?? "this project"}. Only a single root static source is supported by local init; add a verified .devver.yaml for other workloads.`
-    );
+  const supported = localInitSupport[project.stack.category];
+  if (supported === undefined) {
+    const found =
+      project.stack.framework === null
+        ? "Devver didn't recognize an app it can configure here."
+        : `Devver init can't configure ${project.stack.framework} yet.`;
+    throw new InitAbortError({
+      message: `${found} It currently supports ${supportedLabels}. Add a verified .devver.yaml to deploy anything else. No config was written.`,
+    });
   }
-  fs.writeFileSync(
-    configPath,
-    dump({ static: { directory: "." } }, { noRefs: true }),
-    { flag: "wx" }
-  );
+  fs.writeFileSync(configPath, dump(supported.config, { noRefs: true }), {
+    flag: "wx",
+  });
   console.log(`\nConfig written to ${configPath}`);
 }
