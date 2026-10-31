@@ -459,7 +459,6 @@ test("d opens deployment details and Esc closes them", async () => {
     expect(frame).toContain("http://a.localhost:1/");
     await act(async () => {
       setup.mockInput.pressEscape();
-      // A lone ESC byte is ambiguous: the parser resolves it once no sequence follows.
       await new Promise((resolve) => {
         setTimeout(resolve, 80);
       });

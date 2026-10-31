@@ -30,7 +30,6 @@ interface Lane {
   column: number;
 }
 
-// shortcut: concurrent lanes can push labels off a narrow terminal; add horizontal scrolling if that happens.
 const STRIDE = 2;
 
 const GLYPHS = new Map([

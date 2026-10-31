@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="360" viewBox="0 0 960 360" role="img" aria-labelledby="title desc">
+  <title id="title">Devver — from code to feedback</title>
+  <desc id="desc">Deploy locally or in the cloud, test, share, gather feedback, and move to the next feature with your team and agents.</desc>
+  <defs>
+    <linearGradient id="surface" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#121c30"/>
+      <stop offset="1" stop-color="#080d18"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="360" rx="20" fill="url(#surface)"/>
+  <rect x="1" y="1" width="958" height="358" rx="19" fill="none" stroke="#293449" stroke-width="2"/>
+  <circle cx="44" cy="46" r="5" fill="#7de8d1"/>
+  <text x="62" y="51" fill="#a8b5c9" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" letter-spacing="2">CLOUD + LOCAL</text>
+  <text x="44" y="143" fill="#f3f6fa" font-family="system-ui, -apple-system, sans-serif" font-size="43" font-weight="700">Deploy to test.</text>
+  <text x="44" y="201" fill="#7de8d1" font-family="system-ui, -apple-system, sans-serif" font-size="43" font-weight="700">Get to what’s next.</text>
+  <text x="46" y="257" fill="#a8b5c9" font-family="system-ui, -apple-system, sans-serif" font-size="16">Share a build. Hear what matters. Keep moving.</text>
+  <rect x="577" y="37" width="340" height="286" rx="13" fill="#0c1525" stroke="#30425a"/>
+  <path d="M577 50a13 13 0 0 1 13-13h314a13 13 0 0 1 13 13v27H577z" fill="#1b293d"/>
+  <circle cx="597" cy="57" r="4" fill="#fb817c"/>
+  <circle cx="614" cy="57" r="4" fill="#f4c877"/>
+  <circle cx="631" cy="57" r="4" fill="#7de8d1"/>
+  <text x="733" y="62" fill="#a8b5c9" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" letter-spacing="1">THE LOOP</text>
+  <path d="M613 108v169" fill="none" stroke="#506784" stroke-width="2"/>
+  <circle cx="613" cy="109" r="6" fill="#7de8d1"/>
+  <circle cx="613" cy="164" r="6" fill="#86d6e1"/>
+  <circle cx="613" cy="220" r="6" fill="#929fec"/>
+  <circle cx="613" cy="276" r="6" fill="#97a7ff"/>
+  <text x="636" y="115" fill="#e5edf6" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15">01  DEPLOY</text>
+  <text x="636" y="138" fill="#96a8bf" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11">LOCAL  /  CLOUD</text>
+  <text x="636" y="170" fill="#e5edf6" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15">02  TEST</text>
+  <text x="636" y="226" fill="#e5edf6" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15">03  SHARE + LEARN</text>
+  <text x="636" y="282" fill="#e5edf6" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15">04  NEXT FEATURE</text>
+</svg>

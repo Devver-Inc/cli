@@ -40,12 +40,10 @@ def await_output(pattern: bytes, since: int = 0) -> None:
 
 try:
     if mode == "list-open":
-        await_output(b"\xe2\x97\x86.{0,100}" + first_id[:8].encode())
-        second_id = expected_url.split("//", 1)[1].split(".", 1)[0]
-        await_output(re.escape(second_id[:8].encode()))
+        await_output(re.escape(first_id.encode()))
         selected_at = len(output)
         os.write(master, b"j")
-        await_output(b"\xe2\x97\x86.{0,100}" + second_id[:8].encode(), selected_at)
+        await_output(re.escape(expected_url.encode()), selected_at)
         os.write(master, b"o")
         opened = Path(proof) / "tui-opened.txt"
         deadline = time.monotonic() + 10

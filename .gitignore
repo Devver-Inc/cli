@@ -33,6 +33,7 @@ packages/cli-*/fixture
 packages/cli-*/.staging/
 
 # caches
+/.epiq/
 /.playwright-mcp/
 .eslintcache
 .cache
