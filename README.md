@@ -35,6 +35,25 @@ npm install -g @devver-inc/cli          # stable
 # npm requires Node to install; devver and devver-server run without either runtime
 ```
 
+To test stable and nightly side by side, install them under separate prefixes instead of installing both globally (which would overwrite the same `devver` command):
+
+```bash
+npm install --prefix "$HOME/.local/devver-latest" @devver-inc/cli@latest
+npm install --prefix "$HOME/.local/devver-nightly" @devver-inc/cli@nightly
+
+"$HOME/.local/devver-latest/node_modules/.bin/devver" --version
+"$HOME/.local/devver-nightly/node_modules/.bin/devver" --version
+```
+
+Optional zsh aliases (add to `~/.zshrc`, then open a new terminal):
+
+```sh
+alias dvr='"$HOME/.local/devver-latest/node_modules/.bin/devver"'
+alias dvrn='"$HOME/.local/devver-nightly/node_modules/.bin/devver"'
+```
+
+Run the corresponding `npm install --prefix ...` command again to update either channel; these local installs do not use the global-install `devver --update` flow.
+
 For CI without Node, pin an actual `nightly-*` or `dev-*` tag from [GitHub Releases](https://github.com/Devver-Inc/cli/releases) with mise's GitHub backend:
 
 ```toml
