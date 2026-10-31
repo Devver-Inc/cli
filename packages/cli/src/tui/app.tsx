@@ -255,7 +255,6 @@ function isRepeatedSelection(
   return key.repeated === true && (action === "merge" || action === "select");
 }
 
-// Two short lines stay readable in 80 columns, where one list of every key did not.
 function hintFor({
   details,
   editing,

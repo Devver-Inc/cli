@@ -1,6 +1,6 @@
 {
   "name": "@devver-inc/cli-linux-x64",
-  "version": "1.2.0",
+  "version": "0.1.0",
   "private": false,
   "description": "Linux x64 executables for @devver-inc/cli",
   "homepage": "https://github.com/Devver-Inc/cli#readme",

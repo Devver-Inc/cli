@@ -4,7 +4,7 @@ A developer with an attached server can browse the current Git checkout's deploy
 
 ## Sub-features
 
-- The list shows the current checkout's deployment IDs and statuses without showing ready URLs in the rows.
+- The list names each deployment by its display name or commit subject. The selected row expands to show its URL; deployment IDs appear in the detail panel, not the list.
 - `j` selects the next deployment, `o` opens its ready URL, and `q` exits.
 - `c` sends a selected ready URL to the clipboard. Clipboard support and acceptance vary by host and terminal; this recipe does not write to the operator's clipboard.
 - A failed listing suggests `devver server status` rather than claiming that the server has no deployments.
@@ -15,7 +15,7 @@ Attach a local server, deploy from a Git checkout, and run `devver tui` from tha
 
 ## Driving it with Bash
 
-Run `bash .pi/skills/verify-devver-cli/verify.sh tui` on macOS or Linux with Bun, Git, curl, and Python 3. The helper starts one isolated server, deploys the same committed fixture twice, and opens the TUI in a disposable pseudo-terminal. It sends `j`, `o`, and `q`. An isolated `open` or `xdg-open` stub records the selected URL instead of starting a real browser. The helper fetches that URL separately and checks that `tui-opened.txt` contains the second deployment's exact URL. It then stops the server and starts the TUI again to check the unreachable-server message. `tui-list-open.txt` and `tui-unreachable.txt` retain the terminal output. `actions.txt` must end in `PASS tui`.
+Run `bash .pi/skills/verify-devver-cli/verify.sh tui` on macOS or Linux with Bun, Git, curl, and Python 3. The helper starts one isolated server, deploys the same committed fixture twice, and opens the TUI in a disposable pseudo-terminal. It checks the selected first deployment's URL, sends `j` to select the second deployment, checks its URL, then sends `o` and `q`. An isolated `open` or `xdg-open` stub records the selected URL instead of starting a real browser. The helper fetches that URL separately and checks that `tui-opened.txt` contains the second deployment's exact URL. It then stops the server and starts the TUI again to check the unreachable-server message. `tui-list-open.txt` and `tui-unreachable.txt` retain the terminal output. `actions.txt` must end in `PASS tui`.
 
 ## Gotchas
 

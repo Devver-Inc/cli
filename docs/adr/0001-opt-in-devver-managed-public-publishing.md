@@ -1,0 +1,7 @@
+# Opt-in Devver-managed public publishing
+
+Local server creation and deployment remain account-free, offline-capable, and loopback-only by default. For optional publishing, Devver owns the domain, Cloudflare account, and provisioning relay; a signed-in user (including a free-account user) enrolls a server instance either at creation or later, with an isolated tunnel and connector credential per instance. This trades Devver's infrastructure and abuse-management burden for a simple publishing path; independently exposing an app through a developer's own service remains possible but is not a Devver-managed integration.
+
+Each deployment receives a stable first-level HTTPS hostname with an explicit DNS route to its instance tunnel; the local app router accepts only authorized deployment hostnames and never routes to the control API. Local deployment remains successful if publishing fails. Unpublishing removes one route, disabling publishing revokes an instance's access while reserving its names, suspension restricts a terms-violating deployment until Devver lifts it, and account deletion revokes managed publishing without touching local deployments. Public readiness requires an external end-to-end check.
+
+Implementation is gated on real Cloudflare checks of per-instance credential isolation and revocation, HTTPS, correct multi-deployment routing, WebSocket/HMR where applicable, offline behavior, connector packaging and safe credential handoff, and proof that public routes cannot reach control. No public URLs are enabled by this decision alone.
