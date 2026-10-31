@@ -1,5 +1,5 @@
-import { realpath } from "node:fs/promises";
-import { join } from "node:path";
+import { access, readFile, realpath } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 import { Console, Data, Effect, Option, Schema } from "effect";
 
@@ -16,6 +16,7 @@ export type UpdatableRelease =
       readonly installer: "npm";
       readonly channel: "stable" | "nightly";
       readonly version: string;
+      readonly prefix?: string;
     }
   | {
       readonly installer: "brew";
@@ -84,7 +85,14 @@ export function updatePlan(
     return undefined;
   }
   return release.installer === "npm"
-    ? ["npm", "install", "-g", `@devver-inc/cli@${candidate.version}`]
+    ? [
+        "npm",
+        "install",
+        ...(release.prefix === undefined
+          ? ["-g"]
+          : ["--prefix", release.prefix]),
+        `@devver-inc/cli@${candidate.version}`,
+      ]
     : ["brew", "upgrade", "devver-cli"];
 }
 
@@ -152,6 +160,55 @@ export const isNpmInstallation = (
     return false;
   });
 
+const decodePrefixManifest = Schema.decodeUnknownSync(
+  Schema.Record(Schema.String, Schema.Unknown)
+);
+const decodePrefixDependencies = Schema.decodeUnknownSync(
+  Schema.Record(Schema.String, Schema.String)
+);
+
+export const prefixedNpmInstallation = (
+  running: string,
+  platform: (typeof PUBLISHED_PLATFORMS)[number],
+  version: string
+) =>
+  Effect.gen(function* () {
+    const root = dirname(dirname(dirname(running)));
+    for (const prefix of [
+      dirname(root),
+      dirname(dirname(dirname(dirname(root)))),
+    ]) {
+      const eligible = yield* optional(
+        Effect.tryPromise(async () => {
+          await access(join(prefix, ".devver-self-update"));
+          const manifest: unknown = JSON.parse(
+            await readFile(join(prefix, "package.json"), "utf-8")
+          );
+          const decoded = decodePrefixManifest(manifest);
+          const dependencies = decodePrefixDependencies(decoded.dependencies);
+          return (
+            Object.keys(decoded).length === 1 &&
+            Object.keys(dependencies).length === 1 &&
+            [version, `^${version}`, `~${version}`].includes(
+              dependencies["@devver-inc/cli"] ?? ""
+            )
+          );
+        })
+      );
+      if (
+        eligible === true &&
+        (yield* isNpmInstallation(
+          running,
+          join(prefix, "node_modules"),
+          platform
+        ))
+      ) {
+        return prefix;
+      }
+    }
+    return undefined;
+  });
+
 export const installedRelease: Effect.Effect<UpdatableRelease | undefined> =
   Effect.gen(function* () {
     const stamped = stampedRelease();
@@ -172,6 +229,16 @@ export const installedRelease: Effect.Effect<UpdatableRelease | undefined> =
       (yield* isNpmInstallation(running, root, platform))
     ) {
       return { installer: "npm", ...stamped };
+    }
+    if (platform !== undefined) {
+      const prefix = yield* prefixedNpmInstallation(
+        running,
+        platform,
+        stamped.version
+      );
+      if (prefix !== undefined) {
+        return { installer: "npm", ...stamped, prefix };
+      }
     }
     if (stamped.channel !== "stable") {
       return undefined;
@@ -256,7 +323,7 @@ export const runUpdate = Effect.gen(function* () {
   if (release === undefined) {
     return yield* new UpdateError({
       message:
-        "This installation cannot self-update. Install the published npm package globally or use Homebrew stable.",
+        "This installation cannot self-update. Use a global npm install, an opted-in standalone npm prefix, or Homebrew stable.",
     });
   }
   if (release.installer === "brew") {

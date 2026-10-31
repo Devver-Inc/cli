@@ -40,7 +40,7 @@ Inside `packages/cli/src/`:
 
 `cli/new.ts` lazily imports one supervisor per platform: launchd on macOS, `systemd-run --user` on Linux, Task Scheduler on Windows. `supervised-server-posix.ts` holds what both POSIX supervisors share. Any other platform gets one honest failure.
 
-`cli/update.ts` advertises `--update` only where the installer can carry it: global npm stable and nightly use their dist-tags, Homebrew stable uses its formula; source builds, dev previews and manually downloaded binaries do not.
+`cli/update.ts` advertises `--update` only where the installer can carry it: global npm stable and nightly use their dist-tags; dedicated npm prefixes opt in with a `.devver-self-update` file and a manifest containing only the CLI dependency, and reinstall into the same prefix; Homebrew stable uses its formula. Source builds, unmarked project dependencies, dev previews and manually downloaded binaries do not self-update.
 
 ## The TUI
 

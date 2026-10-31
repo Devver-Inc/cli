@@ -33,7 +33,9 @@ test("all targets show a newer release after the TUI starts", async () => {
     );
     try {
       const frame = await setup.waitForFrame((value) =>
-        value.includes("devver --update · v1.3.0-nightly.build.10.1 available")
+        value.includes(
+          "Run with --update · v1.3.0-nightly.build.10.1 available"
+        )
       );
       expect(frame).toContain("v1.3.0-nightly.build.10.1 available");
       expect(frame).toContain("v1.2.0 (nightly)");

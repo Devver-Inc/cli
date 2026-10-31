@@ -18,7 +18,7 @@ After `bun run build`, use `./devver new server <name>` (or put this checkout fi
 
 ## Updating the CLI
 
-A globally installed npm CLI can run `devver --update`. It checks the published npm tag and installs an exact newer version on the same channel: `latest` for stable or `nightly` for nightly. A stable Homebrew installation uses `brew update` and `brew upgrade devver-cli` when its formula has a newer stable version. The terminal UI shows `devver --update` only when it detects a supported installation and a newer release. Source, dev preview, and standalone downloads do not self-update. For those builds, replace the CLI and its matching versioned server together using the original distribution method. Existing supervised servers retain their pinned binaries.
+A global npm install or an opted-in dedicated npm prefix can run its CLI with `--update`. It checks the published npm tag and installs an exact newer version on the same channel and into the same installation: `latest` for stable or `nightly` for nightly. A stable Homebrew installation uses `brew update` and `brew upgrade devver-cli` when its formula has a newer stable version. The terminal UI shows an update hint only when it detects a supported installation and a newer release. Source, dev preview, and standalone downloads do not self-update. For those builds, replace the CLI and its matching versioned server together using the original distribution method. Existing supervised servers retain their pinned binaries.
 
 ## Development and release versions
 
@@ -40,6 +40,7 @@ To test stable and nightly side by side, install them under separate prefixes in
 ```bash
 npm install --prefix "$HOME/.local/devver-latest" @devver-inc/cli@latest
 npm install --prefix "$HOME/.local/devver-nightly" @devver-inc/cli@nightly
+touch "$HOME/.local/devver-latest/.devver-self-update" "$HOME/.local/devver-nightly/.devver-self-update"
 
 "$HOME/.local/devver-latest/node_modules/.bin/devver" --version
 "$HOME/.local/devver-nightly/node_modules/.bin/devver" --version
@@ -52,7 +53,7 @@ alias dvr='"$HOME/.local/devver-latest/node_modules/.bin/devver"'
 alias dvrn='"$HOME/.local/devver-nightly/node_modules/.bin/devver"'
 ```
 
-Run the corresponding `npm install --prefix ...` command again to update either channel; these local installs do not use the global-install `devver --update` flow.
+Once installed, run `dvr --update` or `dvrn --update` to update only that directory and channel. The TUI also shows an update notice when one is available. Without the opt-in file (or if the directory also contains another package), use the corresponding `npm install --prefix ...` command instead; project-local installs are not self-updated.
 
 For CI without Node, pin an actual `nightly-*` or `dev-*` tag from [GitHub Releases](https://github.com/Devver-Inc/cli/releases) with mise's GitHub backend:
 

@@ -156,7 +156,7 @@ function CloudApp({
       )}
       {update !== undefined && (
         <text fg={theme.mint} wrapMode="none">
-          {`devver --update · v${update.version} available`}
+          {`Run with --update · v${update.version} available`}
         </text>
       )}
       <box
@@ -711,7 +711,7 @@ function LocalApp({
       {merging && <text fg={theme.muted}>Merging deployments…</text>}
       {update !== undefined && (
         <text fg={theme.mint} wrapMode="none">
-          {`devver --update · v${update.version} available`}
+          {`Run with --update · v${update.version} available`}
         </text>
       )}
       <box
@@ -785,7 +785,7 @@ function StandaloneApp({ version, update, onExit }: AppProps): React.ReactNode {
       </box>
       {update !== undefined && (
         <text fg={theme.mint} wrapMode="none">
-          {`devver --update · v${update.version} available`}
+          {`Run with --update · v${update.version} available`}
         </text>
       )}
       <box

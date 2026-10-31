@@ -16,6 +16,7 @@ import { Effect } from "effect";
 import {
   installedRelease,
   isNpmInstallation,
+  prefixedNpmInstallation,
   isNewer,
   updatePlan,
 } from "../packages/cli/src/cli/update";
@@ -94,6 +95,106 @@ test("npm installation recognizes sibling and nested platform binaries only", as
     ).toBe(false);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("only an opted-in dedicated npm prefix can self-update", async () => {
+  const prefix = realpathSync(mkdtempSync(join(tmpdir(), "devver-prefix-")));
+  try {
+    const running = join(
+      prefix,
+      "node_modules",
+      "@devver-inc",
+      "cli-darwin-arm64",
+      "devver"
+    );
+    mkdirSync(join(running, ".."), { recursive: true });
+    writeFileSync(running, "fixture");
+    writeFileSync(
+      join(prefix, "package.json"),
+      JSON.stringify({ dependencies: { "@devver-inc/cli": "^0.1.0" } })
+    );
+    expect(
+      await Effect.runPromise(
+        prefixedNpmInstallation(running, "darwin-arm64", "0.1.0")
+      )
+    ).toBeUndefined();
+    writeFileSync(join(prefix, ".devver-self-update"), "");
+    expect(
+      await Effect.runPromise(
+        prefixedNpmInstallation(running, "darwin-arm64", "0.1.0")
+      )
+    ).toBe(prefix);
+    expect(
+      await Effect.runPromise(
+        prefixedNpmInstallation(running, "darwin-arm64", "0.2.0")
+      )
+    ).toBeUndefined();
+    expect(
+      await Effect.runPromise(
+        prefixedNpmInstallation(running, "linux-x64", "0.1.0")
+      )
+    ).toBeUndefined();
+    writeFileSync(
+      join(prefix, "package.json"),
+      JSON.stringify({
+        dependencies: { "@devver-inc/cli": "^0.1.0", other: "1.0.0" },
+      })
+    );
+    expect(
+      await Effect.runPromise(
+        prefixedNpmInstallation(running, "darwin-arm64", "0.1.0")
+      )
+    ).toBeUndefined();
+    writeFileSync(
+      join(prefix, "package.json"),
+      JSON.stringify({
+        name: "project",
+        dependencies: { "@devver-inc/cli": "^0.1.0" },
+      })
+    );
+    expect(
+      await Effect.runPromise(
+        prefixedNpmInstallation(running, "darwin-arm64", "0.1.0")
+      )
+    ).toBeUndefined();
+  } finally {
+    rmSync(prefix, { recursive: true, force: true });
+  }
+});
+
+test("nested npm prefix recognizes the matching platform only", async () => {
+  const prefix = realpathSync(mkdtempSync(join(tmpdir(), "devver-prefix-")));
+  try {
+    const running = join(
+      prefix,
+      "node_modules",
+      "@devver-inc",
+      "cli",
+      "node_modules",
+      "@devver-inc",
+      "cli-linux-x64",
+      "devver"
+    );
+    mkdirSync(join(running, ".."), { recursive: true });
+    writeFileSync(running, "fixture");
+    writeFileSync(join(prefix, ".devver-self-update"), "");
+    writeFileSync(
+      join(prefix, "package.json"),
+      JSON.stringify({ dependencies: { "@devver-inc/cli": "^0.1.0" } })
+    );
+    expect(
+      await Effect.runPromise(
+        prefixedNpmInstallation(running, "linux-x64", "0.1.0")
+      )
+    ).toBe(prefix);
+    expect(
+      await Effect.runPromise(
+        prefixedNpmInstallation(join(prefix, "other"), "linux-x64", "0.1.0")
+      )
+    ).toBeUndefined();
+  } finally {
+    rmSync(prefix, { recursive: true, force: true });
   }
 });
 
@@ -177,6 +278,23 @@ test("installer plan pins the npm version and upgrades the brew formula", () => 
     "install",
     "-g",
     "@devver-inc/cli@1.3.0-nightly.build.10.1",
+  ]);
+  expect(
+    updatePlan(
+      {
+        channel: "stable",
+        installer: "npm",
+        version: "1.2.0",
+        prefix: "/tmp/devver-latest",
+      },
+      { version: "1.3.0", url: "https://example.test" }
+    )
+  ).toEqual([
+    "npm",
+    "install",
+    "--prefix",
+    "/tmp/devver-latest",
+    "@devver-inc/cli@1.3.0",
   ]);
   expect(
     updatePlan(
