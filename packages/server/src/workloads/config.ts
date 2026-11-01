@@ -12,14 +12,7 @@ export type DevverFile = typeof DevverFileSchema.Type;
 
 const decodeDevverFile = Schema.decodeUnknownSync(DevverFileSchema);
 
-/**
- * Read the committed configuration of one worktree.
- *
- * An absent file is an empty configuration, not an error: a worktree with no
- * `.devver.yaml` is deployable. Anything unreadable, oversized or malformed
- * fails with prose only, because filesystem errors can carry local paths and
- * the YAML content is untrusted input.
- */
+// Do not expose filesystem paths or untrusted YAML in configuration errors.
 export async function readDevverFile(worktree: string): Promise<DevverFile> {
   const root = await realpath(worktree);
   const configPath = join(root, ".devver.yaml");

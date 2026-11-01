@@ -316,6 +316,11 @@ function generatedConfig(instance: string, app: App) {
   expect(Number(listening)).toBeGreaterThan(0);
   expect(listening).not.toBe(app.port);
   expect(text).toContain('listen_ip "127.0.0.1"');
+  expect(text).toContain("default_http_port #null");
+  expect(text).toContain("default_https_port #null");
+  expect(text).toContain(
+    'rewrite "^/([^?#]*/)*[^./?#]*(?:[?#].*)?$" "/" file=#false directory=#false last=#true'
+  );
 }
 
 async function failedDeployments(
@@ -357,6 +362,24 @@ async function failedDeployments(
   git(site, "add", "-A");
   git(site, "commit", "-q", "-m", "valid static site after rejected config");
   if (!onWindows) {
+    const unsafe = join(site, "{env:HOME}");
+    mkdirSync(unsafe);
+    writeFileSync(join(unsafe, "index.html"), "<h1>unsafe path</h1>");
+    writeFileSync(
+      join(site, ".devver.yaml"),
+      "static:\n  directory: '{env:HOME}'\n"
+    );
+    git(site, "add", ".");
+    git(site, "commit", "-q", "-m", "unsafe static directory");
+    const rejected = ws.cli(site, "deploy");
+    expect(rejected.status).not.toBe(0);
+    expect(rejected.output).toContain("config:");
+    expect(rejected.output).not.toMatch(APP_URL);
+    expect(rejected.output).not.toContain("unsafe path");
+    rmSync(join(site, ".devver.yaml"));
+    rmSync(unsafe, { recursive: true });
+    git(site, "add", "-A");
+    git(site, "commit", "-q", "-m", "valid static site after unsafe directory");
     const ferron = join(
       dirname(instance),
       "..",

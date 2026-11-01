@@ -274,23 +274,19 @@ jobs:
         run: |
           set -e
 
-          # Extract organization and repo name from GITHUB_REPOSITORY
           ORG="${GITHUB_REPOSITORY%/*}"
           REPO="${GITHUB_REPOSITORY#*/}"
 
-          # Clone the tap repository (adjust this to your actual tap repo)
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/${ORG}/homebrew-tap.git" tap || {
             echo "Homebrew tap repository not found. Skipping Homebrew update."
             exit 0
           }
           cd tap
 
-          # Create Formula directory if it doesn't exist
           mkdir -p Formula
 
           BASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
 
-          # Download and compute SHA256 for each platform
           echo "Downloading artifacts and computing checksums..."
 
           curl -sL "${BASE_URL}/devver-cli-aarch64-apple-darwin.tar.gz" -o /tmp/arm64-darwin.tar.gz
@@ -302,7 +298,6 @@ jobs:
           echo "SHA256 (aarch64-apple-darwin): ${SHA_ARM64_DARWIN}"
           echo "SHA256 (x86_64-unknown-linux-gnu): ${SHA_X64_LINUX}"
 
-          # Generate the formula
           cat > Formula/devver-cli.rb << EOF
           class DevverCli < Formula
             desc "Deploy and try your app in seconds"
@@ -336,7 +331,6 @@ jobs:
           end
           EOF
 
-          # Commit and push
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/devver-cli.rb

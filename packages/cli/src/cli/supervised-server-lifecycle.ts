@@ -26,7 +26,6 @@ async function stopDarwin(name: string) {
   }
   const { label } = service;
   const domain = `gui/${process.getuid?.()}`;
-  // Stopping an already-stopped job succeeds: the goal is "not running".
   try {
     await execute("launchctl", ["bootout", `${domain}/${label}`], {
       timeout: 5000,
@@ -71,7 +70,6 @@ async function stopLinux(name: string) {
       maxBuffer: 8192,
     });
   } catch (stopError) {
-    // An already-stopped unit is fine; the LoadState check below confirms it.
     const state = await managerState(unit);
     if (state !== "not-found") {
       throw stopError;
@@ -101,7 +99,6 @@ export async function removeInstance(name: string) {
   await stopInstance(name);
   const directory = join(await instanceParent(name), name);
   await rm(directory, { recursive: true });
-  // A removed instance must not answer its identity anymore.
   const service = await readInstanceService(name).catch(() => undefined);
   if (service !== undefined) {
     throw new Error(

@@ -29,29 +29,14 @@ const PROXY_INTERVAL = 200;
 const PROXY_TIMEOUT = 1000;
 const DEPLOYMENT_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
-// Arguments are double-quoted inside a TOML literal string, so a quote of
-// either kind would end the string or the argument. Expansion characters would
-// let a path reach the shell as code.
 const UNSAFE_IN_ARGUMENT = /["'`$\r\n]/u;
 
-/**
- * What the host needs to run one deployment. It never interprets this: the
- * command is an argv, not a shell string, and the directory is where the
- * process runs. Pitchfork's daemon `dir` remains the instance project so its
- * automatic hostname belongs to that project; the generated run line changes
- * to the workload directory before executing the command.
- *
- * `port` is the loopback port the command must listen on. The host reserves it
- * instead of letting Pitchfork bump one, because a workload whose config
- * format accepts only a literal port cannot read one from the environment.
- */
 export interface DaemonSpec {
   readonly command: readonly string[];
   readonly dir: string;
   readonly port: number;
 }
 
-/** A reserved loopback port and the owner-only directory for its config. */
 export interface DaemonSlot {
   readonly port: number;
   readonly directory: string;
@@ -91,8 +76,7 @@ async function privateDirectory(directory: string) {
   if (!existing.isDirectory() || existing.uid !== process.getuid?.()) {
     throw new Error("Deployment state must be a directory owned by this user");
   }
-  // Pitchfork relaxes its own state directory to 0755 while it runs, so the
-  // owner-only mode is restored before the tools start again.
+  // Pitchfork changes this directory to 0755 while running.
   await chmod(directory, PRIVATE_DIRECTORY);
   const stat = await lstat(directory);
   if (!stat.isDirectory() || stat.mode % 0o1000 !== PRIVATE_DIRECTORY) {
@@ -101,8 +85,7 @@ async function privateDirectory(directory: string) {
 }
 
 async function stateDirectories(instanceDirectory: string) {
-  // Unix sockets have a ~104-byte path limit; long XDG instance paths need a
-  // short private state root.
+  // Unix socket paths have a ~104-byte limit.
   const key = createHash("sha256")
     .update(await realpath(instanceDirectory))
     .digest("hex")
@@ -123,11 +106,6 @@ function safeDeploymentId(deploymentId: string) {
   return deploymentId;
 }
 
-/**
- * One value in a TOML literal string. The manifest is read by Pitchfork, not
- * by a shell, so this quotes for TOML only: a quote or newline would end the
- * string, and nothing here is ever expanded.
- */
 function tomlLiteral(value: string) {
   if (UNSAFE_IN_ARGUMENT.test(value)) {
     throw new Error(
@@ -137,7 +115,6 @@ function tomlLiteral(value: string) {
   return value;
 }
 
-/** One argument, as the shell should see it. */
 function shellArgument(argument: string) {
   if (
     UNSAFE_IN_ARGUMENT.test(argument) ||
@@ -165,7 +142,6 @@ host = "127.0.0.1"
 `;
 }
 
-/** node:net reports a pipe server as a string address; a TCP listener never is. */
 function isTcpAddress(
   address: string | AddressInfo | null
 ): address is AddressInfo {
@@ -193,14 +169,7 @@ async function allocatePort() {
   }
 }
 
-/**
- * The proxy answers for this instance.
- *
- * Pitchfork reports its configured port whether or not it bound it, so the
- * only proof is a real request. Ask for a missing route and verify
- * Pitchfork's response, rather than accepting another listener
- * that won the port between allocation and startup.
- */
+// Pitchfork reports its configured port even if another process bound it.
 const proxyAnswers = (port: number) =>
   Effect.gen(function* () {
     const client = HttpClient.withScope(yield* HttpClient.HttpClient);
@@ -238,8 +207,7 @@ const proxyAnswers = (port: number) =>
     Effect.provide(FetchHttpClient.layer)
   );
 
-// Instance names are ASCII alphanumeric, '_' or '-'. Pitchfork lowercases,
-// collapses separators and limits project labels to 63 characters.
+// Pitchfork limits project labels to 63 characters.
 function projectLabel(instanceDirectory: string) {
   return basename(instanceDirectory)
     .toLowerCase()
@@ -315,10 +283,7 @@ export async function openDeploymentHost(options: {
     writtenProxyPort = proxyPort;
   };
   const writeManifest = async (proxyPort = manifestProxyPort) => {
-    // A daemon whose Pitchfork `dir` points at a bare-repository worktree is
-    // treated as a different checkout, so its instance hostname is refused.
-    // Keep Pitchfork's project at the instance and enter the workload's cwd in
-    // the shell; the host does this for any workload, not just static sites.
+    // Pitchfork rejects instance hostnames when its `dir` is a separate worktree.
     const entries = [...daemons].map(([deploymentId, spec]) => {
       const directory = shellArgument(spec.dir);
       const changeDirectory = process.platform === "win32" ? "cd /d" : "cd";
@@ -350,10 +315,7 @@ port = { expect = [${spec.port}], bump = false }
         ? options.proxyPort
         : await allocatePort();
     await writeManifest(candidate);
-    // Explicitly, never by auto-start: a supervisor started on another
-    // command's behalf does not keep the state directory it was launched with.
-    // A start can lose a race with its own forced predecessor's shutdown, so a
-    // failed attempt is this loop's reason to try the next port, not fatal.
+    // Auto-start loses the state directory; a forced start can race shutdown.
     const started = await run(["supervisor", "start", "--force"])
       .then(() => true)
       .catch(() => false);
@@ -367,9 +329,7 @@ port = { expect = [${spec.port}], bump = false }
     throw new Error("The packaged proxy did not answer on a loopback port");
   }
   manifestProxyPort = proxyPort;
-  // A generated manifest is not automatically a known proxy project. Register
-  // this instance in its isolated config so Pitchfork discovers its native
-  // <daemon>.<project>.localhost names (without global machine changes).
+  // Pitchfork does not discover generated manifests without registration.
   try {
     await run(["config", "add", manifest, "--dir", instanceDirectory]);
   } catch {
@@ -382,12 +342,7 @@ port = { expect = [${spec.port}], bump = false }
     proxyPort,
     url: (deploymentId: string) =>
       `http://${safeDeploymentId(deploymentId)}.${label}.localhost:${proxyPort}/`,
-    /**
-     * Reserve this deployment's loopback port and its own config directory.
-     * The port is withheld from later reservations until the deployment is
-     * withdrawn, because a probe can hand out a port the previous daemon has
-     * not bound yet.
-     */
+    // Reserve ports until withdrawal; probes can reuse ports before daemons bind.
     reserve: async (deploymentId: string): Promise<DaemonSlot> => {
       const id = safeDeploymentId(deploymentId);
       const taken = new Set([
@@ -428,10 +383,6 @@ port = { expect = [${spec.port}], bump = false }
         throw new Error("The deployment process failed to start");
       }
     },
-    /**
-     * Stop one deployment. Tolerant by contract, because it also has to clean
-     * up after a daemon an earlier run left behind.
-     */
     withdraw: async (deploymentId: string) => {
       const id = safeDeploymentId(deploymentId);
       daemons.delete(id);

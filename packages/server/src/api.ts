@@ -23,7 +23,6 @@ export const DisplayName = Schema.String.check(
   Schema.isTrimmed()
 );
 
-/** The checkout and commit a local deploy selects, both untrusted. */
 export const DeployRequest = Schema.Struct({
   source: Schema.String.check(Schema.isNonEmpty()),
   commit: Commit,
@@ -59,7 +58,6 @@ export const DeploymentStatuses = Schema.Array(
   })
 );
 
-/** Every failed deployment names the stage that failed and nothing else. */
 // oxlint-disable-next-line unicorn/throw-new-error -- Schema.Error builds the error class at this contract boundary; it is not a throw.
 export class DeployFailure extends Schema.Error<DeployFailure>("DeployFailure")(
   {

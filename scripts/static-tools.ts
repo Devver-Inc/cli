@@ -126,8 +126,6 @@ async function installFile(path: string, bytes: Buffer, mode: number) {
   await writeAtomic(path, bytes, mode);
 }
 
-// GNU tar cannot read a zip, and Windows has no `unzip`, so each platform uses
-// the extractor it actually ships.
 async function zipMember(archivePath: string, member: string, into: string) {
   if (process.platform === "win32") {
     const extracted = Bun.spawnSync(

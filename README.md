@@ -73,7 +73,7 @@ See [AGENTS.md](AGENTS.md) for the CLI/server architecture, [packages/README.md]
 | Nightly | `npm install -g @devver-inc/cli@nightly` | Builds from `develop` |
 | Preview | `npm install -g @devver-inc/cli@dev` | Opt-in development build |
 
-The npm package installs the native executable for your platform. **Node is needed to install it, not to run `devver` or its packaged server; Bun is not needed at runtime either.** Supported native packages are macOS Apple Silicon (macOS 14+) and Linux x64. Windows releases are paused pending runtime verification. Local static serving bundles its tools, so server startup does not download them.
+The npm package installs the native executable for your platform. **Node is needed to install it, not to run `devver` or its packaged server; Bun is not needed at runtime either.** Supported native packages are macOS Apple Silicon and Linux x64. Windows releases are paused pending runtime verification. Local static serving bundles its tools, so server startup does not download them.
 
 Standalone binaries are available from [GitHub Releases](https://github.com/Devver-Inc/cli/releases). Keep each CLI with its matching versioned server. To update a supported global npm install, run `devver --update`; Homebrew stable installs use `brew update && brew upgrade devver-cli`. Source builds and standalone downloads do not self-update. Existing supervised local servers retain their pinned binaries after a CLI update.
 

@@ -8,13 +8,9 @@ import { readDevverFile } from "./config";
 import type { DaemonSpec, WorkloadKind } from "./types";
 
 const PRIVATE_FILE = 0o600;
-// A KDL string ends at a double quote and escapes with a backslash, and Ferron
-// expands `{env:NAME}` when it loads the config, so an unguarded brace would
-// interpolate the server's environment into the served configuration.
+// Ferron expands `{env:NAME}` in config strings; braces can expose server secrets.
 const UNSAFE_IN_KDL = /["\\{\r\n]/u;
-// Any path segment that is not a file or a directory and carries no extension
-// is a client-side route. The query and fragment are consumed so the whole URL
-// is replaced; matching only the path leaves the query appended to `/`.
+// Consume queries and fragments so SPA rewrites do not append them to `/`.
 const SPA_ROUTE = String.raw`^/([^?#]*/)*[^./?#]*(?:[?#].*)?$`;
 
 const StaticSection = Schema.Struct({
@@ -92,7 +88,6 @@ export async function staticSourceDirectory(worktree: string): Promise<string> {
   }
 }
 
-/** One value inside a KDL double-quoted string, or a closed failure. */
 function kdlString(value: string) {
   if (UNSAFE_IN_KDL.test(value)) {
     throw new Error(
@@ -102,12 +97,7 @@ function kdlString(value: string) {
   return value;
 }
 
-/**
- * Ferron accepts only a literal port, so the reserved one is written into the
- * config. The catch-all host block serves whatever hostname the proxy passes
- * through, and both default ports are disabled so nothing binds 80 or 443.
- */
-export function ferronConfig(directory: string, port: number) {
+function ferronConfig(directory: string, port: number) {
   return `* {
     listen_ip "127.0.0.1"
     default_http_port #null
