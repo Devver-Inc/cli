@@ -109,6 +109,7 @@ export const staticSiteKind: WorkloadKind = {
         "--port",
         portPlaceholder,
         "--index",
+        "--spa",
       ],
       dir: directory,
     };

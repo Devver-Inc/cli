@@ -15,8 +15,9 @@ import { join } from "node:path";
 const PITCHFORK_VERSION = "v2.30.1";
 const PITCHFORK_LICENSE_HASH =
   "5ba5d69f83674602525196efe44114e546cf3440d363603961076e52b9647a5a";
-const WEBSITINO_VERSION = "v0.2.11";
-const WEBSITINO_COMMIT = "a68fee90d663c46d5a5dfe8774bb5048ff7cfad6";
+const WEBSITINO_VERSION = "v0.2.11-spa";
+const WEBSITINO_COMMIT = "c0f701f2a39dfd9d89b76758671b297def7e9679";
+const WEBSITINO_SOURCE_COMMIT = "b3ee258ad7563dfc7a6af6a99bcac63505134665";
 const WEBSITINO_LICENSE_HASH =
   "c7c58dfbad23e6c8675c0528641e725f2cf3f2f6680c5b9447d78a4646cbcbb6";
 const EXECUTABLE_MODE = 0o755;
@@ -28,7 +29,7 @@ const artifacts = {
       "148d3fc64a71245f3752d57e9b8b5e656c4723bc72b2ab4fc61fa883abb46ae7",
     websitino: "macos-14/websitino",
     websitinoHash:
-      "20c6ddb616d1c3d82b87223b4f928fa51c80353be88b28335f5d7bffaf01b8ba",
+      "c96c89d040b0a16551c2e95acb0ac62c74a42342cf6a37d8ee44ed3f4244d2bd",
   },
   linux: {
     pitchfork: "x86_64-unknown-linux-gnu.tar.gz",
@@ -36,7 +37,7 @@ const artifacts = {
       "cc2aa26c9d3c0833bfa16d79f8ae167bd7d88a708b489322296286517643a1c4",
     websitino: "linux/websitino",
     websitinoHash:
-      "f34a5e8bee69a0810544818aaba001dfcd9a6506e7e9794840f2dcd65e1d5391",
+      "61c832701745cfe6070b85e049bfa0b68f7fa29022cf63a2071cfb6e99f666d1",
   },
   win32: {
     pitchfork: "x86_64-pc-windows-msvc.zip",
@@ -44,7 +45,7 @@ const artifacts = {
       "860f3f701b9fd027d115fe1f9108f7949c210526e8ec45916417cd97a4c5646e",
     websitino: "windows/websitino.exe",
     websitinoHash:
-      "d6a1d49b4c27b805be59516725422ebe56968d1579e9550b7af369223f34b126",
+      "0857b7726f18ace5261157caf2294a4ab93fa5b1ed1baa7c7614a5f697c8cde8",
   },
 } as const;
 
@@ -156,7 +157,7 @@ export async function packageStaticTools(destination: string) {
         ),
         cachedVerified(
           `websitino-${WEBSITINO_COMMIT}-${target.websitinoHash}`,
-          `https://raw.githubusercontent.com/trikko/websitino/${WEBSITINO_COMMIT}/${target.websitino}`,
+          `https://raw.githubusercontent.com/FuturPanda/websitino/${WEBSITINO_COMMIT}/${target.websitino}`,
           target.websitinoHash
         ),
         cachedVerified(
@@ -166,7 +167,7 @@ export async function packageStaticTools(destination: string) {
         ),
         cachedVerified(
           `websitino-license-${WEBSITINO_VERSION}-${WEBSITINO_LICENSE_HASH}`,
-          `https://raw.githubusercontent.com/trikko/websitino/${WEBSITINO_VERSION}/LICENSE`,
+          `https://raw.githubusercontent.com/FuturPanda/websitino/${WEBSITINO_SOURCE_COMMIT}/LICENSE`,
           WEBSITINO_LICENSE_HASH
         ),
       ]);
