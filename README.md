@@ -73,6 +73,25 @@ See [AGENTS.md](AGENTS.md) for the CLI/server architecture, [packages/README.md]
 | Nightly | `npm install -g @devver-inc/cli@nightly` | Builds from `develop` |
 | Preview | `npm install -g @devver-inc/cli@dev` | Opt-in development build |
 
+To use stable and nightly side by side, install them under separate prefixes so their `devver` commands do not overwrite each other:
+
+```sh
+npm install --prefix "$HOME/.local/devver-latest" @devver-inc/cli@latest
+npm install --prefix "$HOME/.local/devver-nightly" @devver-inc/cli@nightly
+
+"$HOME/.local/devver-latest/node_modules/.bin/devver" --version
+"$HOME/.local/devver-nightly/node_modules/.bin/devver" --version
+```
+
+Optional zsh aliases for `~/.zshrc`:
+
+```sh
+alias dvr='"$HOME/.local/devver-latest/node_modules/.bin/devver"'
+alias dvrn='"$HOME/.local/devver-nightly/node_modules/.bin/devver"'
+```
+
+Run the corresponding `npm install --prefix ...` command again to update either channel. These installs do not support the global-install `devver --update` flow.
+
 The npm package installs the native executable for your platform. **Node is needed to install it, not to run `devver` or its packaged server; Bun is not needed at runtime either.** Supported native packages are macOS Apple Silicon (macOS 14+) and Linux x64. Windows releases are paused pending runtime verification. Local static serving bundles its tools, so server startup does not download them.
 
 Standalone binaries are available from [GitHub Releases](https://github.com/Devver-Inc/cli/releases). Keep each CLI with its matching versioned server. To update a supported global npm install, run `devver --update`; Homebrew stable installs use `brew update && brew upgrade devver-cli`. Source builds and standalone downloads do not self-update. Existing supervised local servers retain their pinned binaries after a CLI update.
