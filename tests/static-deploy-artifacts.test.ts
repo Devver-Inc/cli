@@ -269,6 +269,13 @@ async function isolatedRouting(
     status: 200,
     text: "<h1>revision A</h1>",
   });
+  expect(await response(`${first.url}dashboard/settings?tab=1`)).toEqual({
+    status: 200,
+    text: "<h1>revision A</h1>",
+  });
+  expect((await response(`${first.url}assets/app.css?v=2`)).text).toBe(
+    "body{color:red}"
+  );
   expect((await response(`${first.url}assets/missing.css`)).status).toBe(404);
   expect(
     (await response(`${controlUrl.slice(0, -7)}/index.html`)).status
@@ -294,6 +301,21 @@ async function isolatedRouting(
   }
   await refuses(`http://${nonLoopback.address}:${first.port}/`);
   await refuses(`http://${nonLoopback.address}:${controlPort}/api/v1/identity`);
+}
+
+function generatedConfig(instance: string, app: App) {
+  const config = join(instance, "daemons", app.id, "ferron.kdl");
+  expect(statSync(config).mode % 0o1000).toBe(0o600);
+  const text = readFileSync(config, "utf-8");
+  const listening = /^\*:(?<port>\d+) \{$/mu.exec(text)?.groups?.port;
+  const supervised = new RegExp(
+    String.raw`\[daemons\."${app.id}"\][^[]*port = \{ expect = \[(?<port>\d+)\], bump = false \}`,
+    "u"
+  ).exec(readFileSync(join(instance, "pitchfork.toml"), "utf-8"))?.groups?.port;
+  expect(listening).toBe(supervised);
+  expect(Number(listening)).toBeGreaterThan(0);
+  expect(listening).not.toBe(app.port);
+  expect(text).toContain('listen_ip "127.0.0.1"');
 }
 
 async function failedDeployments(
@@ -335,7 +357,7 @@ async function failedDeployments(
   git(site, "add", "-A");
   git(site, "commit", "-q", "-m", "valid static site after rejected config");
   if (!onWindows) {
-    const websitino = join(
+    const ferron = join(
       dirname(instance),
       "..",
       "installations",
@@ -343,10 +365,10 @@ async function failedDeployments(
       decodeInstance(
         JSON.parse(readFileSync(join(instance, "identity.json"), "utf-8"))
       ).instanceId,
-      "websitino"
+      "ferron"
     );
-    const mode = statSync(websitino).mode % 0o1000;
-    chmodSync(websitino, 0o600);
+    const mode = statSync(ferron).mode % 0o1000;
+    chmodSync(ferron, 0o600);
     try {
       const failedTool = ws.cli(site, "deploy");
       expect(failedTool.status).not.toBe(0);
@@ -356,7 +378,7 @@ async function failedDeployments(
       expect((await response(first.url)).text).toBe("<h1>revision A</h1>");
       expect((await response(second.url)).text).toBe("<h1>revision B</h1>");
     } finally {
-      chmodSync(websitino, mode);
+      chmodSync(ferron, mode);
     }
   }
   rmSync(join(site, "index.html"));
@@ -702,6 +724,8 @@ async function exercise() {
       parentDeploymentId: first.id,
     });
     await isolatedRouting(first, second, controlUrl, recorded.port);
+    generatedConfig(instance, first);
+    generatedConfig(instance, second);
     await failedDeployments(
       ws,
       source.site,

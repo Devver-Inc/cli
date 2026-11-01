@@ -1,13 +1,21 @@
-import { lstat, readdir, realpath } from "node:fs/promises";
-import { release } from "node:os";
+import { chmod, lstat, readdir, realpath, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { Schema } from "effect";
 
-import { portPlaceholder } from "../deployment-host";
-import { locateWebsitino } from "../packaged-tools";
+import { locateFerron } from "../packaged-tools";
 import { readDevverFile } from "./config";
 import type { DaemonSpec, WorkloadKind } from "./types";
+
+const PRIVATE_FILE = 0o600;
+// A KDL string ends at a double quote and escapes with a backslash, and Ferron
+// expands `{env:NAME}` when it loads the config, so an unguarded brace would
+// interpolate the server's environment into the served configuration.
+const UNSAFE_IN_KDL = /["\\{\r\n]/u;
+// Any path segment that is not a file or a directory and carries no extension
+// is a client-side route. The query and fragment are consumed so the whole URL
+// is replaced; matching only the path leaves the query appended to `/`.
+const SPA_ROUTE = String.raw`^/([^?#]*/)*[^./?#]*(?:[?#].*)?$`;
 
 const StaticSection = Schema.Struct({
   workload: Schema.optional(Schema.String),
@@ -84,34 +92,49 @@ export async function staticSourceDirectory(worktree: string): Promise<string> {
   }
 }
 
-async function requireMacOS14() {
-  if (process.platform !== "darwin") {
-    return;
+/** One value inside a KDL double-quoted string, or a closed failure. */
+function kdlString(value: string) {
+  if (UNSAFE_IN_KDL.test(value)) {
+    throw new Error(
+      "A deployment path cannot contain quotes, backslashes, braces or newlines"
+    );
   }
-  const major = Math.trunc(Number(release().split(".")[0] ?? ""));
-  if (!(major >= 23)) {
-    throw new Error("Local static serving requires macOS 14 or newer");
-  }
+  return value;
+}
+
+/**
+ * Ferron accepts only a literal port, so the reserved one is written into the
+ * config. The catch-all host block serves whatever hostname the proxy passes
+ * through, and both default ports are disabled so nothing binds 80 or 443.
+ */
+export function ferronConfig(directory: string, port: number) {
+  return `* {
+    listen_ip "127.0.0.1"
+    default_http_port #null
+    default_https_port #null
+}
+
+*:${port} {
+    root "${kdlString(directory)}"
+    rewrite "${SPA_ROUTE}" "/" file=#false directory=#false last=#true
+}
+`;
 }
 
 export const staticSiteKind: WorkloadKind = {
   name: "static",
-  resolve: async (worktree) => {
+  resolve: async ({ worktree, directory: slot, port }) => {
     const directory = await staticSourceDirectory(worktree);
-    await requireMacOS14();
-    const websitino = await locateWebsitino();
+    const ferron = await locateFerron();
+    const config = join(slot, "ferron.kdl");
+    await writeFile(config, ferronConfig(directory, port), {
+      mode: PRIVATE_FILE,
+    });
+    await chmod(config, PRIVATE_FILE);
     const spec: DaemonSpec = {
-      command: [
-        websitino,
-        directory,
-        "--bind",
-        "127.0.0.1",
-        "--port",
-        portPlaceholder,
-        "--index",
-        "--spa",
-      ],
+      command: [ferron, "-c", config],
       dir: directory,
+      port,
     };
     return spec;
   },

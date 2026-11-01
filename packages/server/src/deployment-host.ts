@@ -5,6 +5,7 @@ import {
   mkdir,
   realpath,
   rename,
+  rm,
   writeFile,
 } from "node:fs/promises";
 import { createServer } from "node:net";
@@ -21,8 +22,7 @@ import { verifyWindowsPrivate } from "./windows-acl";
 const EXECUTABLE = process.platform === "win32" ? ".exe" : "";
 const PRIVATE_DIRECTORY = 0o700;
 const PRIVATE_FILE = 0o600;
-/** Every daemon asks for the same port; Pitchfork bumps until one is free. */
-const PORT_BASE = 52_000;
+const PORT_ATTEMPTS = 10;
 const PROXY_ATTEMPTS = 5;
 const PROXY_DEADLINE = 10_000;
 const PROXY_INTERVAL = 200;
@@ -35,22 +35,26 @@ const DEPLOYMENT_ID =
 const UNSAFE_IN_ARGUMENT = /["'`$\r\n]/u;
 
 /**
- * The resolved port Pitchfork assigned, as the platform shell spells it.
- * A command that listens on a port puts this in its own arguments.
- */
-export const portPlaceholder =
-  process.platform === "win32" ? "%PORT%" : "$PORT";
-
-/**
  * What the host needs to run one deployment. It never interprets this: the
  * command is an argv, not a shell string, and the directory is where the
  * process runs. Pitchfork's daemon `dir` remains the instance project so its
  * automatic hostname belongs to that project; the generated run line changes
  * to the workload directory before executing the command.
+ *
+ * `port` is the loopback port the command must listen on. The host reserves it
+ * instead of letting Pitchfork bump one, because a workload whose config
+ * format accepts only a literal port cannot read one from the environment.
  */
 export interface DaemonSpec {
   readonly command: readonly string[];
   readonly dir: string;
+  readonly port: number;
+}
+
+/** A reserved loopback port and the owner-only directory for its config. */
+export interface DaemonSlot {
+  readonly port: number;
+  readonly directory: string;
 }
 
 async function invokeTool(
@@ -85,14 +89,14 @@ async function privateDirectory(directory: string) {
   }
   const existing = await lstat(directory);
   if (!existing.isDirectory() || existing.uid !== process.getuid?.()) {
-    throw new Error("Pitchfork state must be a directory owned by this user");
+    throw new Error("Deployment state must be a directory owned by this user");
   }
   // Pitchfork relaxes its own state directory to 0755 while it runs, so the
   // owner-only mode is restored before the tools start again.
   await chmod(directory, PRIVATE_DIRECTORY);
   const stat = await lstat(directory);
   if (!stat.isDirectory() || stat.mode % 0o1000 !== PRIVATE_DIRECTORY) {
-    throw new Error("Pitchfork state must be owner-only");
+    throw new Error("Deployment state must be owner-only");
   }
 }
 
@@ -133,14 +137,8 @@ function tomlLiteral(value: string) {
   return value;
 }
 
-/**
- * One argument, as the shell should see it. The port placeholder is the only
- * thing left unquoted, because the shell has to expand it.
- */
+/** One argument, as the shell should see it. */
 function shellArgument(argument: string) {
-  if (argument === portPlaceholder) {
-    return argument;
-  }
   if (
     UNSAFE_IN_ARGUMENT.test(argument) ||
     (process.platform === "win32"
@@ -298,7 +296,9 @@ export async function openDeploymentHost(options: {
   await privateDirectory(state);
   await privateDirectory(config);
   const manifest = join(instanceDirectory, "pitchfork.toml");
+  const slots = join(instanceDirectory, "daemons");
   const daemons = new Map<string, DaemonSpec>();
+  const reserved = new Map<string, number>();
   const invoke = toolInvoker(toolsDirectory, instanceDirectory);
   const run = async (args: string[]) => {
     await invoke(state, config, args);
@@ -328,7 +328,7 @@ export async function openDeploymentHost(options: {
       return `[daemons."${deploymentId}"]
 run = '${changeDirectory} ${directory} && ${command}'
 dir = '${tomlLiteral(instanceDirectory)}'
-port = { expect = [${PORT_BASE}], bump = true }
+port = { expect = [${spec.port}], bump = false }
 `;
     });
     if (proxyPort !== 0) {
@@ -382,6 +382,41 @@ port = { expect = [${PORT_BASE}], bump = true }
     proxyPort,
     url: (deploymentId: string) =>
       `http://${safeDeploymentId(deploymentId)}.${label}.localhost:${proxyPort}/`,
+    /**
+     * Reserve this deployment's loopback port and its own config directory.
+     * The port is withheld from later reservations until the deployment is
+     * withdrawn, because a probe can hand out a port the previous daemon has
+     * not bound yet.
+     */
+    reserve: async (deploymentId: string): Promise<DaemonSlot> => {
+      const id = safeDeploymentId(deploymentId);
+      const taken = new Set([
+        proxyPort,
+        ...reserved.values(),
+        ...[...daemons.values()].map((spec) => spec.port),
+      ]);
+      let port = 0;
+      for (
+        let attempt = 0;
+        attempt < PORT_ATTEMPTS && port === 0;
+        attempt += 1
+      ) {
+        const candidate = await allocatePort();
+        if (!taken.has(candidate)) {
+          port = candidate;
+        }
+      }
+      if (port === 0) {
+        throw new Error(
+          "No free loopback port was available for the deployment"
+        );
+      }
+      const directory = join(slots, id);
+      await privateDirectory(slots);
+      await privateDirectory(directory);
+      reserved.set(id, port);
+      return { port, directory };
+    },
     publish: async (deploymentId: string, spec: DaemonSpec) => {
       daemons.set(safeDeploymentId(deploymentId), spec);
       await writeManifest();
@@ -398,16 +433,29 @@ port = { expect = [${PORT_BASE}], bump = true }
      * up after a daemon an earlier run left behind.
      */
     withdraw: async (deploymentId: string) => {
-      daemons.delete(safeDeploymentId(deploymentId));
+      const id = safeDeploymentId(deploymentId);
+      daemons.delete(id);
+      reserved.delete(id);
       await run(["stop", deploymentId]).catch(() => undefined);
       await run(["clean", "--daemon", deploymentId]).catch(() => undefined);
+      await rm(join(slots, id), { force: true, recursive: true }).catch(
+        () => undefined
+      );
       await writeManifest().catch(() => undefined);
     },
     close: async () => {
-      for (const deploymentId of daemons.keys()) {
+      for (const deploymentId of new Set([
+        ...daemons.keys(),
+        ...reserved.keys(),
+      ])) {
         await run(["stop", deploymentId]).catch(() => undefined);
+        await rm(join(slots, deploymentId), {
+          force: true,
+          recursive: true,
+        }).catch(() => undefined);
       }
       daemons.clear();
+      reserved.clear();
       await run(["supervisor", "stop"]).catch(() => undefined);
       await writeManifest().catch(() => undefined);
     },

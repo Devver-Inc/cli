@@ -1,7 +1,11 @@
 import { Schema } from "effect";
 
 import { staticSiteKind } from "./workloads/static";
-import type { DaemonSpec, WorkloadKind } from "./workloads/types";
+import type {
+  DaemonSpec,
+  WorkloadKind,
+  WorkloadTarget,
+} from "./workloads/types";
 
 const kinds: readonly WorkloadKind[] = [staticSiteKind];
 
@@ -16,16 +20,22 @@ const WorkloadSelection = Schema.Struct({
   workload: Schema.optional(Schema.String),
 });
 
-export async function prepareDaemon(worktree: string): Promise<DaemonSpec> {
+export async function prepareDaemon(
+  target: WorkloadTarget
+): Promise<DaemonSpec> {
   const { readDevverFile } = await import("./workloads/config");
-  const file = await readDevverFile(worktree);
+  const file = await readDevverFile(target.worktree);
   const { workload } = Schema.decodeSync(WorkloadSelection)(file);
   const kind = workload === undefined ? defaultKind : kindByName(workload);
   if (kind === undefined) {
     throw new Error(`The workload must be one of: ${workloadNames.join(", ")}`);
   }
-  return kind.resolve(worktree);
+  return kind.resolve(target);
 }
 
-export type { DaemonSpec, WorkloadKind } from "./workloads/types";
-export { portPlaceholder } from "./deployment-host";
+export type {
+  DaemonSlot,
+  DaemonSpec,
+  WorkloadKind,
+  WorkloadTarget,
+} from "./workloads/types";

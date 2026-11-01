@@ -18,4 +18,4 @@ Preconditions: Bun, Git, and curl are installed. Run `bash .pi/skills/verify-dev
 
 ## Gotchas
 
-This is source-CLI verification with packaged Pitchfork and Websitino. It does not prove that installed npm or standalone CLI artifacts work without their development runtimes. The local server is unsandboxed; use only this disposable fixture. On older macOS or unsupported platforms, the packaged Websitino binary may be unavailable.
+This is source-CLI verification with packaged Pitchfork and Ferron. It does not prove that installed npm or standalone CLI artifacts work without their development runtimes. The local server is unsandboxed; use only this disposable fixture. On an unsupported platform, the packaged Ferron binary may be unavailable.

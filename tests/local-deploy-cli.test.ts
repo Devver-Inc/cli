@@ -27,7 +27,7 @@ function packagedTools() {
   const tools = join(repo, "servers", pkg.version);
   if (
     !existsSync(
-      join(tools, `websitino${process.platform === "win32" ? ".exe" : ""}`)
+      join(tools, `ferron${process.platform === "win32" ? ".exe" : ""}`)
     )
   ) {
     const build = Bun.spawnSync(["bun", "run", "build"], {

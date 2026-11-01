@@ -37,9 +37,9 @@ const members = [
   "devver",
   `servers/${pkg.version}/devver-server`,
   `servers/${pkg.version}/pitchfork`,
-  `servers/${pkg.version}/websitino`,
+  `servers/${pkg.version}/ferron`,
   `servers/${pkg.version}/PITCHFORK-LICENSE`,
-  `servers/${pkg.version}/WEBSITINO-LICENSE`,
+  `servers/${pkg.version}/FERRON-LICENSE`,
 ];
 
 function tar(args: string[]): string {
