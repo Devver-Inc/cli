@@ -265,6 +265,11 @@ async function isolatedRouting(
   expect((await response(`${first.url}assets/app.css`)).text).toBe(
     "body{color:red}"
   );
+  expect(await response(`${first.url}dashboard/settings`)).toEqual({
+    status: 200,
+    text: "<h1>revision A</h1>",
+  });
+  expect((await response(`${first.url}assets/missing.css`)).status).toBe(404);
   expect(
     (await response(`${controlUrl.slice(0, -7)}/index.html`)).status
   ).not.toBe(200);
