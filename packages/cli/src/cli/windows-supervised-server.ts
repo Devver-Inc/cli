@@ -131,9 +131,9 @@ async function pinServer(parent: string, instanceId: string) {
   for (const name of [
     serverName,
     "pitchfork.exe",
-    "websitino.exe",
+    "ferron.exe",
     "PITCHFORK-LICENSE",
-    "WEBSITINO-LICENSE",
+    "FERRON-LICENSE",
   ]) {
     const source = join(sourceRoot, "servers", pkg.version, name);
     if (!(await lstat(source)).isFile()) {

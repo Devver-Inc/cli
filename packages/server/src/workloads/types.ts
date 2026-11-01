@@ -1,16 +1,13 @@
-export interface DaemonSpec {
-  readonly command: readonly string[];
-  readonly dir: string;
+import type { DaemonSlot, DaemonSpec } from "../deployment-host";
+
+export interface WorkloadTarget extends DaemonSlot {
+  readonly worktree: string;
 }
 
-/**
- * One workload kind: how a committed worktree becomes a daemon.
- *
- * `resolve` proves the worktree is deployable as this kind and fails with a
- * config-stage-safe message: prose only, no paths, no URLs, no secrets. It
- * reads only committed content under the worktree.
- */
+// Resolve only committed content; failures must not expose paths or secrets.
 export interface WorkloadKind {
   readonly name: string;
-  readonly resolve: (worktree: string) => Promise<DaemonSpec>;
+  readonly resolve: (target: WorkloadTarget) => Promise<DaemonSpec>;
 }
+
+export type { DaemonSlot, DaemonSpec } from "../deployment-host";

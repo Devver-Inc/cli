@@ -150,10 +150,10 @@ export const openDeployer = (name: string) =>
       });
     const publish = (deploymentId: string, worktree: string) =>
       Effect.gen(function* () {
-        const spec = yield* attempt(
-          "config",
-          async () => await prepareDaemon(worktree)
-        );
+        const spec = yield* attempt("config", async () => {
+          const slot = await host.reserve(deploymentId);
+          return await prepareDaemon({ ...slot, worktree });
+        });
         yield* Effect.uninterruptible(
           attempt("process", async () => {
             await host.publish(deploymentId, spec);

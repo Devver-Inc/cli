@@ -47,9 +47,9 @@ export async function pinServer(parent: string, instanceId: string) {
   for (const name of [
     serverName,
     "pitchfork",
-    "websitino",
+    "ferron",
     "PITCHFORK-LICENSE",
-    "WEBSITINO-LICENSE",
+    "FERRON-LICENSE",
   ]) {
     const source = join(sourceRoot, "servers", pkg.version, name);
     const packaged = await lstat(source).catch(() => undefined);

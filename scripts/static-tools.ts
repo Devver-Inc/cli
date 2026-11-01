@@ -15,11 +15,9 @@ import { join } from "node:path";
 const PITCHFORK_VERSION = "v2.30.1";
 const PITCHFORK_LICENSE_HASH =
   "5ba5d69f83674602525196efe44114e546cf3440d363603961076e52b9647a5a";
-const WEBSITINO_VERSION = "v0.2.11-spa";
-const WEBSITINO_COMMIT = "c0f701f2a39dfd9d89b76758671b297def7e9679";
-const WEBSITINO_SOURCE_COMMIT = "b3ee258ad7563dfc7a6af6a99bcac63505134665";
-const WEBSITINO_LICENSE_HASH =
-  "c7c58dfbad23e6c8675c0528641e725f2cf3f2f6680c5b9447d78a4646cbcbb6";
+const FERRON_VERSION = "2.8.1";
+const FERRON_LICENSE_HASH =
+  "c1db5c351e357ea68362c01faff8dc046c59e1d7466317f64482c2a6d3e6a695";
 const EXECUTABLE_MODE = 0o755;
 const DOCUMENT_MODE = 0o644;
 const artifacts = {
@@ -27,25 +25,25 @@ const artifacts = {
     pitchfork: "aarch64-apple-darwin.tar.gz",
     pitchforkHash:
       "148d3fc64a71245f3752d57e9b8b5e656c4723bc72b2ab4fc61fa883abb46ae7",
-    websitino: "macos-14/websitino",
-    websitinoHash:
-      "c96c89d040b0a16551c2e95acb0ac62c74a42342cf6a37d8ee44ed3f4244d2bd",
+    ferron: "aarch64-apple-darwin",
+    ferronHash:
+      "a2eb94f6c46a8093822dba935fd9641bf3c0a23369296e7e6afa9b70cf25e077",
   },
   linux: {
     pitchfork: "x86_64-unknown-linux-gnu.tar.gz",
     pitchforkHash:
       "cc2aa26c9d3c0833bfa16d79f8ae167bd7d88a708b489322296286517643a1c4",
-    websitino: "linux/websitino",
-    websitinoHash:
-      "61c832701745cfe6070b85e049bfa0b68f7fa29022cf63a2071cfb6e99f666d1",
+    ferron: "x86_64-unknown-linux-gnu",
+    ferronHash:
+      "3cf41cb1758c9fc653354a7fa5be2ca88a10a03a764cd82df67545216a3c5302",
   },
   win32: {
     pitchfork: "x86_64-pc-windows-msvc.zip",
     pitchforkHash:
       "860f3f701b9fd027d115fe1f9108f7949c210526e8ec45916417cd97a4c5646e",
-    websitino: "windows/websitino.exe",
-    websitinoHash:
-      "0857b7726f18ace5261157caf2294a4ab93fa5b1ed1baa7c7614a5f697c8cde8",
+    ferron: "x86_64-pc-windows-msvc",
+    ferronHash:
+      "aa1d083d38452b358c1e0badadf4cf49a52242fe942a4e4e4d7fb715af2793c8",
   },
 } as const;
 
@@ -128,6 +126,27 @@ async function installFile(path: string, bytes: Buffer, mode: number) {
   await writeAtomic(path, bytes, mode);
 }
 
+async function zipMember(archivePath: string, member: string, into: string) {
+  if (process.platform === "win32") {
+    const extracted = Bun.spawnSync(
+      ["tar", "-xf", archivePath, "-C", into, member],
+      { stdout: "pipe", stderr: "pipe" }
+    );
+    if (extracted.exitCode !== 0) {
+      throw new Error("Could not extract pinned Ferron archive");
+    }
+    return await readFile(join(into, member));
+  }
+  const extracted = Bun.spawnSync(["unzip", "-p", archivePath, member], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (extracted.exitCode !== 0) {
+    throw new Error("Could not extract pinned Ferron archive");
+  }
+  return Buffer.from(extracted.stdout);
+}
+
 export async function packageStaticTools(destination: string) {
   const { platform, arch } = process;
   if (
@@ -148,7 +167,7 @@ export async function packageStaticTools(destination: string) {
   }
   const temporary = await mkdtemp(join(tmpdir(), "devver-static-tools-"));
   try {
-    const [archive, websitino, pitchforkLicense, websitinoLicense] =
+    const [archive, ferronArchive, pitchforkLicense, ferronLicense] =
       await Promise.all([
         cachedVerified(
           `pitchfork-${PITCHFORK_VERSION}-${target.pitchforkHash}`,
@@ -156,9 +175,9 @@ export async function packageStaticTools(destination: string) {
           target.pitchforkHash
         ),
         cachedVerified(
-          `websitino-${WEBSITINO_COMMIT}-${target.websitinoHash}`,
-          `https://raw.githubusercontent.com/FuturPanda/websitino/${WEBSITINO_COMMIT}/${target.websitino}`,
-          target.websitinoHash
+          `ferron-${FERRON_VERSION}-${target.ferronHash}`,
+          `https://github.com/ferronweb/ferron/releases/download/${FERRON_VERSION}/ferron-${FERRON_VERSION}-${target.ferron}.zip`,
+          target.ferronHash
         ),
         cachedVerified(
           `pitchfork-license-${PITCHFORK_VERSION}-${PITCHFORK_LICENSE_HASH}`,
@@ -166,9 +185,9 @@ export async function packageStaticTools(destination: string) {
           PITCHFORK_LICENSE_HASH
         ),
         cachedVerified(
-          `websitino-license-${WEBSITINO_VERSION}-${WEBSITINO_LICENSE_HASH}`,
-          `https://raw.githubusercontent.com/FuturPanda/websitino/${WEBSITINO_SOURCE_COMMIT}/LICENSE`,
-          WEBSITINO_LICENSE_HASH
+          `ferron-license-${FERRON_VERSION}-${FERRON_LICENSE_HASH}`,
+          `https://raw.githubusercontent.com/ferronweb/ferron/${FERRON_VERSION}/LICENSE`,
+          FERRON_LICENSE_HASH
         ),
       ]);
     const archivePath = join(
@@ -184,14 +203,16 @@ export async function packageStaticTools(destination: string) {
       throw new Error("Could not extract pinned Pitchfork archive");
     }
     const suffix = platform === "win32" ? ".exe" : "";
+    const ferronPath = join(temporary, "ferron.zip");
+    await writeFile(ferronPath, ferronArchive);
     await installFile(
       join(destination, `pitchfork${suffix}`),
       await readFile(join(temporary, `pitchfork${suffix}`)),
       EXECUTABLE_MODE
     );
     await installFile(
-      join(destination, `websitino${suffix}`),
-      websitino,
+      join(destination, `ferron${suffix}`),
+      await zipMember(ferronPath, `ferron${suffix}`, temporary),
       EXECUTABLE_MODE
     );
     await installFile(
@@ -200,8 +221,8 @@ export async function packageStaticTools(destination: string) {
       DOCUMENT_MODE
     );
     await installFile(
-      join(destination, "WEBSITINO-LICENSE"),
-      websitinoLicense,
+      join(destination, "FERRON-LICENSE"),
+      ferronLicense,
       DOCUMENT_MODE
     );
   } finally {

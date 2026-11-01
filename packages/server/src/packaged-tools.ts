@@ -6,7 +6,7 @@ import pkg from "../../../package.json" with { type: "json" };
 const EXECUTABLE = process.platform === "win32" ? ".exe" : "";
 
 async function isToolchain(directory: string) {
-  for (const tool of [`pitchfork${EXECUTABLE}`, `websitino${EXECUTABLE}`]) {
+  for (const tool of [`pitchfork${EXECUTABLE}`, `ferron${EXECUTABLE}`]) {
     try {
       if (!(await lstat(join(directory, tool))).isFile()) {
         return false;
@@ -42,11 +42,11 @@ export async function packagedToolsDirectory() {
   );
 }
 
-export async function locateWebsitino() {
+export async function locateFerron() {
   const toolsDirectory = await packagedToolsDirectory();
-  const websitino = join(toolsDirectory, `websitino${EXECUTABLE}`);
-  if (!(await lstat(websitino)).isFile()) {
+  const ferron = join(toolsDirectory, `ferron${EXECUTABLE}`);
+  if (!(await lstat(ferron)).isFile()) {
     throw new Error("Packaged static server is not a regular file");
   }
-  return websitino;
+  return ferron;
 }

@@ -97,7 +97,11 @@ if [[ "$FEATURE" == deploy || "$FEATURE" == tui ]]; then
     if (row?.commitSha !== process.argv[3] || row.status !== "ready") throw new Error("Persisted deployment differs from the printed result");
     console.log(JSON.stringify(row));
   ' "$XDG_DATA_HOME/devver/servers/$NAME/deployments.sqlite" "$DEPLOYMENT_ID" "$(< "$PROOF/selected-head.txt")" > "$PROOF/deployment-record.json"
-  printf 'Fetched %s and confirmed committed content and the persisted ready record.\n' "$APP_URL" | tee -a "$PROOF/actions.txt"
+  CONFIG="$XDG_DATA_HOME/devver/servers/$NAME/daemons/$DEPLOYMENT_ID/ferron.kdl"
+  [[ "$(stat -f '%OLp' "$CONFIG" 2>/dev/null || stat -c '%a' "$CONFIG")" == 600 ]]
+  cp "$CONFIG" "$PROOF/ferron.kdl"
+  grep -Eq '^\*:[0-9]+ \{$' "$PROOF/ferron.kdl"
+  printf 'Fetched %s and confirmed committed content, the persisted ready record and the owner-only generated static config.\n' "$APP_URL" | tee -a "$PROOF/actions.txt"
   if [[ "$FEATURE" == tui ]]; then
     cli deploy --verbose | tee "$PROOF/tui-second-deploy.txt"
     SECOND_URL=$(grep -Eo "http://[a-f0-9-]{36}\.$NAME\.localhost:[0-9]+/" "$PROOF/tui-second-deploy.txt" | tail -1)
