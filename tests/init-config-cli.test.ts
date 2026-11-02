@@ -100,7 +100,7 @@ test("init and cloud deploy reject unsupported or missing configs without writin
     expect(unsupported.status).not.toBe(0);
     expect(unsupported.output).toContain(".: vite (vite)");
     expect(unsupported.output).toContain(
-      "Devver init can't configure vite yet. It currently supports static sites. Add a verified .devver.yaml to deploy anything else. No config was written."
+      "Devver couldn't derive a complete process recipe from this project."
     );
     expect(unsupported.output).not.toContain("UnknownError");
     expect(unsupported.output).not.toContain("at writeConfigFile");

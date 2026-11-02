@@ -144,10 +144,10 @@ const cloudDeploy = Effect.gen(function* () {
       message: "Config file not found. Run 'devver init' to create one.",
     });
   }
-  if ("static" in config) {
+  if (!("project" in config)) {
     return yield* new DeploymentError({
       message:
-        "Static config is only supported for local deployments. Select a local server with 'devver attach' before deploying.",
+        "Local config is only supported for local deployments. Select a local server with 'devver attach' before deploying.",
     });
   }
   yield* checkForGitRepo;
@@ -218,10 +218,10 @@ export const deploy = Command.make(
             "Config file not found. Run 'devver init' to create one for a supported target, or add a verified .devver.yaml manually.",
         });
       }
-      if ("static" in config) {
+      if (!("project" in config)) {
         return yield* new DeploymentError({
           message:
-            "Static config is only supported for local deployments. Select a local server with 'devver attach' before deploying.",
+            "Local config is only supported for local deployments. Select a local server with 'devver attach' before deploying.",
         });
       }
       return yield* withApi(cloudDeploy);

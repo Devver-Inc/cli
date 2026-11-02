@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -256,6 +257,187 @@ test("deploy serves the committed HEAD of an attached local target at a loopback
     expect(orphan.status).not.toBe(200);
   }
 }, 180_000);
+
+test("deploy runs a committed process recipe on the reserved loopback port", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  packagedTools();
+  const ws = workspace();
+  const source = join(ws.root, "process-checkout");
+  mkdirSync(source, { recursive: true });
+  writeFileSync(
+    join(source, "build.mjs"),
+    'import { writeFileSync } from "node:fs";\nwriteFileSync("built.txt", "built");\n'
+  );
+  writeFileSync(
+    join(source, "server.mjs"),
+    'import { readFileSync } from "node:fs";\nimport { createServer } from "node:http";\ncreateServer((_request, response) => response.end(process.env.PORT + ":" + readFileSync("built.txt", "utf8"))).listen(Number(process.env.PORT), process.env.HOST);\n'
+  );
+  writeFileSync(
+    join(source, ".devver.yaml"),
+    'process:\n  install: "true"\n  build: node build.mjs\n  run: node server.mjs\n'
+  );
+  git(source, "init", "-q", "-b", "main");
+  git(source, "add", ".");
+  git(source, "commit", "-q", "-m", "process recipe");
+  const running = await foreground(ws.env, "process-deployer");
+  try {
+    expect((await ws.run(["attach", running.url])).status).toBe(0);
+    const deployed = await ws.run(["deploy"], source);
+    expect(deployed.status, deployed.output).toBe(0);
+    const match = APP_URL.exec(deployed.output);
+    const url = match?.groups?.url;
+    const port = match?.groups?.port;
+    if (url === undefined || port === undefined) {
+      throw new Error("Deploy did not print an app URL");
+    }
+    const response = await body(url);
+    expect(response.status).toBe(200);
+    expect(response.text).toMatch(/^\d+:built$/u);
+    expect(response.text).not.toBe(`${port}:built`);
+  } finally {
+    await stop(running.child);
+    rmSync(ws.root, { recursive: true, force: true });
+  }
+}, 180_000);
+
+test("an unusable Aube lock falls back to the project's npm install", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  packagedTools();
+  const ws = workspace();
+  const source = join(ws.root, "fallback-checkout");
+  mkdirSync(source, { recursive: true });
+  writeFileSync(
+    join(source, "package.json"),
+    JSON.stringify({
+      name: "fallback-proof",
+      version: "1.0.0",
+      scripts: { "start:dev": "node server.mjs" },
+      dependencies: { "local-dependency": "file:./dependency" },
+    })
+  );
+  const dependency = join(source, "dependency");
+  mkdirSync(dependency);
+  writeFileSync(
+    join(dependency, "package.json"),
+    JSON.stringify({
+      name: "local-dependency",
+      version: "1.0.0",
+      type: "module",
+    })
+  );
+  writeFileSync(
+    join(dependency, "index.js"),
+    'export const greeting = "native fallback";\n'
+  );
+  writeFileSync(
+    join(source, "package-lock.json"),
+    JSON.stringify({
+      name: "fallback-proof",
+      version: "1.0.0",
+      lockfileVersion: 3,
+      packages: {
+        "": {
+          name: "fallback-proof",
+          version: "1.0.0",
+          dependencies: { "local-dependency": "file:./dependency" },
+        },
+        dependency: { name: "local-dependency", version: "1.0.0" },
+        "node_modules/local-dependency": {
+          resolved: "dependency",
+          link: true,
+        },
+      },
+    })
+  );
+  writeFileSync(join(source, "aube-lock.yaml"), "not: [valid:\n");
+  writeFileSync(
+    join(source, "server.mjs"),
+    'import { greeting } from "local-dependency";\nimport { createServer } from "node:http";\ncreateServer((_request, response) => response.end(greeting)).listen(Number(process.env.PORT), process.env.HOST);\n'
+  );
+  writeFileSync(
+    join(source, ".devver.yaml"),
+    "process:\n  run: npm run start:dev\n"
+  );
+  git(source, "init", "-q", "-b", "main");
+  git(source, "add", ".");
+  git(source, "commit", "-q", "-m", "native fallback");
+  const running = await foreground(ws.env, "fallback-deployer");
+  try {
+    expect((await ws.run(["attach", running.url])).status).toBe(0);
+    const deployed = await ws.run(["deploy"], source);
+    expect(deployed.status, deployed.output).toBe(0);
+    const url = APP_URL.exec(deployed.output)?.groups?.url;
+    if (url === undefined) {
+      throw new Error("Fallback deployment did not print an app URL");
+    }
+    expect((await body(url)).text).toBe("native fallback");
+  } finally {
+    await stop(running.child);
+    rmSync(ws.root, { recursive: true, force: true });
+  }
+}, 180_000);
+
+test("two Vite development deployments use their reserved ports without a build", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  packagedTools();
+  const ws = workspace();
+  const source = join(ws.root, "vite-checkout");
+  mkdirSync(source, { recursive: true });
+  writeFileSync(
+    join(source, "package.json"),
+    JSON.stringify({
+      devDependencies: { vite: "^7.1.7" },
+      scripts: { dev: "vite", build: "node -e process.exit(1)" },
+    })
+  );
+  writeFileSync(join(source, "index.html"), "<h1>first Vite deployment</h1>");
+  writeFileSync(join(source, ".devver.yaml"), "process:\n  run: npm run dev\n");
+  git(source, "init", "-q", "-b", "main");
+  git(source, "add", ".");
+  git(source, "commit", "-q", "-m", "first Vite deployment");
+  const running = await foreground(ws.env, "vite-deployer");
+  try {
+    expect((await ws.run(["attach", running.url])).status).toBe(0);
+    const first = await ws.run(["deploy"], source);
+    expect(first.status, first.output).toBe(0);
+    const firstUrl = APP_URL.exec(first.output)?.groups?.url;
+    if (firstUrl === undefined) {
+      throw new Error("First Vite deployment did not print an app URL");
+    }
+    writeFileSync(
+      join(source, "index.html"),
+      "<h1>second Vite deployment</h1>"
+    );
+    git(source, "add", "index.html");
+    git(source, "commit", "-q", "-m", "second Vite deployment");
+    const second = await ws.run(["deploy"], source);
+    expect(second.status, second.output).toBe(0);
+    const secondUrl = APP_URL.exec(second.output)?.groups?.url;
+    if (secondUrl === undefined) {
+      throw new Error("Second Vite deployment did not print an app URL");
+    }
+    expect(firstUrl).not.toBe(secondUrl);
+    const manifest = readFileSync(
+      join(ws.root, "devver", "servers", "vite-deployer", "pitchfork.toml"),
+      "utf-8"
+    );
+    const ports = [...manifest.matchAll(/expect = \[(?<port>\d+)\]/gu)].map(
+      ({ groups }) => groups?.port
+    );
+    expect(new Set(ports).size).toBe(2);
+    expect((await body(firstUrl)).text).toContain("first Vite deployment");
+    expect((await body(secondUrl)).text).toContain("second Vite deployment");
+  } finally {
+    await stop(running.child);
+    rmSync(ws.root, { recursive: true, force: true });
+  }
+}, 300_000);
 
 test("server migrates existing deployment records to nullable second-parent lineage", async () => {
   if (process.platform === "win32") {

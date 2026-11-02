@@ -10,7 +10,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { readConfigFile, writeConfigFile } from "../packages/cli/src/config";
+import {
+  readConfigFile,
+  suggestedLocalConfig,
+  writeConfigFile,
+} from "../packages/cli/src/config";
 import { detectProject } from "../packages/cli/src/config/detect";
 
 const roots: string[] = [];
@@ -62,6 +66,95 @@ test.each([
     });
   }
 );
+
+test("Next.js with a dev script keeps its package manager in the recipe", async () => {
+  const root = fixture(
+    { next: "1" },
+    { dev: "next dev", build: "next build", start: "next start" }
+  );
+  writeFileSync(join(root, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+  const detection = await detectProject(root);
+  expect(detection.projects[0]?.packageManager).toBe("pnpm");
+  expect(suggestedLocalConfig(detection)).toEqual({
+    process: {
+      run: "pnpm run dev",
+    },
+  });
+});
+
+test("SvelteKit with a dev script keeps its npm command after review", async () => {
+  const root = fixture(
+    { "@sveltejs/kit": "1", vite: "1" },
+    { dev: "vite dev", build: "vite build", preview: "vite preview" }
+  );
+  writeFileSync(join(root, "package-lock.json"), "{}");
+  const detection = await detectProject(root);
+  const suggested = suggestedLocalConfig(detection);
+  expect(suggested).toEqual({
+    process: {
+      run: "npm run dev",
+    },
+  });
+  writeConfigFile(detection, root);
+  expect(readConfigFile(root)).toEqual(suggested);
+});
+
+test("a backend framework keeps its package-manager dev script", async () => {
+  const root = fixture(
+    { express: "1" },
+    { dev: "node --watch server.js", start: "node server.js" }
+  );
+  writeFileSync(join(root, "package-lock.json"), "{}");
+  const detection = await detectProject(root);
+  expect(suggestedLocalConfig(detection)).toEqual({
+    process: { run: "npm run dev" },
+  });
+});
+
+test("conflicting package manager evidence does not produce a recipe", async () => {
+  const root = fixture(
+    { next: "1" },
+    { build: "next build", start: "next start" }
+  );
+  writeFileSync(join(root, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+  writeFileSync(join(root, "yarn.lock"), "");
+  const detection = await detectProject(root);
+  expect(detection.projects[0]?.packageManager).toBeUndefined();
+  expect(() => suggestedLocalConfig(detection)).toThrow(
+    "Devver couldn't derive a complete process recipe"
+  );
+});
+
+test("reviewed process commands reject shell syntax before writing", () => {
+  const root = fixture();
+  expect(() => {
+    writeConfigFile(
+      {
+        process: {
+          install: "pnpm install",
+          build: "pnpm build && echo secret",
+          run: "pnpm start",
+        },
+      },
+      root
+    );
+  }).toThrow("Process commands must be plain executable arguments");
+  expect(readConfigFile(root)).toBeNull();
+});
+
+test("SvelteKit without a dev script asks for a run command instead of guessing", async () => {
+  const root = fixture(
+    { "@sveltejs/kit": "1" },
+    { build: "vite build", preview: "vite preview" }
+  );
+  writeFileSync(join(root, "package-lock.json"), "{}");
+  const detection = await detectProject(root);
+  expect(suggestedLocalConfig(detection)).toEqual({ process: { run: "" } });
+  expect(() => {
+    writeConfigFile(detection, root);
+  }).toThrow("A run command is required");
+  expect(readConfigFile(root)).toBeNull();
+});
 
 test("a directory without a package or index is unknown", async () => {
   const detection = await detectProject(fixture());
@@ -152,7 +245,7 @@ test("ambiguous frameworks cannot create a guessed config", async () => {
   expect(readConfigFile(root)).toBeNull();
 });
 
-test("unknown framework with scripts cannot create a guessed config", async () => {
+test("unknown framework with scripts without a package manager cannot create a recipe", async () => {
   const root = fixture({ react: "1" }, { build: "build", start: "start" });
   const detection = await detectProject(root);
   expect(detection.projects[0]?.stack).toEqual({
@@ -162,12 +255,10 @@ test("unknown framework with scripts cannot create a guessed config", async () =
   });
   expect(() => {
     writeConfigFile(detection, root);
-  }).toThrow(
-    "Devver didn't recognize an app it can configure here. It currently supports static sites."
-  );
+  }).toThrow("Devver couldn't derive a complete process recipe");
 });
 
-test("Vite is identified but does not acquire an invented start command", async () => {
+test("Vite without a package manager does not acquire an unreviewed recipe", async () => {
   const root = fixture(
     { vite: "1" },
     { build: "vite build", start: "vite preview" }
@@ -181,12 +272,10 @@ test("Vite is identified but does not acquire an invented start command", async 
   });
   expect(() => {
     writeConfigFile(detection, root);
-  }).toThrow(
-    "Devver init can't configure vite yet. It currently supports static sites."
-  );
+  }).toThrow("Devver couldn't derive a complete process recipe");
 });
 
-test("known framework without required scripts cannot create a guessed config", async () => {
+test("known framework without required scripts cannot create a recipe", async () => {
   const root = fixture({ next: "1" }, { build: "next build" });
   writeFileSync(join(root, "index.html"), "<html></html>");
   const detection = await detectProject(root);
@@ -197,9 +286,7 @@ test("known framework without required scripts cannot create a guessed config", 
   });
   expect(() => {
     writeConfigFile(detection, root);
-  }).toThrow(
-    "Devver init can't configure next yet. It currently supports static sites."
-  );
+  }).toThrow("Devver couldn't derive a complete process recipe");
 });
 
 test("existing config remains unchanged even when detection changes", async () => {

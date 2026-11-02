@@ -132,8 +132,10 @@ async function pinServer(parent: string, instanceId: string) {
     serverName,
     "pitchfork.exe",
     "ferron.exe",
+    "aube.exe",
     "PITCHFORK-LICENSE",
     "FERRON-LICENSE",
+    "AUBE-LICENSE",
   ]) {
     const source = join(sourceRoot, "servers", pkg.version, name);
     if (!(await lstat(source)).isFile()) {

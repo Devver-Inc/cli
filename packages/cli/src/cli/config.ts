@@ -1,7 +1,12 @@
 import { Cause, Console, Data, Effect, Schema } from "effect";
 import { Argument, Command } from "effect/cli";
 
-import { InitAbortError, readConfigFile, writeConfigFile } from "../config";
+import {
+  InitAbortError,
+  readConfigFile,
+  suggestedLocalConfig,
+  writeConfigFile,
+} from "../config";
 import {
   CLOUD_API_URL,
   getConfigValue,
@@ -9,6 +14,7 @@ import {
   unsetConfigValue,
 } from "../config/api";
 import { detectProject } from "../config/detect";
+import { Prompt } from "../util/prompts";
 
 const configKey = Argument.String("key").pipe(
   Argument.withSchema(Schema.NonEmptyString)
@@ -117,13 +123,55 @@ export const init = Command.make("init", {}, () =>
             : "No target selected. Run 'devver attach <url>' for a local server or 'devver cloud', then run 'devver init' again. No config was written.",
       });
     }
-    yield* Effect.try({
-      try: () => {
-        writeConfigFile(detection);
-      },
+    const suggested = yield* Effect.try({
+      try: () => suggestedLocalConfig(detection),
       catch: (error) =>
         error instanceof InitAbortError ? error : new Cause.UnknownError(error),
     });
+    if ("process" in suggested) {
+      const run = yield* Prompt.input("Run command", suggested.process.run);
+      if (run === "Canceled") {
+        // oxlint-disable-next-line typescript/consistent-return -- A failed Effect exits init before any write.
+        return yield* new InitAbortError({
+          message: "Config creation cancelled. No config was written.",
+        });
+      }
+      if (run.trim() === "") {
+        // oxlint-disable-next-line typescript/consistent-return -- A failed Effect exits init before any write.
+        return yield* new InitAbortError({
+          message: "A run command is required. No config was written.",
+        });
+      }
+      const confirmed = yield* Prompt.select({
+        message: "Write this reviewed process recipe?",
+        options: Prompt.Questions.YNOpts,
+      });
+      if (confirmed !== "Yes") {
+        // oxlint-disable-next-line typescript/consistent-return -- A failed Effect exits init before any write.
+        return yield* new InitAbortError({
+          message: "Config creation cancelled. No config was written.",
+        });
+      }
+      yield* Effect.try({
+        try: () => {
+          writeConfigFile({ process: { run } });
+        },
+        catch: (error) =>
+          error instanceof InitAbortError
+            ? error
+            : new Cause.UnknownError(error),
+      });
+    } else {
+      yield* Effect.try({
+        try: () => {
+          writeConfigFile(suggested);
+        },
+        catch: (error) =>
+          error instanceof InitAbortError
+            ? error
+            : new Cause.UnknownError(error),
+      });
+    }
   })
 );
 

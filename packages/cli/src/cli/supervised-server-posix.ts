@@ -48,8 +48,10 @@ export async function pinServer(parent: string, instanceId: string) {
     serverName,
     "pitchfork",
     "ferron",
+    "aube",
     "PITCHFORK-LICENSE",
     "FERRON-LICENSE",
+    "AUBE-LICENSE",
   ]) {
     const source = join(sourceRoot, "servers", pkg.version, name);
     const packaged = await lstat(source).catch(() => undefined);

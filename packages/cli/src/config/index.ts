@@ -6,17 +6,24 @@ import { Data, Schema } from "effect";
 import { dump, load } from "js-yaml";
 
 import "./detectors";
-import type { PrimaryStack, ProjectDetection } from "./detect";
+import type { ProjectDetection } from "./detect";
 
-const localInitSupport: Partial<
-  Record<PrimaryStack["category"], { label: string; config: unknown }>
-> = {
-  static: { label: "static sites", config: { static: { directory: "." } } },
-};
-
-const supportedLabels = Object.values(localInitSupport)
-  .map((entry) => entry.label)
-  .join(", ");
+const CommandSchema = Schema.String.pipe(
+  Schema.check(
+    Schema.isNonEmpty(),
+    Schema.isTrimmed(),
+    Schema.isPattern(/\S/u),
+    Schema.isPattern(/^[^"'`$;&|<>(){}\\\r\n]+$/u)
+  )
+);
+const RunCommandSchema = Schema.String.pipe(
+  Schema.check(
+    Schema.isNonEmpty(),
+    Schema.isTrimmed(),
+    Schema.isPattern(/\S/u),
+    Schema.isPattern(/^(?:[^"'`$;&|<>(){}\\\r\n]|\$\{PORT\})+$/u)
+  )
+);
 
 const ServiceConfigSchema = Schema.Struct({
   root: Schema.optional(Schema.String),
@@ -43,13 +50,33 @@ const StaticConfigFileSchema = Schema.Struct({
   }),
 });
 
+const ProcessConfigFileSchema = Schema.Struct({
+  process: Schema.Struct({
+    install: Schema.optional(CommandSchema),
+    build: Schema.optional(CommandSchema),
+    run: RunCommandSchema,
+  }),
+});
+
 const DevverConfigFileSchema = Schema.Union([
   CloudConfigFileSchema,
   StaticConfigFileSchema,
+  ProcessConfigFileSchema,
 ]);
 
 export type ServiceConfig = typeof ServiceConfigSchema.Type;
 export type DevverConfigFile = typeof DevverConfigFileSchema.Type;
+export type LocalConfigFile =
+  | typeof StaticConfigFileSchema.Type
+  | typeof ProcessConfigFileSchema.Type;
+
+interface ProcessRecipeDraft {
+  readonly process: { readonly run: string };
+}
+
+type LocalConfigSuggestion =
+  | typeof StaticConfigFileSchema.Type
+  | ProcessRecipeDraft;
 
 export class InitAbortError extends Data.TaggedError("InitAbortError")<{
   message: string;
@@ -79,8 +106,35 @@ export function readConfigFile(root?: string): DevverConfigFile | null {
   }
 }
 
+export function suggestedLocalConfig(
+  detection: ProjectDetection
+): LocalConfigSuggestion {
+  const [project] = detection.projects;
+  if (detection.projects.length !== 1 || project?.root !== ".") {
+    throw new InitAbortError({
+      message:
+        "This workspace has multiple projects. Devver can't create a local config for them yet. No config was written.",
+    });
+  }
+  if (project.stack.category === "static") {
+    return { static: { directory: "." } };
+  }
+  const { packageManager, scripts } = project;
+  if (packageManager === undefined || project.stack.framework === null) {
+    throw new InitAbortError({
+      message:
+        "Devver couldn't derive a complete process recipe from this project. Add a reviewed .devver.yaml manually. No config was written.",
+    });
+  }
+  return {
+    process: {
+      run: scripts?.dev === undefined ? "" : `${packageManager} run dev`,
+    },
+  };
+}
+
 export function writeConfigFile(
-  detection: ProjectDetection,
+  config: LocalConfigFile | ProjectDetection,
   root?: string
 ): void {
   const targetDir = root ?? cwd();
@@ -90,26 +144,24 @@ export function writeConfigFile(
     readConfigFile(targetDir);
     return;
   }
-
-  const [project] = detection.projects;
-  if (detection.projects.length !== 1 || project?.root !== ".") {
-    throw new InitAbortError({
-      message:
-        "This workspace has multiple projects. Devver can't create a local config for them yet. No config was written.",
-    });
+  const localConfig =
+    "projects" in config ? suggestedLocalConfig(config) : config;
+  if ("process" in localConfig) {
+    if (localConfig.process.run.trim() === "") {
+      throw new InitAbortError({
+        message: "A run command is required. No config was written.",
+      });
+    }
+    try {
+      Schema.decodeSync(ProcessConfigFileSchema)(localConfig);
+    } catch {
+      throw new InitAbortError({
+        message:
+          "Process commands must be plain executable arguments without shell operators or quoting. No config was written.",
+      });
+    }
   }
-
-  const supported = localInitSupport[project.stack.category];
-  if (supported === undefined) {
-    const found =
-      project.stack.framework === null
-        ? "Devver didn't recognize an app it can configure here."
-        : `Devver init can't configure ${project.stack.framework} yet.`;
-    throw new InitAbortError({
-      message: `${found} It currently supports ${supportedLabels}. Add a verified .devver.yaml to deploy anything else. No config was written.`,
-    });
-  }
-  fs.writeFileSync(configPath, dump(supported.config, { noRefs: true }), {
+  fs.writeFileSync(configPath, dump(localConfig, { noRefs: true }), {
     flag: "wx",
   });
   console.log(`\nConfig written to ${configPath}`);

@@ -19,6 +19,7 @@ export interface DetectionContext {
 const PackageJsonSchema = Schema.Struct({
   name: Schema.optional(Schema.String),
   version: Schema.optional(Schema.String),
+  packageManager: Schema.optional(Schema.String),
   dependencies: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
   devDependencies: Schema.optional(
     Schema.Record(Schema.String, Schema.Unknown)
@@ -44,8 +45,17 @@ export type PrimaryStack =
     }
   | { category: "unknown"; framework: null; evidence: readonly string[] };
 
+export type PackageManager = "bun" | "npm" | "pnpm" | "yarn";
+
+export interface ProjectProfile {
+  readonly root: string;
+  readonly stack: PrimaryStack;
+  readonly packageManager?: PackageManager;
+  readonly scripts?: Readonly<Record<string, string>>;
+}
+
 export interface ProjectDetection {
-  projects: readonly { root: string; stack: PrimaryStack }[];
+  projects: readonly ProjectProfile[];
   results: DetectionResult[];
   detectors: ProjectDetector[];
 }
@@ -161,6 +171,41 @@ export function registerDetector(detector: ProjectDetector): void {
   detectors.push(detector);
 }
 
+const packageManagers: readonly PackageManager[] = [
+  "pnpm",
+  "yarn",
+  "bun",
+  "npm",
+];
+
+function isPackageManager(value: string): value is PackageManager {
+  return packageManagers.some((candidate) => candidate === value);
+}
+
+function packageManager(
+  context: FileSystemContext
+): PackageManager | undefined {
+  const declared = context.pkg?.packageManager?.split("@")[0];
+  const locks = packageManagers.filter((manager) =>
+    ({
+      pnpm: ["pnpm-lock.yaml"],
+      yarn: ["yarn.lock"],
+      bun: ["bun.lock", "bun.lockb"],
+      npm: ["package-lock.json"],
+    })[manager].some((file) => context.hasFile(file))
+  );
+  if (
+    locks.length > 1 ||
+    (declared !== undefined && !isPackageManager(declared))
+  ) {
+    return undefined;
+  }
+  if (declared !== undefined && locks.length > 0 && locks[0] !== declared) {
+    return undefined;
+  }
+  return declared ?? locks[0];
+}
+
 const ignoredDirectories = new Set([
   ".git",
   "node_modules",
@@ -176,12 +221,30 @@ const ignoredDirectories = new Set([
 
 export async function detectProject(root?: string): Promise<ProjectDetection> {
   const checkout = path.resolve(root ?? cwd());
-  const projects: { root: string; stack: PrimaryStack }[] = [];
+  const projects: ProjectProfile[] = [];
 
   function visit(directory: string, relative: string): void {
     const context = new FileSystemContext(directory);
     if (relative === "." || context.hasFile("package.json")) {
-      projects.push({ root: relative, stack: primaryStack(context) });
+      const manager = packageManager(context);
+      const scripts = context.pkg?.scripts;
+      const stack = primaryStack(context);
+      if (manager === undefined) {
+        if (scripts === undefined) {
+          projects.push({ root: relative, stack });
+        } else {
+          projects.push({ root: relative, stack, scripts });
+        }
+      } else if (scripts === undefined) {
+        projects.push({ root: relative, stack, packageManager: manager });
+      } else {
+        projects.push({
+          root: relative,
+          stack,
+          packageManager: manager,
+          scripts,
+        });
+      }
     }
     for (const entry of fs
       .readdirSync(directory, { withFileTypes: true })

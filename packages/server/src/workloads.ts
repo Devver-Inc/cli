@@ -1,36 +1,22 @@
-import { Schema } from "effect";
-
+import { readDevverFile } from "./workloads/config";
+import { processKind } from "./workloads/process";
 import { staticSiteKind } from "./workloads/static";
-import type {
-  DaemonSpec,
-  WorkloadKind,
-  WorkloadTarget,
-} from "./workloads/types";
-
-const kinds: readonly WorkloadKind[] = [staticSiteKind];
-
-export const kindByName = (name: string): WorkloadKind | undefined =>
-  kinds.find((kind) => kind.name === name);
-
-export const defaultKind: WorkloadKind = staticSiteKind;
-
-export const workloadNames = kinds.map((kind) => kind.name);
-
-const WorkloadSelection = Schema.Struct({
-  workload: Schema.optional(Schema.String),
-});
+import type { DaemonSpec, WorkloadTarget } from "./workloads/types";
 
 export async function prepareDaemon(
   target: WorkloadTarget
 ): Promise<DaemonSpec> {
-  const { readDevverFile } = await import("./workloads/config");
   const file = await readDevverFile(target.worktree);
-  const { workload } = Schema.decodeSync(WorkloadSelection)(file);
-  const kind = workload === undefined ? defaultKind : kindByName(workload);
-  if (kind === undefined) {
-    throw new Error(`The workload must be one of: ${workloadNames.join(", ")}`);
+  const names = Object.keys(file);
+  if (names.length === 0 || (names.length === 1 && names[0] === "static")) {
+    return staticSiteKind.resolve(target);
   }
-  return kind.resolve(target);
+  if (names.length === 1 && names[0] === "process") {
+    return processKind.resolve(target);
+  }
+  throw new Error(
+    "The deployment configuration must declare one local workload"
+  );
 }
 
 export type {

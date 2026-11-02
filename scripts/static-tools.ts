@@ -18,6 +18,9 @@ const PITCHFORK_LICENSE_HASH =
 const FERRON_VERSION = "2.8.1";
 const FERRON_LICENSE_HASH =
   "c1db5c351e357ea68362c01faff8dc046c59e1d7466317f64482c2a6d3e6a695";
+const AUBE_VERSION = "v2.8.5";
+const AUBE_LICENSE_HASH =
+  "d12ab62ad9f4de7596b77e508910e6bcbb320f9550d665b581ce5b2e4a203e5a";
 const EXECUTABLE_MODE = 0o755;
 const DOCUMENT_MODE = 0o644;
 const artifacts = {
@@ -28,6 +31,9 @@ const artifacts = {
     ferron: "aarch64-apple-darwin",
     ferronHash:
       "a2eb94f6c46a8093822dba935fd9641bf3c0a23369296e7e6afa9b70cf25e077",
+    aube: "aarch64-apple-darwin.tar.gz",
+    aubeHash:
+      "74c22535927c8ecd1ca9937371e9cce40a6b4ae7915ea5e45cfff17eb5dad5ff",
   },
   linux: {
     pitchfork: "x86_64-unknown-linux-gnu.tar.gz",
@@ -36,6 +42,9 @@ const artifacts = {
     ferron: "x86_64-unknown-linux-gnu",
     ferronHash:
       "3cf41cb1758c9fc653354a7fa5be2ca88a10a03a764cd82df67545216a3c5302",
+    aube: "x86_64-unknown-linux-gnu.tar.gz",
+    aubeHash:
+      "bda6a85ac51b11930f92150d51a2d749ea85d0894195056c9e5a52747b56695a",
   },
   win32: {
     pitchfork: "x86_64-pc-windows-msvc.zip",
@@ -44,6 +53,9 @@ const artifacts = {
     ferron: "x86_64-pc-windows-msvc",
     ferronHash:
       "aa1d083d38452b358c1e0badadf4cf49a52242fe942a4e4e4d7fb715af2793c8",
+    aube: "x86_64-pc-windows-msvc.zip",
+    aubeHash:
+      "97cfb2ee932529091f39f6f47933802569e5b38a689f867ee45ae0ee6f2be4cc",
   },
 } as const;
 
@@ -167,29 +179,45 @@ export async function packageStaticTools(destination: string) {
   }
   const temporary = await mkdtemp(join(tmpdir(), "devver-static-tools-"));
   try {
-    const [archive, ferronArchive, pitchforkLicense, ferronLicense] =
-      await Promise.all([
-        cachedVerified(
-          `pitchfork-${PITCHFORK_VERSION}-${target.pitchforkHash}`,
-          `https://github.com/jdx/pitchfork/releases/download/${PITCHFORK_VERSION}/pitchfork-${target.pitchfork}`,
-          target.pitchforkHash
-        ),
-        cachedVerified(
-          `ferron-${FERRON_VERSION}-${target.ferronHash}`,
-          `https://github.com/ferronweb/ferron/releases/download/${FERRON_VERSION}/ferron-${FERRON_VERSION}-${target.ferron}.zip`,
-          target.ferronHash
-        ),
-        cachedVerified(
-          `pitchfork-license-${PITCHFORK_VERSION}-${PITCHFORK_LICENSE_HASH}`,
-          `https://raw.githubusercontent.com/jdx/pitchfork/${PITCHFORK_VERSION}/LICENSE`,
-          PITCHFORK_LICENSE_HASH
-        ),
-        cachedVerified(
-          `ferron-license-${FERRON_VERSION}-${FERRON_LICENSE_HASH}`,
-          `https://raw.githubusercontent.com/ferronweb/ferron/${FERRON_VERSION}/LICENSE`,
-          FERRON_LICENSE_HASH
-        ),
-      ]);
+    const [
+      archive,
+      ferronArchive,
+      aubeArchive,
+      pitchforkLicense,
+      ferronLicense,
+      aubeLicense,
+    ] = await Promise.all([
+      cachedVerified(
+        `pitchfork-${PITCHFORK_VERSION}-${target.pitchforkHash}`,
+        `https://github.com/jdx/pitchfork/releases/download/${PITCHFORK_VERSION}/pitchfork-${target.pitchfork}`,
+        target.pitchforkHash
+      ),
+      cachedVerified(
+        `ferron-${FERRON_VERSION}-${target.ferronHash}`,
+        `https://github.com/ferronweb/ferron/releases/download/${FERRON_VERSION}/ferron-${FERRON_VERSION}-${target.ferron}.zip`,
+        target.ferronHash
+      ),
+      cachedVerified(
+        `aube-${AUBE_VERSION}-${target.aubeHash}`,
+        `https://github.com/aubepkg/aube/releases/download/${AUBE_VERSION}/aube-${AUBE_VERSION}-${target.aube}`,
+        target.aubeHash
+      ),
+      cachedVerified(
+        `pitchfork-license-${PITCHFORK_VERSION}-${PITCHFORK_LICENSE_HASH}`,
+        `https://raw.githubusercontent.com/jdx/pitchfork/${PITCHFORK_VERSION}/LICENSE`,
+        PITCHFORK_LICENSE_HASH
+      ),
+      cachedVerified(
+        `ferron-license-${FERRON_VERSION}-${FERRON_LICENSE_HASH}`,
+        `https://raw.githubusercontent.com/ferronweb/ferron/${FERRON_VERSION}/LICENSE`,
+        FERRON_LICENSE_HASH
+      ),
+      cachedVerified(
+        `aube-license-${AUBE_VERSION}-${AUBE_LICENSE_HASH}`,
+        `https://raw.githubusercontent.com/aubepkg/aube/${AUBE_VERSION}/LICENSE`,
+        AUBE_LICENSE_HASH
+      ),
+    ]);
     const archivePath = join(
       temporary,
       platform === "win32" ? "pitchfork.zip" : "pitchfork.tar.gz"
@@ -203,11 +231,29 @@ export async function packageStaticTools(destination: string) {
       throw new Error("Could not extract pinned Pitchfork archive");
     }
     const suffix = platform === "win32" ? ".exe" : "";
+    const aubePath = join(
+      temporary,
+      platform === "win32" ? "aube.zip" : "aube.tar.gz"
+    );
+    await writeFile(aubePath, aubeArchive);
+    if (
+      Bun.spawnSync(
+        ["tar", "-xf", aubePath, "-C", temporary, `aube${suffix}`],
+        { stdout: "pipe", stderr: "pipe" }
+      ).exitCode !== 0
+    ) {
+      throw new Error("Could not extract pinned Aube archive");
+    }
     const ferronPath = join(temporary, "ferron.zip");
     await writeFile(ferronPath, ferronArchive);
     await installFile(
       join(destination, `pitchfork${suffix}`),
       await readFile(join(temporary, `pitchfork${suffix}`)),
+      EXECUTABLE_MODE
+    );
+    await installFile(
+      join(destination, `aube${suffix}`),
+      await readFile(join(temporary, `aube${suffix}`)),
       EXECUTABLE_MODE
     );
     await installFile(
@@ -223,6 +269,11 @@ export async function packageStaticTools(destination: string) {
     await installFile(
       join(destination, "FERRON-LICENSE"),
       ferronLicense,
+      DOCUMENT_MODE
+    );
+    await installFile(
+      join(destination, "AUBE-LICENSE"),
+      aubeLicense,
       DOCUMENT_MODE
     );
   } finally {

@@ -86,6 +86,9 @@ export async function create(name: string) {
       "--property=StartLimitIntervalSec=60s",
       "--property=StartLimitBurst=3",
       `--setenv=XDG_DATA_HOME=${data}`,
+      ...(process.env.PATH === undefined
+        ? []
+        : [`--setenv=PATH=${process.env.PATH}`]),
       "--",
       pinned.command,
       ...pinned.args,
