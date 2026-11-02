@@ -128,6 +128,9 @@ test("macOS launchd keeps named servers ready after CLI exits and attaches the n
         "<key>ThrottleInterval</key><integer>30</integer>"
       );
       expect(manifest).toContain("<key>SuccessfulExit</key><false/>");
+      expect(manifest).toContain(
+        `<key>PATH</key><string>${RUNTIME_PATH}</string>`
+      );
       expect(manifest).not.toContain("RunAtLoad");
       expect(
         statSync(

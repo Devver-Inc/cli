@@ -43,10 +43,10 @@ const spinner = () => {
   };
 };
 
-const input = (message: string) =>
-  Effect.tryPromise(async () => text({ message })).pipe(
-    Effect.map((result) => (isCancel(result) ? "Canceled" : result))
-  );
+const input = (message: string, initialValue?: string) =>
+  Effect.tryPromise(async () =>
+    text(initialValue === undefined ? { message } : { message, initialValue })
+  ).pipe(Effect.map((result) => (isCancel(result) ? "Canceled" : result)));
 
 const secretInput = (message: string) =>
   Effect.tryPromise(async () => password({ message })).pipe(

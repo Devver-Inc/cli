@@ -2,14 +2,28 @@ import fs from "node:fs";
 import path from "node:path";
 import { cwd } from "node:process";
 
-import { Schema } from "effect";
+import { Data, Schema } from "effect";
 import { dump, load } from "js-yaml";
 
 import "./detectors";
-import { detectProject } from "./detect";
 import type { ProjectDetection } from "./detect";
 
-const regex = /\r?\n/u;
+const CommandSchema = Schema.String.pipe(
+  Schema.check(
+    Schema.isNonEmpty(),
+    Schema.isTrimmed(),
+    Schema.isPattern(/\S/u),
+    Schema.isPattern(/^[^"'`$;&|<>(){}\\\r\n]+$/u)
+  )
+);
+const RunCommandSchema = Schema.String.pipe(
+  Schema.check(
+    Schema.isNonEmpty(),
+    Schema.isTrimmed(),
+    Schema.isPattern(/\S/u),
+    Schema.isPattern(/^(?:[^"'`$;&|<>(){}\\\r\n]|\$\{PORT\})+$/u)
+  )
+);
 
 const ServiceConfigSchema = Schema.Struct({
   root: Schema.optional(Schema.String),
@@ -36,13 +50,37 @@ const StaticConfigFileSchema = Schema.Struct({
   }),
 });
 
+const ProcessConfigFileSchema = Schema.Struct({
+  process: Schema.Struct({
+    install: Schema.optional(CommandSchema),
+    build: Schema.optional(CommandSchema),
+    run: RunCommandSchema,
+  }),
+});
+
 const DevverConfigFileSchema = Schema.Union([
   CloudConfigFileSchema,
   StaticConfigFileSchema,
+  ProcessConfigFileSchema,
 ]);
 
 export type ServiceConfig = typeof ServiceConfigSchema.Type;
 export type DevverConfigFile = typeof DevverConfigFileSchema.Type;
+export type LocalConfigFile =
+  | typeof StaticConfigFileSchema.Type
+  | typeof ProcessConfigFileSchema.Type;
+
+interface ProcessRecipeDraft {
+  readonly process: { readonly run: string };
+}
+
+type LocalConfigSuggestion =
+  | typeof StaticConfigFileSchema.Type
+  | ProcessRecipeDraft;
+
+export class InitAbortError extends Data.TaggedError("InitAbortError")<{
+  message: string;
+}> {}
 
 const decodeDevverConfigFile = Schema.decodeUnknownSync(DevverConfigFileSchema);
 
@@ -68,104 +106,63 @@ export function readConfigFile(root?: string): DevverConfigFile | null {
   }
 }
 
+export function suggestedLocalConfig(
+  detection: ProjectDetection
+): LocalConfigSuggestion {
+  const [project] = detection.projects;
+  if (detection.projects.length !== 1 || project?.root !== ".") {
+    throw new InitAbortError({
+      message:
+        "This workspace has multiple projects. Devver can't create a local config for them yet. No config was written.",
+    });
+  }
+  if (project.stack.category === "static") {
+    return { static: { directory: "." } };
+  }
+  const { packageManager, scripts } = project;
+  if (packageManager === undefined || project.stack.framework === null) {
+    throw new InitAbortError({
+      message:
+        "Devver couldn't derive a complete process recipe from this project. Add a reviewed .devver.yaml manually. No config was written.",
+    });
+  }
+  return {
+    process: {
+      run: scripts?.dev === undefined ? "" : `${packageManager} run dev`,
+    },
+  };
+}
+
 export function writeConfigFile(
-  detection: ProjectDetection,
+  config: LocalConfigFile | ProjectDetection,
   root?: string
 ): void {
   const targetDir = root ?? cwd();
   const configPath = path.join(targetDir, ".devver.yaml");
 
-  const isWebFramework = detection.results.find(
-    (r) => r.detected.name === "react" || r.detected.name === "next"
-  );
-  const isApiFramework = detection.results.find(
-    (r) => r.detected.name === "nestjs" || r.detected.name === "express"
-  );
-
-  if (
-    detection.results.length === 0 &&
-    fs.existsSync(path.join(targetDir, "index.html")) &&
-    !fs.existsSync(path.join(targetDir, "package.json"))
-  ) {
-    fs.writeFileSync(configPath, dump({ static: { directory: "." } }));
-    console.log(`\nConfig written to ${configPath}`);
+  if (fs.existsSync(configPath)) {
+    readConfigFile(targetDir);
     return;
   }
-
-  const serviceName =
-    isWebFramework === undefined && isApiFramework !== undefined
-      ? "api"
-      : "web";
-
-  const detectedTypes = new Set(detection.results.map((r) => r.detected.name));
-  const hasMongo =
-    detectedTypes.has("mongoose") || detectedTypes.has("mongodb");
-  const config = {
-    project: path.basename(targetDir),
-    services: {
-      [serviceName]: {
-        root: ".",
-        build: "bun run build",
-        start: "bun run start",
-        depends: serviceName === "api" && hasMongo ? ["mongodb"] : undefined,
-      },
-    },
-    databases: hasMongo ? { mongodb: { type: "mongodb" } } : undefined,
-    env: { NODE_ENV: "production" },
-  };
-  fs.writeFileSync(configPath, dump(config));
+  const localConfig =
+    "projects" in config ? suggestedLocalConfig(config) : config;
+  if ("process" in localConfig) {
+    if (localConfig.process.run.trim() === "") {
+      throw new InitAbortError({
+        message: "A run command is required. No config was written.",
+      });
+    }
+    try {
+      Schema.decodeSync(ProcessConfigFileSchema)(localConfig);
+    } catch {
+      throw new InitAbortError({
+        message:
+          "Process commands must be plain executable arguments without shell operators or quoting. No config was written.",
+      });
+    }
+  }
+  fs.writeFileSync(configPath, dump(localConfig, { noRefs: true }), {
+    flag: "wx",
+  });
   console.log(`\nConfig written to ${configPath}`);
 }
-
-export function ensureGitignore(targetDir?: string): void {
-  const dir = targetDir ?? cwd();
-  const gitignorePath = path.join(dir, ".gitignore");
-
-  const ENTRY = ".devver/";
-
-  let content = "";
-  if (fs.existsSync(gitignorePath)) {
-    content = fs.readFileSync(gitignorePath, "utf-8");
-    const lines = content.split(regex);
-    if (lines.some((line) => line.trim() === ENTRY)) {
-      return;
-    }
-    if (content !== "" && !content.endsWith("\n")) {
-      content += "\n";
-    }
-  }
-
-  const block = [
-    "",
-    "# devver local secrets (deployment-specific env vars)",
-    ENTRY,
-  ].join("\n");
-
-  fs.writeFileSync(gitignorePath, `${content}${block}\n`);
-  console.log(`  Added \`${ENTRY}\` to .gitignore`);
-}
-
-export async function checkForConfigFile() {
-  const targetDir = cwd();
-  const configPath = path.join(targetDir, ".devver.yaml");
-  if (!fs.existsSync(configPath)) {
-    const detection = await detectProject();
-    console.log("No Config file found, generating...");
-    if (detection.results.length === 0) {
-      console.log("  No frameworks detected");
-    } else {
-      for (const result of detection.results) {
-        console.log(`  ✓ ${result.detected.displayName}`);
-      }
-    }
-    writeConfigFile(detection);
-  }
-
-  ensureGitignore(targetDir);
-}
-
-export const DevverConfig = {
-  writeConfigFile,
-  readConfigFile,
-  checkForConfigFile,
-};

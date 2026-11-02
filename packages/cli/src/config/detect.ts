@@ -19,11 +19,12 @@ export interface DetectionContext {
 const PackageJsonSchema = Schema.Struct({
   name: Schema.optional(Schema.String),
   version: Schema.optional(Schema.String),
+  packageManager: Schema.optional(Schema.String),
   dependencies: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
   devDependencies: Schema.optional(
     Schema.Record(Schema.String, Schema.Unknown)
   ),
-  scripts: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  scripts: Schema.optional(Schema.Record(Schema.String, Schema.String)),
 });
 
 export type PackageJson = typeof PackageJsonSchema.Type;
@@ -35,52 +36,98 @@ export interface DetectionResult {
   confidence: "high" | "medium" | "low";
 }
 
+export type PrimaryStack =
+  | { category: "static"; framework: "html"; evidence: readonly string[] }
+  | {
+      category: "vite" | "meta" | "backend";
+      framework: string;
+      evidence: readonly string[];
+    }
+  | { category: "unknown"; framework: null; evidence: readonly string[] };
+
+export type PackageManager = "bun" | "npm" | "pnpm" | "yarn";
+
+export interface ProjectProfile {
+  readonly root: string;
+  readonly stack: PrimaryStack;
+  readonly packageManager?: PackageManager;
+  readonly scripts?: Readonly<Record<string, string>>;
+}
+
 export interface ProjectDetection {
+  projects: readonly ProjectProfile[];
   results: DetectionResult[];
   detectors: ProjectDetector[];
 }
 
+const frameworks = [
+  { category: "meta", name: "next", deps: ["next"] },
+  {
+    category: "meta",
+    name: "tanstack-start",
+    deps: ["@tanstack/react-start", "@tanstack/start"],
+  },
+  { category: "meta", name: "astro", deps: ["astro"] },
+  { category: "meta", name: "nuxt", deps: ["nuxt"] },
+  { category: "meta", name: "sveltekit", deps: ["@sveltejs/kit"] },
+  { category: "meta", name: "remix", deps: ["@remix-run/react"] },
+  { category: "backend", name: "express", deps: ["express"] },
+  { category: "backend", name: "hono", deps: ["hono"] },
+  { category: "backend", name: "nestjs", deps: ["@nestjs/core"] },
+  { category: "backend", name: "adonis", deps: ["@adonisjs/core"] },
+  { category: "backend", name: "fastify", deps: ["fastify"] },
+  { category: "vite", name: "vite", deps: ["vite"] },
+] as const;
+
+function primaryStack(ctx: DetectionContext): PrimaryStack {
+  if (ctx.pkg === null) {
+    return ctx.hasFile("index.html") && !ctx.hasFile("package.json")
+      ? { category: "static", framework: "html", evidence: ["index.html"] }
+      : { category: "unknown", framework: null, evidence: [] };
+  }
+  const dependencies = { ...ctx.pkg.dependencies, ...ctx.pkg.devDependencies };
+  const matches = frameworks.flatMap((candidate) => {
+    const evidence = candidate.deps.filter(
+      (dep) => dependencies[dep] !== undefined
+    );
+    return evidence.length > 0 ? [{ candidate, evidence }] : [];
+  });
+  const primary = matches.filter(
+    ({ candidate }) => candidate.category !== "vite"
+  );
+  const selected = primary.length > 0 ? primary : matches;
+  const [match] = selected;
+  if (
+    match === undefined &&
+    ctx.hasFile("index.html") &&
+    (ctx.pkg.scripts?.build?.trim().length ?? 0) === 0
+  ) {
+    return { category: "static", framework: "html", evidence: ["index.html"] };
+  }
+  if (match === undefined || selected.length !== 1) {
+    return {
+      category: "unknown",
+      framework: null,
+      evidence: selected.flatMap(({ evidence }) => evidence),
+    };
+  }
+  return {
+    category: match.candidate.category,
+    framework: match.candidate.name,
+    evidence: match.evidence,
+  };
+}
+
 export class FileSystemContext implements DetectionContext {
-  private cachedFiles: Set<string> | null = null;
   private readonly root: string;
 
   constructor(root: string = cwd()) {
     this.root = root;
   }
 
-  private scanFiles(): Set<string> {
-    if (this.cachedFiles !== null) {
-      return this.cachedFiles;
-    }
-
-    const files = new Set<string>();
-    const scanDir = (dir: string) => {
-      try {
-        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-          const fullPath = path.join(dir, entry.name);
-          if (entry.name === "node_modules") {
-            continue;
-          }
-          if (entry.isDirectory()) {
-            scanDir(fullPath);
-          } else {
-            files.add(entry.name);
-            files.add(fullPath);
-          }
-        }
-        return undefined;
-      } catch {
-        return undefined;
-      }
-    };
-    scanDir(this.root);
-    this.cachedFiles = files;
-    return files;
-  }
-
   get pkg(): PackageJson | null {
     const pkgPath = path.join(this.root, "package.json");
-    if (!fs.existsSync(pkgPath)) {
+    if (!this.hasFile("package.json")) {
       return null;
     }
     let parsed: unknown;
@@ -94,10 +141,11 @@ export class FileSystemContext implements DetectionContext {
   }
 
   hasFile(filename: string): boolean {
-    return (
-      this.scanFiles().has(filename) ||
-      this.scanFiles().has(path.join(this.root, filename))
-    );
+    try {
+      return !fs.lstatSync(path.join(this.root, filename)).isSymbolicLink();
+    } catch {
+      return false;
+    }
   }
 
   hasEnvVar(pattern: RegExp): boolean {
@@ -105,7 +153,7 @@ export class FileSystemContext implements DetectionContext {
     const envLocalPath = path.join(this.root, ".env.local");
 
     for (const p of [envPath, envLocalPath]) {
-      if (!fs.existsSync(p)) {
+      if (!this.hasFile(path.basename(p))) {
         continue;
       }
       const content = fs.readFileSync(p, "utf-8");
@@ -123,21 +171,110 @@ export function registerDetector(detector: ProjectDetector): void {
   detectors.push(detector);
 }
 
-export async function detectProject(root?: string): Promise<ProjectDetection> {
-  const ctx = new FileSystemContext(root);
-  const results: DetectionResult[] = [];
+const packageManagers: readonly PackageManager[] = [
+  "pnpm",
+  "yarn",
+  "bun",
+  "npm",
+];
 
-  for (const detector of detectors) {
-    const detected = await detector.detect(ctx);
-    if (detected) {
-      results.push({
-        detected: detector,
-        confidence: "high",
-      });
+function isPackageManager(value: string): value is PackageManager {
+  return packageManagers.some((candidate) => candidate === value);
+}
+
+function packageManager(
+  context: FileSystemContext
+): PackageManager | undefined {
+  const declared = context.pkg?.packageManager?.split("@")[0];
+  const locks = packageManagers.filter((manager) =>
+    ({
+      pnpm: ["pnpm-lock.yaml"],
+      yarn: ["yarn.lock"],
+      bun: ["bun.lock", "bun.lockb"],
+      npm: ["package-lock.json"],
+    })[manager].some((file) => context.hasFile(file))
+  );
+  if (
+    locks.length > 1 ||
+    (declared !== undefined && !isPackageManager(declared))
+  ) {
+    return undefined;
+  }
+  if (declared !== undefined && locks.length > 0 && locks[0] !== declared) {
+    return undefined;
+  }
+  return declared ?? locks[0];
+}
+
+const ignoredDirectories = new Set([
+  ".git",
+  "node_modules",
+  "dist",
+  "build",
+  ".next",
+  ".nuxt",
+  ".output",
+  "coverage",
+  ".turbo",
+  ".devver",
+]);
+
+export async function detectProject(root?: string): Promise<ProjectDetection> {
+  const checkout = path.resolve(root ?? cwd());
+  const projects: ProjectProfile[] = [];
+
+  function visit(directory: string, relative: string): void {
+    const context = new FileSystemContext(directory);
+    if (relative === "." || context.hasFile("package.json")) {
+      const manager = packageManager(context);
+      const scripts = context.pkg?.scripts;
+      const stack = primaryStack(context);
+      if (manager === undefined) {
+        if (scripts === undefined) {
+          projects.push({ root: relative, stack });
+        } else {
+          projects.push({ root: relative, stack, scripts });
+        }
+      } else if (scripts === undefined) {
+        projects.push({ root: relative, stack, packageManager: manager });
+      } else {
+        projects.push({
+          root: relative,
+          stack,
+          packageManager: manager,
+          scripts,
+        });
+      }
+    }
+    for (const entry of fs
+      .readdirSync(directory, { withFileTypes: true })
+      .toSorted((a, b) => a.name.localeCompare(b.name, "en"))) {
+      if (!entry.isDirectory() || ignoredDirectories.has(entry.name)) {
+        continue;
+      }
+      visit(
+        path.join(directory, entry.name),
+        relative === "." ? entry.name : `${relative}/${entry.name}`
+      );
     }
   }
+  visit(checkout, ".");
 
-  return { results, detectors };
+  const singleRoot = projects.length === 1 && projects[0]?.root === ".";
+  const results: DetectionResult[] = [];
+  if (singleRoot) {
+    const ctx = new FileSystemContext(checkout);
+    for (const detector of detectors) {
+      if (await detector.detect(ctx)) {
+        results.push({ detected: detector, confidence: "high" });
+      }
+    }
+  }
+  return {
+    projects,
+    results,
+    detectors,
+  };
 }
 
 export function createDependencyDetector(

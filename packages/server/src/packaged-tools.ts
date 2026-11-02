@@ -42,6 +42,21 @@ export async function packagedToolsDirectory() {
   );
 }
 
+export async function locateAube() {
+  const toolsDirectory = await packagedToolsDirectory();
+  const aube = join(toolsDirectory, `aube${EXECUTABLE}`);
+  try {
+    if (!(await lstat(aube)).isFile()) {
+      throw new Error("not a regular file");
+    }
+  } catch {
+    throw new Error(
+      "This installation has no packaged package manager to run this recipe"
+    );
+  }
+  return aube;
+}
+
 export async function locateFerron() {
   const toolsDirectory = await packagedToolsDirectory();
   const ferron = join(toolsDirectory, `ferron${EXECUTABLE}`);

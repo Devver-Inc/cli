@@ -69,6 +69,7 @@ if (
   NodeRuntime.runMain(
     Command.run(cli, { version: versionLine(pkg.version) }).pipe(
       Effect.tapErrorTag("DeployAbortError", printExpected),
+      Effect.tapErrorTag("InitAbortError", printExpected),
       Effect.tapErrorTag("ServerCreateError", printExpected),
       Effect.tapErrorTag("ServerLifecycleError", printExpected),
       Effect.tapErrorTag("UpdateError", printExpected),

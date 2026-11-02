@@ -34,6 +34,7 @@ const UNSAFE_IN_ARGUMENT = /["'`$\r\n]/u;
 export interface DaemonSpec {
   readonly command: readonly string[];
   readonly dir: string;
+  readonly env?: Readonly<Record<string, string>>;
   readonly port: number;
 }
 
@@ -290,8 +291,26 @@ export async function openDeploymentHost(options: {
       const command = spec.command
         .map((argument) => shellArgument(argument))
         .join(" ");
+      const environment = Object.entries(spec.env ?? {})
+        .map(([name, value]) => {
+          if (!/^[A-Z_][A-Z0-9_]*$/u.test(name)) {
+            throw new Error(
+              "A deployment environment variable name is invalid"
+            );
+          }
+          return `${name}=${shellArgument(value)}`;
+        })
+        .join(" ");
+      const daemonRun =
+        process.platform === "win32"
+          ? `${Object.entries(spec.env ?? {})
+              .map(
+                ([name, value]) => `set ${shellArgument(`${name}=${value}`)}`
+              )
+              .join(" && ")}${environment === "" ? "" : " && "}${command}`
+          : `${environment}${environment === "" ? "" : " "}${command}`;
       return `[daemons."${deploymentId}"]
-run = '${changeDirectory} ${directory} && ${command}'
+run = '${changeDirectory} ${directory} && ${daemonRun}'
 dir = '${tomlLiteral(instanceDirectory)}'
 port = { expect = [${spec.port}], bump = false }
 `;

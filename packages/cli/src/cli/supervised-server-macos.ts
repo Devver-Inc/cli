@@ -34,12 +34,16 @@ function plist(
   const argumentsXml = [command, ...args]
     .map((arg) => `<string>${escapeXml(arg)}</string>`)
     .join("");
+  const pathXml =
+    process.env.PATH === undefined
+      ? ""
+      : `<key>PATH</key><string>${escapeXml(process.env.PATH)}</string>`;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>Label</key><string>${escapeXml(label)}</string>
 <key>ProgramArguments</key><array>${argumentsXml}</array>
-<key>EnvironmentVariables</key><dict><key>XDG_DATA_HOME</key><string>${escapeXml(data)}</string></dict>
+<key>EnvironmentVariables</key><dict><key>XDG_DATA_HOME</key><string>${escapeXml(data)}</string>${pathXml}</dict>
 <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
 <key>ThrottleInterval</key><integer>30</integer>
 <key>StandardOutPath</key><string>${escapeXml(join(directory, "server.log"))}</string>

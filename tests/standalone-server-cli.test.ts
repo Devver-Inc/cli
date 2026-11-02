@@ -8,6 +8,7 @@ import pkg from "../package.json";
 const repo = join(import.meta.dir, "..");
 const cli = join(repo, "devver");
 const packaged = join(repo, "servers", pkg.version, "devver-server");
+const packagedAube = join(repo, "servers", pkg.version, "aube");
 const NO_RUNTIME = "/usr/bin:/bin";
 const CONTROL_URL = /http:\/\/127\.0\.0\.1:\d+\/api\/v1/u;
 
@@ -87,6 +88,12 @@ test("the standalone CLI switches between its packaged servers with no runtime i
   }
   expect(Bun.which("node", { PATH: NO_RUNTIME })).toBeNull();
   expect(Bun.which("bun", { PATH: NO_RUNTIME })).toBeNull();
+  const aube = Bun.spawnSync([packagedAube, "--version"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  expect(aube.exitCode, aube.stderr.toString()).toBe(0);
+  expect(aube.stdout.toString()).toContain("2.8.5");
   const ws = workspace();
   const children: ReturnType<typeof Bun.spawn>[] = [];
   try {
