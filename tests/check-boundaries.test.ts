@@ -28,11 +28,13 @@ test("CLI core and infrastructure imports point inward", () => {
       "packages/cli/src/tui/app.tsx": 'import "../cli/prompts";',
     },
     (root) => {
-      expect(checkBoundaries(root)).toEqual([
-        "packages/cli/src/infra/storage.ts imports CLI presentation: packages/cli/src/cli/prompts.ts",
-        "packages/cli/src/core/project.ts imports outside core: packages/cli/src/infra/storage.ts",
-        "packages/cli/src/tui/app.tsx imports CLI commands: packages/cli/src/cli/prompts.ts",
-      ]);
+      expect(checkBoundaries(root).toSorted()).toEqual(
+        [
+          "packages/cli/src/infra/storage.ts imports CLI presentation: packages/cli/src/cli/prompts.ts",
+          "packages/cli/src/core/project.ts imports outside core: packages/cli/src/infra/storage.ts",
+          "packages/cli/src/tui/app.tsx imports CLI commands: packages/cli/src/cli/prompts.ts",
+        ].toSorted()
+      );
     }
   );
 });

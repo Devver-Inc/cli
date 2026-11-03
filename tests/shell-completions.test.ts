@@ -27,7 +27,7 @@ for (const shell of ["bash", "zsh", "fish"] as const) {
     for (const entry of ["attach", "deploy", "server", "tui", "--api-url"]) {
       expect(script).toContain(entry);
     }
-    if (shell === "bash" || shell === "zsh") {
+    if (shell === "bash" || (shell === "zsh" && Bun.which("zsh") !== null)) {
       const parsed = spawnSync(shell, ["-n"], {
         input: script,
         encoding: "utf-8",
