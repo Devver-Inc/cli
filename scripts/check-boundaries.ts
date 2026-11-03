@@ -57,6 +57,30 @@ function packageName(file: string): string | undefined {
   return directory === "packages" ? name : undefined;
 }
 
+function layerViolation(file: string, target: string): string | undefined {
+  if (
+    file.startsWith("packages/cli/src/core/") &&
+    target.startsWith("packages/cli/src/") &&
+    !target.startsWith("packages/cli/src/core/")
+  ) {
+    return `${file} imports outside core: ${target}`;
+  }
+  if (
+    file.startsWith("packages/cli/src/infra/") &&
+    (target.startsWith("packages/cli/src/cli/") ||
+      target.startsWith("packages/cli/src/tui/"))
+  ) {
+    return `${file} imports CLI presentation: ${target}`;
+  }
+  if (
+    file.startsWith("packages/cli/src/tui/") &&
+    target.startsWith("packages/cli/src/cli/")
+  ) {
+    return `${file} imports CLI commands: ${target}`;
+  }
+  return undefined;
+}
+
 export function checkBoundaries(root: string): string[] {
   const packages = sourceFiles(root, join(root, "packages"));
   if (packages.length === 0) {
@@ -89,6 +113,10 @@ export function checkBoundaries(root: string): string[] {
       .filter((target): target is string => target !== undefined);
     graph.set(file, dependencies);
     for (const target of dependencies) {
+      const violation = layerViolation(file, target);
+      if (violation !== undefined) {
+        errors.push(violation);
+      }
       const from = packageName(file);
       const to = packageName(target);
       if (to === undefined) {

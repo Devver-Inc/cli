@@ -58,7 +58,7 @@ function probe(root: string, body: string) {
       },
       signOut: async () => {},
     };
-    mock.module(${JSON.stringify(join(repo, "packages/cli/src/auth/logto.ts"))}, () => ({
+    mock.module(${JSON.stringify(join(repo, "packages/cli/src/infra/auth/logto.ts"))}, () => ({
       createLogtoClient: () => fake,
     }));
     const { getAccessToken } = await import(${JSON.stringify(join(repo, "packages/cli/auth.ts"))});

@@ -105,7 +105,7 @@ test("Bash completes saved server names offline", () => {
       "bun",
       [
         "-e",
-        `import { saveLocalDeployments } from "${join(repo, "packages/cli/src/cli/completion-cache.ts")}"; await saveLocalDeployments("${target.instanceId}", [{ deploymentId: "${deploymentId}", status: "ready" }, { deploymentId: "ccffbbcc-1122-4433-8899-aabbccddeeff", status: "degraded" }]);`,
+        `import { saveLocalDeployments } from "${join(repo, "packages/cli/src/infra/completion/cache.ts")}"; await saveLocalDeployments("${target.instanceId}", [{ deploymentId: "${deploymentId}", status: "ready" }, { deploymentId: "ccffbbcc-1122-4433-8899-aabbccddeeff", status: "degraded" }]);`,
       ],
       { encoding: "utf-8", env: { ...process.env, XDG_DATA_HOME: directory } }
     );

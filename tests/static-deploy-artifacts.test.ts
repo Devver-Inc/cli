@@ -350,7 +350,7 @@ async function failedDeployments(
   if (onWindows) {
     git(site, "add", "-A");
   } else {
-    symlinkSync("../../outside", join(site, "assets", "outside.css"));
+    symlinkSync("../outside", join(site, "assets", "outside.css"));
     git(site, "add", "-A");
     git(site, "commit", "-q", "-m", "escaping asset symlink");
     const escapedAsset = ws.cli(site, "deploy");

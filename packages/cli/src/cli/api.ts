@@ -1,10 +1,10 @@
 import { Data, Effect, Layer, Option } from "effect";
 
-import { ApiBaseUrl, ApiClientLayer, AuthToken } from "../api/client";
-import type { ApiClient } from "../api/client";
-import { getAccessToken } from "../auth/client";
-import { CLOUD_API_URL, readConfig } from "../config/api";
-import type { LocalTargetSchema } from "../config/api";
+import { ApiBaseUrl, ApiClientLayer, AuthToken } from "../infra/api/client";
+import type { ApiClient } from "../infra/api/client";
+import { getAccessToken } from "../infra/auth/client";
+import { CLOUD_API_URL, readConfig } from "../infra/config/api";
+import type { LocalTargetSchema } from "../infra/config/api";
 import { root } from "./root";
 
 class ApiTargetError extends Data.TaggedError("ApiTargetError")<{

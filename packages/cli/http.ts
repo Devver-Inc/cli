@@ -3,4 +3,4 @@ export {
   ApiClient,
   ApiClientLayer,
   AuthToken,
-} from "./src/api/client";
+} from "./src/infra/api/client";

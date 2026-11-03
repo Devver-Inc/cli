@@ -1,1 +1,1 @@
-export { formatBackendError } from "./src/api/errors";
+export { formatBackendError } from "./src/infra/api/errors";

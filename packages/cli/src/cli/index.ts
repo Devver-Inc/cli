@@ -4,25 +4,29 @@ import { Console, Effect, Runtime } from "effect";
 import { Command } from "effect/cli";
 
 import pkg from "../../../../package.json" with { type: "json" };
-import { attach } from "./attach";
-import { auth } from "./auth";
-import { cloud } from "./cloud";
-import { deploymentIds, extendCompletions, serverNames } from "./completion";
-import { config } from "./config";
-import { deploy } from "./deploy";
-import { detach } from "./detach";
-import { init } from "./init";
-import { merge } from "./merge";
-import { newCommand } from "./new";
-import { organization } from "./organization";
-import { project } from "./project";
-import { repos } from "./repos";
+import { versionLine } from "../infra/version";
+import { attach } from "./commands/attach";
+import { auth } from "./commands/auth";
+import { cloud } from "./commands/cloud";
+import { config } from "./commands/config";
+import { deploy } from "./commands/deploy";
+import { detach } from "./commands/detach";
+import { init } from "./commands/init";
+import { merge } from "./commands/merge";
+import { newCommand } from "./commands/new";
+import { organization } from "./commands/organization";
+import { project } from "./commands/project";
+import { repos } from "./commands/repos";
+import { secret } from "./commands/secret";
+import { server } from "./commands/server";
+import { launchTui, tui } from "./commands/tui";
+import {
+  deploymentIds,
+  extendCompletions,
+  serverNames,
+} from "./completion/scripts";
 import { root } from "./root";
-import { secret } from "./secret";
-import { server } from "./server";
-import { launchTui, tui } from "./tui";
 import { runUpdate } from "./update";
-import { versionLine } from "./version";
 
 // Expected failures already carry a user-facing message, so the process edge
 // prints it and marks it reported to suppress duplicate cause logging.

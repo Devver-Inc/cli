@@ -1,4 +1,4 @@
-import type { LocalDeploymentStatus } from "../api/local-deploy.requests";
+import type { LocalDeploymentStatus } from "../infra/api/local-deploy.requests";
 
 export function visibleDeployments(
   deployments: readonly LocalDeploymentStatus[],
