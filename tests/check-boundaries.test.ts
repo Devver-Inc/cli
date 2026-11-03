@@ -19,6 +19,24 @@ function fixture(files: Record<string, string>, check: (root: string) => void) {
   }
 }
 
+test("CLI core and infrastructure imports point inward", () => {
+  fixture(
+    {
+      "packages/cli/src/core/project.ts": 'import "../infra/storage";',
+      "packages/cli/src/infra/storage.ts": 'import "../cli/prompts";',
+      "packages/cli/src/cli/prompts.ts": 'export const prompt = "yes";',
+      "packages/cli/src/tui/app.tsx": 'import "../cli/prompts";',
+    },
+    (root) => {
+      expect(checkBoundaries(root)).toEqual([
+        "packages/cli/src/infra/storage.ts imports CLI presentation: packages/cli/src/cli/prompts.ts",
+        "packages/cli/src/core/project.ts imports outside core: packages/cli/src/infra/storage.ts",
+        "packages/cli/src/tui/app.tsx imports CLI commands: packages/cli/src/cli/prompts.ts",
+      ]);
+    }
+  );
+});
+
 test("checks imports, test fixtures and cycles rather than silently scanning zero files", () => {
   fixture({}, (root) => {
     expect(checkBoundaries(root)).toEqual([
@@ -55,8 +73,8 @@ test("checks imports, test fixtures and cycles rather than silently scanning zer
       expect(errors).toContain("packages/bar/index.ts imports private module");
       expect(errors).toContain("tests/caller.ts imports private module");
       expect(errors).toContain("tests/caller.ts imports test fixture");
-      expect(errors).toContain(
-        "Import cycle: scripts/b.ts -> scripts/a.ts -> scripts/b.ts"
+      expect(errors).toMatch(
+        /Import cycle: scripts\/(?:a\.ts -> scripts\/b\.ts -> scripts\/a\.ts|b\.ts -> scripts\/a\.ts -> scripts\/b\.ts)/u
       );
     }
   );

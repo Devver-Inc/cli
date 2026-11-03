@@ -7,10 +7,10 @@ import type {
 import { useKeyboard } from "@opentui/react";
 import { useEffect, useRef, useState } from "react";
 
-import { ApiError } from "../api/client";
-import type { LocalDeploymentStatus } from "../api/local-deploy.requests";
-import { openBrowser } from "../auth/browser";
-import type { Candidate } from "../cli/update";
+import type { Candidate } from "../core/update";
+import { ApiError } from "../infra/api/client";
+import type { LocalDeploymentStatus } from "../infra/api/local-deploy.requests";
+import { openBrowser } from "../infra/auth/browser";
 import { DeploymentDetails } from "./components/deployment-details";
 import { DeploymentRow } from "./components/deployment-row";
 import { glyphFor } from "./components/lanes";

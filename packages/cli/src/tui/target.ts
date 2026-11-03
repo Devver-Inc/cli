@@ -1,6 +1,6 @@
-import type { LocalDeploymentStatus } from "../api/local-deploy.requests";
-import type { Organization } from "../auth/session";
-import type { Candidate } from "../cli/update";
+import type { Candidate } from "../core/update";
+import type { LocalDeploymentStatus } from "../infra/api/local-deploy.requests";
+import type { Organization } from "../infra/auth/session";
 
 export interface LocalTarget {
   readonly kind: "local";

@@ -1,1 +1,1 @@
-export { switchOrganization } from "./src/cli/organization";
+export { switchOrganization } from "./src/cli/commands/organization";

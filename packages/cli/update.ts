@@ -1,6 +1,2 @@
-export {
-  installedRelease,
-  isNewer,
-  isNpmInstallation,
-  updatePlan,
-} from "./src/cli/update";
+export { isNewer, updatePlan } from "./src/core/update";
+export { installedRelease, isNpmInstallation } from "./src/infra/update";

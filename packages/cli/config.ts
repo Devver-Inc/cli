@@ -2,8 +2,8 @@ export {
   readConfigFile,
   suggestedLocalConfig,
   writeConfigFile,
-} from "./src/config";
-export { detectProject } from "./src/config/detect";
+} from "./src/infra/config";
+export { detectProject } from "./src/infra/config/detect";
 export {
   getDeploymentEnv,
   listDeploymentSecrets,
@@ -13,4 +13,4 @@ export {
   removeDeploymentEnvKey,
   setDeploymentEnv,
   writeSecretsFile,
-} from "./src/config/secrets";
+} from "./src/infra/config/secrets";

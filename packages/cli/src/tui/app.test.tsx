@@ -754,7 +754,7 @@ test("the TUI releases the renderer and never blocks process exit", () => {
       join(import.meta.dir, "../../tests/fixtures", "tui-probe.ts"),
     ],
     {
-      cwd: join(import.meta.dir, "../../../.."),
+      cwd: join(import.meta.dir, "../../../../"),
       stdout: "pipe",
       stderr: "pipe",
     }

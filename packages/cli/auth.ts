@@ -1,7 +1,7 @@
-export { getAccessToken } from "./src/auth/client";
-export { createLogtoClient } from "./src/auth/logto";
+export { getAccessToken } from "./src/infra/auth/client";
+export { createLogtoClient } from "./src/infra/auth/logto";
 export {
   clearCurrentOrganization,
   getCurrentOrganization,
-} from "./src/auth/organization";
-export { getOrganizations, serveCallback } from "./src/auth/session";
+} from "./src/infra/auth/organization";
+export { getOrganizations, serveCallback } from "./src/infra/auth/session";
