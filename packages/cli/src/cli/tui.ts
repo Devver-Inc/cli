@@ -22,6 +22,7 @@ import {
   setCurrentProjectId,
 } from "../util/project/storage";
 import { withApiAt, withLocalApi } from "./api";
+import { saveLocalDeployments } from "./completion-cache";
 import { switchOrganization } from "./organization";
 import { root } from "./root";
 import { availableUpdate } from "./update";
@@ -82,6 +83,11 @@ export const launchTui = (project?: string, apiUrl = Option.none<string>()) =>
                 await runWithContext(
                   listLocalDeployments.pipe(
                     Effect.provideService(ApiClient, api),
+                    Effect.tap((deployments) =>
+                      Effect.tryPromise(async () =>
+                        saveLocalDeployments(local.instanceId, deployments)
+                      ).pipe(Effect.ignore)
+                    ),
                     Effect.catchTag("ApiError", (error) =>
                       error.status === 404 || error.status === 405
                         ? Effect.succeed(null)

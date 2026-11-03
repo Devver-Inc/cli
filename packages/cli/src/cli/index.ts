@@ -7,6 +7,7 @@ import pkg from "../../../../package.json" with { type: "json" };
 import { attach } from "./attach";
 import { auth } from "./auth";
 import { cloud } from "./cloud";
+import { deploymentIds, extendCompletions, serverNames } from "./completion";
 import { config } from "./config";
 import { deploy } from "./deploy";
 import { detach } from "./detach";
@@ -62,6 +63,14 @@ export const cli = root.pipe(
   ])
 );
 
+const isCompletionScript = (value: unknown): value is string =>
+  typeof value === "string";
+
+const isConsoleMember = (
+  target: Console.Console,
+  property: PropertyKey
+): property is keyof Console.Console => property in target;
+
 // Compiled Windows executables can report import.meta.main as false.
 declare const DEVVER_STANDALONE_ENTRY: boolean;
 if (
@@ -69,15 +78,55 @@ if (
   // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Build-only constant is absent in source and npm.
   (typeof DEVVER_STANDALONE_ENTRY === "boolean" && DEVVER_STANDALONE_ENTRY)
 ) {
-  NodeRuntime.runMain(
-    Command.run(cli, { version: versionLine(pkg.version) }).pipe(
-      Effect.tapErrorTag("DeployAbortError", printExpected),
-      Effect.tapErrorTag("InitAbortError", printExpected),
-      Effect.tapErrorTag("ServerCreateError", printExpected),
-      Effect.tapErrorTag("ServerLifecycleError", printExpected),
-      Effect.tapErrorTag("UpdateError", printExpected),
-      // @effect-diagnostics-next-line strictEffectProvide:off
-      Effect.provide(NodeServices.layer)
-    )
-  );
+  const args = process.argv.slice(2);
+  if (args.length === 1 && args[0] === "--completion-server-names") {
+    NodeRuntime.runMain(serverNames);
+  } else if (args.length === 1 && args[0] === "--completion-deployment-ids") {
+    NodeRuntime.runMain(deploymentIds);
+  } else {
+    const completion =
+      args.find((arg) => arg.startsWith("--completions="))?.split("=")[1] ??
+      (args[0] === "--completions" ? args[1] : undefined);
+    const program = Command.run(cli, { version: versionLine(pkg.version) });
+    const withCompletions =
+      completion === undefined
+        ? program
+        : Effect.gen(function* () {
+            const original = yield* Console.Console;
+            return yield* program.pipe(
+              Effect.provideService(
+                Console.Console,
+                new Proxy(original, {
+                  get(target, property) {
+                    if (property === "log") {
+                      return (...messages: readonly unknown[]) => {
+                        for (const message of messages) {
+                          original.log(
+                            isCompletionScript(message)
+                              ? extendCompletions(message, completion)
+                              : message
+                          );
+                        }
+                      };
+                    }
+                    return isConsoleMember(target, property)
+                      ? target[property]
+                      : undefined;
+                  },
+                })
+              )
+            );
+          });
+    NodeRuntime.runMain(
+      withCompletions.pipe(
+        Effect.tapErrorTag("DeployAbortError", printExpected),
+        Effect.tapErrorTag("InitAbortError", printExpected),
+        Effect.tapErrorTag("ServerCreateError", printExpected),
+        Effect.tapErrorTag("ServerLifecycleError", printExpected),
+        Effect.tapErrorTag("UpdateError", printExpected),
+        // @effect-diagnostics-next-line strictEffectProvide:off
+        Effect.provide(NodeServices.layer)
+      )
+    );
+  }
 }

@@ -97,7 +97,7 @@ mkdir -p ~/.config/fish/completions
 devver --completions fish > ~/.config/fish/completions/devver.fish
 ```
 
-Restart your shell after setup. Regenerate the file after upgrading Devver to pick up new commands. `--completions sh` is an alias for Bash; PowerShell and dynamic suggestions for server/deployment names are not supported.
+Restart your shell after setup. Regenerate the file after upgrading Devver to pick up new commands. `--completions sh` is an alias for Bash. Bash, Zsh and Fish suggest saved local server names for `server stop/remove` and ready local deployment IDs for `merge`. Deployment suggestions are cached when the TUI loads or `server status` lists deployments; Tab never contacts a server or cloud API. Regenerate installed completion scripts after upgrading. PowerShell completions are not supported.
 
 ## Contribute
 

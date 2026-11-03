@@ -12,6 +12,7 @@ import {
 import { identityAt } from "../local-server/target";
 import { Prompt } from "../util/prompts";
 import { withLocalApi } from "./api";
+import { saveLocalDeployments } from "./completion-cache";
 
 class ServerLifecycleError extends Data.TaggedError("ServerLifecycleError")<{
   message: string;
@@ -48,6 +49,9 @@ const status = Command.make("status", {}, () =>
         if (deployments === null) {
           yield* Console.log("  Deployment status unavailable on this server");
         } else {
+          yield* Effect.tryPromise(async () =>
+            saveLocalDeployments(target.instanceId, deployments)
+          ).pipe(Effect.ignore);
           for (const deployment of deployments) {
             if (deployment.status === "degraded") {
               yield* Console.log(
