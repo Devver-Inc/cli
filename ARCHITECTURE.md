@@ -9,7 +9,7 @@ How the Devver CLI is put together: the pieces, the seams between them, and the 
 - **Cloud** — `devver cloud` selects `https://app.devver.app/api/v1`. Commands authenticate through Logto.
 - **Local** — `devver new server` creates a supervised named instance on the machine; `devver attach` points at an already running one. A local instance needs no account, stays on loopback, and works offline.
 
-`devver detach` clears either selection. Running `devver` with no subcommand opens the TUI against whichever target is selected.
+`devver detach` clears either selection. Running `devver` with no subcommand shows command help; `devver tui` opens the TUI against the selected target.
 
 A **deployment** is a pinned Git revision, built and served under its own hostname by a local instance. Deployments form a lineage graph: an ordinary deploy attaches to the nearest ready ancestor on first-parent history, and an explicit merge produces a deployment with two parents.
 

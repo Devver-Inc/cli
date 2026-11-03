@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Console, Effect, Runtime } from "effect";
-import { Command } from "effect/cli";
+import { CliConfig, Command, GlobalFlag } from "effect/cli";
 
 import pkg from "../../../../package.json" with { type: "json" };
 import { versionLine } from "../infra/version";
@@ -19,7 +19,7 @@ import { project } from "./commands/project";
 import { repos } from "./commands/repos";
 import { secret } from "./commands/secret";
 import { server } from "./commands/server";
-import { launchTui, tui } from "./commands/tui";
+import { tui } from "./commands/tui";
 import {
   deploymentIds,
   extendCompletions,
@@ -39,32 +39,42 @@ const printExpected = (error: {
     error[Runtime.errorReported] = false;
   });
 
+const subcommands = [
+  attach,
+  auth,
+  cloud,
+  config,
+  deploy,
+  detach,
+  init,
+  merge,
+  newCommand,
+  organization,
+  project,
+  repos,
+  secret,
+  server,
+  tui,
+] as const;
+
+const helpTree = root.pipe(Command.withSubcommands(subcommands));
+const showRootHelp = Effect.gen(function* () {
+  const { builtIns } = yield* CliConfig.CliConfig;
+  yield* GlobalFlag.Help.run(true, {
+    builtIns,
+    command: helpTree,
+    commandPath: ["devver"],
+    version: versionLine(pkg.version),
+  });
+});
+
+const help = Command.make("help", {}, () => showRootHelp).pipe(
+  Command.withDescription("Show command help")
+);
+
 export const cli = root.pipe(
-  Command.withHandler(({ apiUrl, update }) =>
-    Effect.gen(function* () {
-      if (update) {
-        return yield* runUpdate;
-      }
-      return yield* launchTui(undefined, apiUrl);
-    })
-  ),
-  Command.withSubcommands([
-    attach,
-    auth,
-    cloud,
-    config,
-    deploy,
-    detach,
-    init,
-    merge,
-    newCommand,
-    organization,
-    project,
-    repos,
-    secret,
-    server,
-    tui,
-  ])
+  Command.withHandler(({ update }) => (update ? runUpdate : showRootHelp)),
+  Command.withSubcommands([...subcommands, help])
 );
 
 const isCompletionScript = (value: unknown): value is string =>

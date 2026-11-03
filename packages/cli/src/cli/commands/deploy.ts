@@ -226,4 +226,4 @@ export const deploy = Command.make(
       }
       return yield* withApi(cloudDeploy);
     })
-);
+).pipe(Command.withDescription("Deploy the current Git revision"));

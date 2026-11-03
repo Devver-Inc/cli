@@ -76,7 +76,7 @@ const list = Command.make("list", {}, () =>
       `Now using organization: ${organizations.find((org) => org.id === choice)?.name ?? choice}`
     );
   })
-);
+).pipe(Command.withDescription("List and select an organization"));
 
 export const organization = Command.make("org").pipe(
   Command.withDescription("Manage organizations"),

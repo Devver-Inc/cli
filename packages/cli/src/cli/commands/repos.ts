@@ -71,7 +71,7 @@ const list = Command.make("list", {}, () =>
       })
     );
   })
-);
+).pipe(Command.withDescription("List and select a repository"));
 
 export const repos = Command.make("repos").pipe(
   Command.withDescription("Manage repositories"),
