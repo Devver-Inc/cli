@@ -85,6 +85,41 @@ test("Next.js with a dev script keeps its package manager in the recipe", async 
   });
 });
 
+test.each(["lockfile", "packageManager"] as const)(
+  "Aube %s produces a reviewed Vite recipe",
+  async (evidence) => {
+    const root = fixture({ vite: "1" }, { dev: "vite dev" });
+    if (evidence === "lockfile") {
+      writeFileSync(join(root, "aube-lock.yaml"), "lockfileVersion: '9.0'\n");
+    } else {
+      writeFileSync(
+        join(root, "package.json"),
+        JSON.stringify({
+          dependencies: { vite: "1" },
+          scripts: { dev: "vite dev" },
+          packageManager: "aube@2.8.5",
+        })
+      );
+    }
+    const detection = await detectProject(root);
+    expect(detection.projects[0]?.packageManager).toBe("aube");
+    expect(suggestedLocalConfig(detection)).toEqual({
+      process: { run: "aube run dev" },
+    });
+  }
+);
+
+test("Aube lockfile conflicts with another manager's lockfile", async () => {
+  const root = fixture({ vite: "1" }, { dev: "vite dev" });
+  writeFileSync(join(root, "aube-lock.yaml"), "lockfileVersion: '9.0'\n");
+  writeFileSync(join(root, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+  const detection = await detectProject(root);
+  expect(detection.projects[0]?.packageManager).toBeUndefined();
+  expect(() => suggestedLocalConfig(detection)).toThrow(
+    "Devver couldn't derive a complete process recipe"
+  );
+});
+
 test("SvelteKit with a dev script keeps its npm command after review", async () => {
   const root = fixture(
     { "@sveltejs/kit": "1", vite: "1" },
