@@ -1,4 +1,9 @@
-export { readConfigFile } from "./src/config";
+export {
+  readConfigFile,
+  suggestedLocalConfig,
+  writeConfigFile,
+} from "./src/config";
+export { detectProject } from "./src/config/detect";
 export {
   getDeploymentEnv,
   listDeploymentSecrets,

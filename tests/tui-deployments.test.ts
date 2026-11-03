@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { visibleDeployments } from "../packages/cli/src/tui/deployments";
+import { visibleDeployments } from "../packages/cli/tui";
 
 const deployments = [
   {

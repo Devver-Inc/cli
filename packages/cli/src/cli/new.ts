@@ -1,7 +1,7 @@
 import { Console, Data, Effect, Runtime } from "effect";
 import { Argument, Command } from "effect/cli";
 
-import { attachTarget } from "./local-server";
+import { attachTarget } from "../local-server/target";
 
 export class ServerCreateError extends Data.TaggedError("ServerCreateError")<{
   message: string;
@@ -16,15 +16,18 @@ const createServer = Command.make(
     Effect.tryPromise({
       try: async () => {
         if (process.platform === "darwin") {
-          const { create } = await import("./supervised-server-macos");
+          const { create } =
+            await import("../local-server/supervised-server-macos");
           return await create(name);
         }
         if (process.platform === "linux") {
-          const { create } = await import("./supervised-server-linux");
+          const { create } =
+            await import("../local-server/supervised-server-linux");
           return await create(name);
         }
         if (process.platform === "win32") {
-          const { create } = await import("./windows-supervised-server");
+          const { create } =
+            await import("../local-server/windows-supervised-server");
           return await create(name);
         }
         throw new Error(

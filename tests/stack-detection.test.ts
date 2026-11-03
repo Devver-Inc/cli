@@ -11,11 +11,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  detectProject,
   readConfigFile,
   suggestedLocalConfig,
   writeConfigFile,
-} from "../packages/cli/src/config";
-import { detectProject } from "../packages/cli/src/config/detect";
+} from "../packages/cli/config";
 
 const roots: string[] = [];
 const fixture = (
@@ -50,11 +50,14 @@ test.each([
   ],
   [{ astro: "1" }, "meta", "astro", ["astro"]],
   [{ nuxt: "1" }, "meta", "nuxt", ["nuxt"]],
+  [{ "@remix-run/react": "1" }, "meta", "remix", ["@remix-run/react"]],
+  [{ "@tanstack/start": "1" }, "meta", "tanstack-start", ["@tanstack/start"]],
   [{ vite: "1", react: "1" }, "vite", "vite", ["vite"]],
   [{ hono: "1" }, "backend", "hono", ["hono"]],
   [{ "@nestjs/core": "1" }, "backend", "nestjs", ["@nestjs/core"]],
   [{ "@adonisjs/core": "1" }, "backend", "adonis", ["@adonisjs/core"]],
   [{ express: "1" }, "backend", "express", ["express"]],
+  [{ fastify: "1" }, "backend", "fastify", ["fastify"]],
 ] as const)(
   "classifies %p as %s %s",
   async (dependencies, category, framework, evidence) => {
@@ -315,8 +318,6 @@ test("invalid existing config is not replaced", async () => {
             stack: { category: "meta", framework: "next", evidence: ["next"] },
           },
         ],
-        results: [],
-        detectors: [],
       },
       root
     );

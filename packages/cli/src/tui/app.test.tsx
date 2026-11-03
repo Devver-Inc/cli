@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { testRender } from "@opentui/react/test-utils";
 import { act } from "react";
 
-import { App } from "../src/tui/app";
+import { App } from "./app";
 
 process.env.DEVVER_REDUCED_MOTION = "1";
 
@@ -748,8 +748,16 @@ test("local listing distinguishes unavailable, empty, and failed responses", asy
 
 test("the TUI releases the renderer and never blocks process exit", () => {
   const probe = Bun.spawnSync(
-    ["bun", "run", join(import.meta.dir, "fixtures", "tui-probe.ts")],
-    { cwd: join(import.meta.dir, "../../.."), stdout: "pipe", stderr: "pipe" }
+    [
+      "bun",
+      "run",
+      join(import.meta.dir, "../../tests/fixtures", "tui-probe.ts"),
+    ],
+    {
+      cwd: join(import.meta.dir, "../../../.."),
+      stdout: "pipe",
+      stderr: "pipe",
+    }
   );
   const output = probe.stderr.toString();
   expect(probe.exitCode, output).toBe(0);

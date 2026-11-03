@@ -7,12 +7,12 @@ import pkg from "../../../../package.json" with { type: "json" };
 import { instanceParent, loadInstance } from "../../../server/identity";
 import { execute } from "../util/exec";
 import { isAlreadyExists } from "../util/fs-errors";
-import { verifyIdentity } from "./local-server";
 import { availablePort } from "./loopback";
 import {
   MissingPackagedServerError,
   pinServer,
 } from "./supervised-server-posix";
+import { verifyIdentity } from "./target";
 
 const DIRECTORY_MODE = 0o700;
 

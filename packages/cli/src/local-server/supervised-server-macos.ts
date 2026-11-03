@@ -6,12 +6,12 @@ import { join } from "node:path";
 import pkg from "../../../../package.json" with { type: "json" };
 import { instanceParent, loadInstance } from "../../../server/identity";
 import { execute } from "../util/exec";
-import { verifyIdentity } from "./local-server";
 import { availablePort } from "./loopback";
 import {
   MissingPackagedServerError,
   pinServer,
 } from "./supervised-server-posix";
+import { verifyIdentity } from "./target";
 
 const PRIVATE_DIRECTORY = 0o700;
 

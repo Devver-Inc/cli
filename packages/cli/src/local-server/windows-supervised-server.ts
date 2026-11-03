@@ -10,8 +10,8 @@ import {
 } from "../../../server/windows-acl";
 import { execute } from "../util/exec";
 import { isAlreadyExists } from "../util/fs-errors";
-import { verifyIdentity } from "./local-server";
 import { availablePort } from "./loopback";
+import { verifyIdentity } from "./target";
 
 const READINESS_MS = 20_000;
 // Windows command-line quoting: double any backslashes that precede a quote or

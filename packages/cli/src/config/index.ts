@@ -5,7 +5,6 @@ import { cwd } from "node:process";
 import { Data, Schema } from "effect";
 import { dump, load } from "js-yaml";
 
-import "./detectors";
 import type { ProjectDetection } from "./detect";
 
 const CommandSchema = Schema.String.pipe(

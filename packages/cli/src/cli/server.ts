@@ -1,100 +1,23 @@
-import { Console, Data, Effect, Result, Runtime, Schema } from "effect";
+import { Console, Data, Effect, Result, Runtime } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
 
-import pkg from "../../../../package.json" with { type: "json" };
 import { listInstances, readInstanceService } from "../../../server/identity";
 import { listLocalDeployments } from "../api/local-deploy.requests";
-import {
-  InstanceNameSchema,
-  LocalTargetSchema,
-  readConfig,
-  validateControlUrl,
-  writeConfig,
-} from "../config/api";
+import { readConfig } from "../config/api";
 import type { CliConfig } from "../config/api";
-import { fetchJson } from "../util/http";
+import {
+  removeInstance,
+  stopInstance,
+} from "../local-server/supervised-server-lifecycle";
+import { identityAt } from "../local-server/target";
 import { Prompt } from "../util/prompts";
 import { withLocalApi } from "./api";
-import { removeInstance, stopInstance } from "./supervised-server-lifecycle";
-
-const IdentitySchema = Schema.Struct({
-  instanceId: Schema.String.check(Schema.isUUID(4)),
-  name: InstanceNameSchema,
-  serverVersion: Schema.String,
-  controlProtocolVersion: Schema.Literal(1),
-});
-const decodeTarget = Schema.decodeUnknownSync(LocalTargetSchema);
-const MAX_IDENTITY_BYTES = 8192;
-
-class IdentityProbeError extends Data.TaggedError("IdentityProbeError")<{
-  message: string;
-}> {}
 
 class ServerLifecycleError extends Data.TaggedError("ServerLifecycleError")<{
   message: string;
 }> {
   [Runtime.errorReported] = true;
 }
-
-const probe = (url: string) =>
-  fetchJson({
-    url: `${url}/identity`,
-    schema: IdentitySchema,
-    limit: MAX_IDENTITY_BYTES,
-    timeout: 2000,
-    onError: (message) => new IdentityProbeError({ message }),
-  });
-
-const identityAt = (url: string) =>
-  Effect.gen(function* () {
-    yield* Effect.try(() => validateControlUrl(url));
-    const identity = yield* probe(url);
-    if (identity.serverVersion !== pkg.version) {
-      return yield* new IdentityProbeError({
-        message: `Incompatible server version (expected ${pkg.version})`,
-      });
-    }
-    return yield* Effect.try(() => decodeTarget({ url, ...identity }));
-  });
-
-export async function verifyIdentity(url: string) {
-  return await Effect.runPromise(identityAt(url));
-}
-
-export const attachTarget = (url: string) =>
-  Effect.gen(function* () {
-    const config = yield* Effect.tryPromise(readConfig);
-    const target = yield* identityAt(url);
-    const { "cloud-target": _removed, ...rest } = config;
-    yield* Effect.tryPromise(async () =>
-      writeConfig({ ...rest, "local-target": target })
-    );
-    return target;
-  });
-
-export const attach = Command.make(
-  "attach",
-  { url: Argument.String("url") },
-  ({ url }) =>
-    attachTarget(url).pipe(
-      Effect.flatMap((target) =>
-        Console.log(
-          `Attached ${target.name} (${target.instanceId}) at ${target.url} — version ${target.serverVersion}`
-        )
-      )
-    )
-).pipe(Command.withDescription("Attach to a verified local server"));
-
-export const detach = Command.make("detach", {}, () =>
-  Effect.tryPromise(async () => {
-    const {
-      "local-target": _local,
-      "cloud-target": _cloud,
-      ...config
-    } = await readConfig();
-    await writeConfig(config);
-  }).pipe(Effect.flatMap(() => Console.log("Detached target")))
-).pipe(Command.withDescription("Clear the selected target"));
 
 const status = Command.make("status", {}, () =>
   Effect.gen(function* () {

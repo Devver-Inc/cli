@@ -7,7 +7,7 @@ import {
   ApiClient,
   ApiClientLayer,
   AuthToken,
-} from "../packages/cli/src/api/client";
+} from "../packages/cli/http";
 
 test("a scoped API client uses the current token after an organization switch", async () => {
   const headers: (string | null)[] = [];

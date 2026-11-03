@@ -1,6 +1,6 @@
 import { Cause, Effect, Exit } from "effect";
 
-import { run } from "../../src/tui/index";
+import { run } from "../../tui";
 
 const exit = await Effect.runPromiseExit(
   run({
