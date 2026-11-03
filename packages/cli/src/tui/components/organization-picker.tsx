@@ -3,7 +3,7 @@ import type { KeyEvent, ScrollBoxRenderable } from "@opentui/core";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 
-import type { Organization } from "../../auth/session";
+import type { Organization } from "../../infra/auth/session";
 import type { shortcuts } from "../keys";
 import type { CloudTarget } from "../target";
 import { scrollbarOptions, theme } from "../theme";
