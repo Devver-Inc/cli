@@ -120,6 +120,14 @@ test("packed npm CLI and server run without Node or Bun", () => {
     });
     expect(version.exitCode, version.stderr.toString()).toBe(0);
     expect(version.stdout.toString()).toContain(`devver v${pkg.version}`);
+    for (const shell of ["bash", "zsh", "fish"]) {
+      const completion = Bun.spawnSync(
+        [join(bin, "devver"), "--completions", shell],
+        { env: environment, stdout: "pipe", stderr: "pipe" }
+      );
+      expect(completion.exitCode, completion.stderr.toString()).toBe(0);
+      expect(completion.stdout.toString()).toContain("deploy");
+    }
     const server = Bun.spawnSync([join(bin, "devver-server")], {
       env: environment,
       stdout: "pipe",

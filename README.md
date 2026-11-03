@@ -77,6 +77,28 @@ The npm package installs the native executable for your platform. **Node is need
 
 Standalone binaries are available from [GitHub Releases](https://github.com/Devver-Inc/cli/releases). Keep each CLI with its matching versioned server. To update a supported global npm install, run `devver --update`; Homebrew stable installs use `brew update && brew upgrade devver-cli`. Source builds and standalone downloads do not self-update. Existing supervised local servers retain their pinned binaries after a CLI update.
 
+### Shell completions
+
+Homebrew installs Bash, Zsh and Fish completions with the stable CLI. Your shell must load Homebrew's completion directory; see [Homebrew's shell completion setup](https://docs.brew.sh/Shell-Completion) if completions do not appear after restarting the shell.
+
+For npm or standalone installs, opt in for your shell (these commands never contact a server):
+
+```sh
+# Bash: requires bash-completion to be configured to load this directory
+mkdir -p ~/.local/share/bash-completion/completions
+devver --completions bash > ~/.local/share/bash-completion/completions/devver
+
+# Zsh: add ~/.zsh/completions to fpath before compinit in ~/.zshrc
+mkdir -p ~/.zsh/completions
+devver --completions zsh > ~/.zsh/completions/_devver
+
+# Fish: automatically loads files in this directory
+mkdir -p ~/.config/fish/completions
+devver --completions fish > ~/.config/fish/completions/devver.fish
+```
+
+Restart your shell after setup. Regenerate the file after upgrading Devver to pick up new commands. `--completions sh` is an alias for Bash; PowerShell and dynamic suggestions for server/deployment names are not supported.
+
 ## Contribute
 
 Development uses [Bun](https://bun.sh) and Node for tooling. From the repository root:

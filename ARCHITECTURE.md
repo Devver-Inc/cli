@@ -82,6 +82,8 @@ A merge creates a new Git merge commit in the server-owned bare repository and a
 
 ## Build, release and verification
 
+`effect/cli` generates static Bash, Zsh and Fish completions through `devver --completions <shell>`. The release workflow has Homebrew install them using its formula DSL; npm and standalone users explicitly install the generated scripts into their shell's completion path. npm install never edits shell startup files.
+
 `bun run build` produces the standalone CLI and a version-matched server; `bun run build:npm` assembles the npm packages from both CI standalone archives and their checksums, verifying before extracting and never downloading at install time. Standalone archives contain `devver` and `servers/<version>/devver-server`, a relative layout preserved by the platform packages and by Homebrew.
 
 `main` is the stable line and `develop` the nightly one. Every PR carries a Changeset; `bun run check:version` fails on drift across manifests and locks. Prerelease workflows may not tag `v*`, move npm `latest`, or touch Homebrew.
