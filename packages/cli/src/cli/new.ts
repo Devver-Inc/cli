@@ -54,5 +54,6 @@ const createServer = Command.make(
 );
 
 export const newCommand = Command.make("new").pipe(
+  Command.withDescription("Create a local resource"),
   Command.withSubcommands([createServer])
 );

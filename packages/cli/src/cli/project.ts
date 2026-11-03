@@ -33,7 +33,7 @@ const status = Command.make("status", {}, () =>
     const project = yield* withApi(getProjectById(id));
     yield* Console.log(`✓ Current project:\n  ${project.name} (${project.id})`);
   })
-);
+).pipe(Command.withDescription("Show the selected project"));
 
 const list = Command.make("list", {}, () =>
   Effect.gen(function* () {
@@ -71,7 +71,7 @@ const list = Command.make("list", {}, () =>
       `Now using project: ${projects.find((project) => project.id === choice)?.name ?? choice}`
     );
   })
-);
+).pipe(Command.withDescription("List and select a project"));
 
 const info = Command.make(
   "info",
@@ -82,7 +82,7 @@ const info = Command.make(
     withApi(getProjectById(id)).pipe(
       Effect.flatMap((project) => Console.log(`${project.id}: ${project.name}`))
     )
-);
+).pipe(Command.withDescription("Show project details"));
 
 const defaultDb = {
   replicaCount: 1,
@@ -209,7 +209,7 @@ const create = Command.make(
       }
       yield* Effect.tryPromise(async () => setCurrentProjectId(project.id));
     })
-);
+).pipe(Command.withDescription("Create and select a cloud project"));
 
 const link = Command.make(
   "link",
@@ -224,7 +224,7 @@ const link = Command.make(
         message: "devver project link is not supported yet",
       })
     )
-);
+).pipe(Command.withDescription("Link a project (not supported yet)"));
 
 export const project = Command.make("project").pipe(
   Command.withDescription("Manage projects"),

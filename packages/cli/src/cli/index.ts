@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Console, Effect, Runtime } from "effect";
-import { Command } from "effect/cli";
+import { CliConfig, Command, GlobalFlag } from "effect/cli";
 
 import pkg from "../../../../package.json" with { type: "json" };
 import { attach } from "./attach";
@@ -19,7 +19,7 @@ import { repos } from "./repos";
 import { root } from "./root";
 import { secret } from "./secret";
 import { server } from "./server";
-import { launchTui, tui } from "./tui";
+import { tui } from "./tui";
 import { runUpdate } from "./update";
 import { versionLine } from "./version";
 
@@ -34,32 +34,42 @@ const printExpected = (error: {
     error[Runtime.errorReported] = false;
   });
 
+const subcommands = [
+  attach,
+  auth,
+  cloud,
+  config,
+  deploy,
+  detach,
+  init,
+  merge,
+  newCommand,
+  organization,
+  project,
+  repos,
+  secret,
+  server,
+  tui,
+] as const;
+
+const helpTree = root.pipe(Command.withSubcommands(subcommands));
+const showRootHelp = Effect.gen(function* () {
+  const { builtIns } = yield* CliConfig.CliConfig;
+  yield* GlobalFlag.Help.run(true, {
+    builtIns,
+    command: helpTree,
+    commandPath: ["devver"],
+    version: versionLine(pkg.version),
+  });
+});
+
+const help = Command.make("help", {}, () => showRootHelp).pipe(
+  Command.withDescription("Show command help")
+);
+
 export const cli = root.pipe(
-  Command.withHandler(({ apiUrl, update }) =>
-    Effect.gen(function* () {
-      if (update) {
-        return yield* runUpdate;
-      }
-      return yield* launchTui(undefined, apiUrl);
-    })
-  ),
-  Command.withSubcommands([
-    attach,
-    auth,
-    cloud,
-    config,
-    deploy,
-    detach,
-    init,
-    merge,
-    newCommand,
-    organization,
-    project,
-    repos,
-    secret,
-    server,
-    tui,
-  ])
+  Command.withHandler(({ update }) => (update ? runUpdate : showRootHelp)),
+  Command.withSubcommands([...subcommands, help])
 );
 
 // Compiled Windows executables can report import.meta.main as false.

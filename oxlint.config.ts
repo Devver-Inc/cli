@@ -6,6 +6,24 @@ import core from "ultracite/oxlint/core";
 export default defineConfig({
   extends: [core, antiSlop, recommended],
   ignorePatterns: [...(core.ignorePatterns ?? []), "repos/**", ".claude/**"],
+  jsPlugins: ["./scripts/oxlint-command-descriptions.mjs"],
+  overrides: [
+    {
+      files: ["packages/cli/src/cli/*.ts"],
+      rules: { "devver/command-description": "error" },
+    },
+    {
+      files: ["scripts/oxlint-command-descriptions.mjs"],
+      // Oxlint passes untyped AST nodes and context into external JS plugins.
+      rules: {
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/strict-boolean-expressions": "off",
+        "anti-slop/no-runtime-typeof": "off",
+      },
+    },
+  ],
   rules: {
     // Schema and request field order mirrors the API contract it describes.
     "sort-keys": "off",

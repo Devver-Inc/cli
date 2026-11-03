@@ -84,4 +84,8 @@ export const init = Command.make("init", {}, () =>
       });
     }
   })
+).pipe(
+  Command.withDescription(
+    "Detect the project and write local deployment configuration"
+  )
 );
