@@ -25,7 +25,7 @@ const login = Command.make("login", {}, () =>
     yield* completed;
     yield* Console.log("✓ Login successful!");
   }).pipe(Effect.scoped)
-);
+).pipe(Command.withDescription("Log in through the browser"));
 
 const logout = Command.make("logout", {}, () =>
   Effect.gen(function* () {
@@ -39,7 +39,7 @@ const logout = Command.make("logout", {}, () =>
     }
     yield* Console.log("✓ Logged out");
   })
-);
+).pipe(Command.withDescription("Log out of your account"));
 
 const status = Command.make("status", {}, () =>
   Effect.gen(function* () {
@@ -78,7 +78,7 @@ const status = Command.make("status", {}, () =>
       `\nCurrent repository: ${linked === null ? "No repository linked to this folder" : linked.repoName}`
     );
   })
-);
+).pipe(Command.withDescription("Show your login and account status"));
 
 export const auth = Command.make("auth").pipe(
   Command.withDescription("Manage authentication"),

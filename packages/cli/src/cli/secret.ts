@@ -22,11 +22,13 @@ const set = Command.make(
     file: Flag.String("file").pipe(Flag.optional),
   },
   () => unsupported("set")
+).pipe(Command.withDescription("Set a secret (not supported yet)"));
+const list = Command.make("list", {}, () => unsupported("list")).pipe(
+  Command.withDescription("List secrets (not supported yet)")
 );
-const list = Command.make("list", {}, () => unsupported("list"));
 const remove = Command.make("delete", { key: Argument.String("key") }, () =>
   unsupported("delete")
-);
+).pipe(Command.withDescription("Delete a secret (not supported yet)"));
 
 export const secret = Command.make("secret").pipe(
   Command.withDescription("Manage secrets (not supported yet)"),

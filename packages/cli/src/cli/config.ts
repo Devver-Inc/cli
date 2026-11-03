@@ -38,7 +38,7 @@ const get = Command.make("get", { key: configKey }, ({ key }) =>
         : `${value} ${INACTIVE}`
     );
   })
-);
+).pipe(Command.withDescription("Show a CLI configuration value"));
 
 const set = Command.make(
   "set",
@@ -47,7 +47,7 @@ const set = Command.make(
     key === "api-url"
       ? Effect.fail(new ConfigCommandError({ message: INACTIVE_API_URL }))
       : invalidKey(key)
-);
+).pipe(Command.withDescription("Set a CLI configuration value (unsupported)"));
 
 const unset = Command.make("unset", { key: configKey }, ({ key }) =>
   Effect.gen(function* () {
@@ -57,7 +57,7 @@ const unset = Command.make("unset", { key: configKey }, ({ key }) =>
     yield* Effect.tryPromise(async () => unsetConfigValue(key));
     yield* Console.log(`✓ Unset ${key}`);
   })
-);
+).pipe(Command.withDescription("Remove a CLI configuration value"));
 // oxlint-enable typescript/consistent-return
 
 const list = Command.make("list", {}, () =>
@@ -90,7 +90,7 @@ const list = Command.make("list", {}, () =>
           );
     })
   )
-);
+).pipe(Command.withDescription("List CLI configuration values"));
 
 export const config = Command.make("config").pipe(
   Command.withDescription("Manage CLI configuration"),
