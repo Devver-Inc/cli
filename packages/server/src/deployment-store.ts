@@ -1,72 +1,24 @@
-import { lstat, open } from "node:fs/promises";
-
 import { Context, Data, Effect, Exit, Layer, Schema } from "effect";
 import { SqlClient } from "effect/sql";
 
-const PRIVATE_FILE = 0o600;
+import type {
+  DeployStage,
+  Deployment,
+  NewDeployment,
+} from "./deployment/record";
+import { DeploymentSchema, NewDeploymentSchema } from "./deployment/record";
+import { privateFile } from "./private-state";
 
-export const DeployStageSchema = Schema.Literals([
-  "server",
-  "source",
-  "git",
-  "config",
-  "process",
-  "readiness",
-]);
-
-export type DeployStage = typeof DeployStageSchema.Type;
-
-const identity = {
-  deploymentId: Schema.String.check(Schema.isUUID(4)),
-  repositoryId: Schema.String.check(Schema.isNonEmpty()),
-  commit: Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/u)),
-  parentDeploymentId: Schema.NullOr(Schema.String.check(Schema.isUUID(4))),
-  secondParentDeploymentId: Schema.NullOr(
-    Schema.String.check(Schema.isUUID(4))
-  ),
-  worktree: Schema.String.check(Schema.isNonEmpty()),
-};
-
-const NewDeploymentSchema = Schema.Struct({
-  ...identity,
-  repositoryId: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
-});
 const PortSchema = Schema.NumberFromString.check(
   Schema.isInt(),
   Schema.isBetween({ minimum: 1, maximum: 65_535 })
 );
-const DeploymentSchema = Schema.Struct({
-  ...identity,
-  status: Schema.Literals(["preparing", "ready", "failed", "degraded"]),
-  stage: Schema.NullOr(DeployStageSchema),
-  displayName: Schema.NullOr(Schema.String),
-  createdAt: Schema.String,
-});
-
-export type Deployment = typeof DeploymentSchema.Type;
-export type NewDeployment = typeof NewDeploymentSchema.Type;
 
 const APP_PORT = "appPort";
 
 class DeploymentStoreError extends Data.TaggedError("DeploymentStoreError")<{
   message: string;
 }> {}
-
-async function privateFile(path: string) {
-  const handle = await open(path, "a", PRIVATE_FILE);
-  await handle.close();
-  if (process.platform === "win32") {
-    return;
-  }
-  const stat = await lstat(path);
-  if (
-    !stat.isFile() ||
-    stat.uid !== process.getuid?.() ||
-    stat.mode % 0o1000 !== PRIVATE_FILE
-  ) {
-    throw new Error("Deployment records must be an owner-only regular file");
-  }
-}
 
 // A build defines the runtime so its offline server bundles only that driver.
 declare const DEVVER_NODE_SQLITE: boolean;

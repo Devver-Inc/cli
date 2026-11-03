@@ -1,1 +1,1 @@
-export { create } from "./src/cli/windows-supervised-server";
+export { create } from "./src/infra/local-server/windows-supervised-server";

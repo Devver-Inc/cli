@@ -18,7 +18,7 @@ import {
   isNpmInstallation,
   isNewer,
   updatePlan,
-} from "../packages/cli/src/cli/update";
+} from "../packages/cli/update";
 
 test("--update rejects a source checkout without invoking an installer", () => {
   const result = spawnSync(

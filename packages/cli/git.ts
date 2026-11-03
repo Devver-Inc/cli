@@ -1,1 +1,1 @@
-export { getCurrentBranch } from "./src/util/git";
+export { getCurrentBranch } from "./src/cli/git";

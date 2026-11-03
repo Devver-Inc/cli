@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import {
-  chmod,
   lstat,
   mkdir,
   realpath,
@@ -8,15 +7,21 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { createServer } from "node:net";
-import type { AddressInfo } from "node:net";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 
 import { Effect } from "effect";
-import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 
 import { execute } from "./exec";
-import { isAlreadyExists } from "./fs-errors";
+import { allocatePort } from "./pitchfork/loopback-port";
+import type { DaemonSpec } from "./pitchfork/manifest";
+import {
+  manifestText,
+  projectLabel,
+  proxySettings,
+  safeDeploymentId,
+} from "./pitchfork/manifest";
+import { proxyAnswers } from "./pitchfork/proxy-probe";
+import { restorePrivateDirectory } from "./private-state";
 import { verifyWindowsPrivate } from "./windows-acl";
 
 const EXECUTABLE = process.platform === "win32" ? ".exe" : "";
@@ -24,19 +29,8 @@ const PRIVATE_DIRECTORY = 0o700;
 const PRIVATE_FILE = 0o600;
 const PORT_ATTEMPTS = 10;
 const PROXY_ATTEMPTS = 5;
-const PROXY_DEADLINE = 10_000;
-const PROXY_INTERVAL = 200;
-const PROXY_TIMEOUT = 1000;
-const DEPLOYMENT_ID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
-const UNSAFE_IN_ARGUMENT = /["'`$\r\n]/u;
 
-export interface DaemonSpec {
-  readonly command: readonly string[];
-  readonly dir: string;
-  readonly env?: Readonly<Record<string, string>>;
-  readonly port: number;
-}
+export type { DaemonSpec } from "./pitchfork/manifest";
 
 export interface DaemonSlot {
   readonly port: number;
@@ -61,30 +55,6 @@ async function invokeTool(
   }
 }
 
-async function privateDirectory(directory: string) {
-  try {
-    await mkdir(directory, { mode: PRIVATE_DIRECTORY });
-  } catch (error) {
-    if (!isAlreadyExists(error)) {
-      throw error;
-    }
-  }
-  if (process.platform === "win32") {
-    await verifyWindowsPrivate({ path: directory, kind: "directory" });
-    return;
-  }
-  const existing = await lstat(directory);
-  if (!existing.isDirectory() || existing.uid !== process.getuid?.()) {
-    throw new Error("Deployment state must be a directory owned by this user");
-  }
-  // Pitchfork changes this directory to 0755 while running.
-  await chmod(directory, PRIVATE_DIRECTORY);
-  const stat = await lstat(directory);
-  if (!stat.isDirectory() || stat.mode % 0o1000 !== PRIVATE_DIRECTORY) {
-    throw new Error("Deployment state must be owner-only");
-  }
-}
-
 async function stateDirectories(instanceDirectory: string) {
   // Unix socket paths have a ~104-byte limit.
   const key = createHash("sha256")
@@ -98,124 +68,6 @@ async function stateDirectories(instanceDirectory: string) {
         : `/tmp/devver-pf-${key}`,
     config: join(instanceDirectory, "pitchfork-config"),
   };
-}
-
-function safeDeploymentId(deploymentId: string) {
-  if (!DEPLOYMENT_ID.test(deploymentId)) {
-    throw new Error("A deployment name must be a UUID");
-  }
-  return deploymentId;
-}
-
-function tomlLiteral(value: string) {
-  if (UNSAFE_IN_ARGUMENT.test(value)) {
-    throw new Error(
-      "A deployment path cannot contain quotes, expansions or newlines"
-    );
-  }
-  return value;
-}
-
-function shellArgument(argument: string) {
-  if (
-    UNSAFE_IN_ARGUMENT.test(argument) ||
-    (process.platform === "win32"
-      ? /[%!^&|<>]/u.test(argument)
-      : argument.includes("\\"))
-  ) {
-    throw new Error(
-      "A deployment command cannot contain quotes, expansions or newlines"
-    );
-  }
-  return `"${argument}"`;
-}
-
-function proxySettings(port: number) {
-  return `[settings.proxy]
-enable = true
-https = false
-port = ${port}
-auto_trust = false
-sync_hosts = false
-dns = false
-tld = "localhost"
-host = "127.0.0.1"
-`;
-}
-
-function isTcpAddress(
-  address: string | AddressInfo | null
-): address is AddressInfo {
-  return address !== null && typeof address !== "string";
-}
-
-async function allocatePort() {
-  const probe = createServer();
-  await new Promise<void>((resolve, reject) => {
-    probe.once("error", reject);
-    probe.listen(0, "127.0.0.1", resolve);
-  });
-  const address = probe.address();
-  try {
-    if (!isTcpAddress(address)) {
-      throw new Error("Could not allocate a loopback port");
-    }
-    return address.port;
-  } finally {
-    await new Promise<void>((resolve) => {
-      probe.close(() => {
-        resolve();
-      });
-    });
-  }
-}
-
-// Pitchfork reports its configured port even if another process bound it.
-const proxyAnswers = (port: number) =>
-  Effect.gen(function* () {
-    const client = HttpClient.withScope(yield* HttpClient.HttpClient);
-    const deadline = Date.now() + PROXY_DEADLINE;
-    while (Date.now() < deadline) {
-      const answered = yield* client
-        .execute(HttpClientRequest.get(`http://127.0.0.1:${port}/`))
-        .pipe(
-          Effect.flatMap((response) =>
-            response.status === 404 || response.status === 502
-              ? response.text.pipe(
-                  Effect.map(
-                    (body) =>
-                      body.includes("No route for <code>127.0.0.1</code>") ||
-                      body.includes("No daemon found for host '127.0.0.1'")
-                  )
-                )
-              : Effect.succeed(false)
-          ),
-          Effect.timeout(PROXY_TIMEOUT),
-          Effect.provideService(FetchHttpClient.RequestInit, {
-            redirect: "manual",
-          }),
-          Effect.scoped,
-          Effect.orElseSucceed(() => false)
-        );
-      if (answered) {
-        return true;
-      }
-      yield* Effect.sleep(PROXY_INTERVAL);
-    }
-    return false;
-  }).pipe(
-    // @effect-diagnostics-next-line strictEffectProvide:off -- The Promise host opens this HTTP client at its Effect entry point.
-    Effect.provide(FetchHttpClient.layer)
-  );
-
-// Pitchfork limits project labels to 63 characters.
-function projectLabel(instanceDirectory: string) {
-  return basename(instanceDirectory)
-    .toLowerCase()
-    .replaceAll(/[_-]+/gu, "-")
-    .replace(/-$/u, "")
-    .slice(0, 63)
-    .replace(/-$/u, "");
 }
 
 function toolInvoker(toolsDirectory: string, instanceDirectory: string) {
@@ -262,8 +114,8 @@ export async function openDeploymentHost(options: {
     }
   }
   const { state, config } = await stateDirectories(instanceDirectory);
-  await privateDirectory(state);
-  await privateDirectory(config);
+  await restorePrivateDirectory(state);
+  await restorePrivateDirectory(config);
   const manifest = join(instanceDirectory, "pitchfork.toml");
   const slots = join(instanceDirectory, "daemons");
   const daemons = new Map<string, DaemonSpec>();
@@ -284,45 +136,12 @@ export async function openDeploymentHost(options: {
     writtenProxyPort = proxyPort;
   };
   const writeManifest = async (proxyPort = manifestProxyPort) => {
-    // Pitchfork rejects instance hostnames when its `dir` is a separate worktree.
-    const entries = [...daemons].map(([deploymentId, spec]) => {
-      const directory = shellArgument(spec.dir);
-      const changeDirectory = process.platform === "win32" ? "cd /d" : "cd";
-      const command = spec.command
-        .map((argument) => shellArgument(argument))
-        .join(" ");
-      const environment = Object.entries(spec.env ?? {})
-        .map(([name, value]) => {
-          if (!/^[A-Z_][A-Z0-9_]*$/u.test(name)) {
-            throw new Error(
-              "A deployment environment variable name is invalid"
-            );
-          }
-          return `${name}=${shellArgument(value)}`;
-        })
-        .join(" ");
-      const daemonRun =
-        process.platform === "win32"
-          ? `${Object.entries(spec.env ?? {})
-              .map(
-                ([name, value]) => `set ${shellArgument(`${name}=${value}`)}`
-              )
-              .join(" && ")}${environment === "" ? "" : " && "}${command}`
-          : `${environment}${environment === "" ? "" : " "}${command}`;
-      return `[daemons."${deploymentId}"]
-run = '${changeDirectory} ${directory} && ${daemonRun}'
-dir = '${tomlLiteral(instanceDirectory)}'
-port = { expect = [${spec.port}], bump = false }
-`;
-    });
+    const text = manifestText({ daemons, instanceDirectory, proxyPort });
     if (proxyPort !== 0) {
       await writeProxySettings(proxyPort);
     }
-    const settings = proxyPort === 0 ? "" : proxySettings(proxyPort);
     const staged = `${manifest}.staging`;
-    await writeFile(staged, `${settings}\n${entries.join("\n")}`, {
-      mode: PRIVATE_FILE,
-    });
+    await writeFile(staged, text, { mode: PRIVATE_FILE });
     await rename(staged, manifest);
   };
   await writeManifest();
@@ -386,8 +205,8 @@ port = { expect = [${spec.port}], bump = false }
         );
       }
       const directory = join(slots, id);
-      await privateDirectory(slots);
-      await privateDirectory(directory);
+      await restorePrivateDirectory(slots);
+      await restorePrivateDirectory(directory);
       reserved.set(id, port);
       return { port, directory };
     },

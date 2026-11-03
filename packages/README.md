@@ -11,9 +11,10 @@ packages/<name>/
 
 A package's **interface** lives at its root entry points; keep behaviour behind that seam. Import only through a package's entry points (its root files). Prefer several small entry points over a barrel re-exporting an entire subtree. Existing CLI and server implementations live in `src/` until they are reorganized; `src/` is private by the same rule.
 
-Run `bun run lint:boundaries` (also part of `bun run check`). The four enforced rules are:
+Run `bun run lint:boundaries` (also part of `bun run check`). It scans imports with Bun's TypeScript parser and fails if no package sources are found; dependency-cruiser cannot scan this workspace with TypeScript 7. The enforced rules are:
 
 1. Outside code imports only a package's root entry points, never its subfolders.
 2. Files within their own package import freely; crossing to another package uses its root entry points.
 3. Package tests use their own and other packages' entry points, or their own `tests/` fixtures; they do not import internals.
 4. Imports must not form dependency cycles.
+5. CLI core imports only core; CLI infrastructure may import core and infrastructure but not CLI presentation or the TUI. CLI commands compose both. The TUI may import core and infrastructure, but never CLI command wiring.

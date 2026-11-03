@@ -6,7 +6,7 @@ import {
   HttpApiSchema,
 } from "effect/http-api";
 
-import { DeployStageSchema } from "./deployment-store";
+import { DeployStageSchema } from "./deployment/record";
 
 export const CONTROL_PROTOCOL_VERSION = 1;
 

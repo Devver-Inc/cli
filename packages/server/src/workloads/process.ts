@@ -7,6 +7,7 @@ import { Schema } from "effect";
 import { execute } from "../exec";
 import { locateAube } from "../packaged-tools";
 import { readProcessRecipe } from "./config";
+import { launchRuleFor } from "./stacks/launch-rules";
 import type { DaemonSpec, WorkloadKind } from "./types";
 
 const UNSAFE_COMMAND = /["'`$;&|<>(){}\\\r\n]/u;
@@ -14,8 +15,6 @@ const PORT_PLACEHOLDER = `\${PORT}`;
 const packageScripts = Schema.decodeUnknownSync(
   Schema.Struct({ scripts: Schema.Record(Schema.String, Schema.String) })
 );
-const devScript =
-  /^(?:vite(?: dev)?|next dev|astro dev|nuxt dev)(?: [\w./=-]+)*$/u;
 const packageManagers = new Set(["npm", "pnpm", "yarn", "bun"]);
 const lockfiles = new Map([
   ["npm", "package-lock.json"],
@@ -105,19 +104,18 @@ async function managedDevCommand(
   } catch {
     throw new Error("The process package scripts are not usable");
   }
-  if (!devScript.test(scripts.dev ?? "")) {
+  const rule = launchRuleFor(scripts.dev ?? "");
+  if (rule === undefined) {
     return command;
   }
-  const hostFlag =
-    scripts.dev?.startsWith("next dev") === true ? "--hostname" : "--host";
   return [
     ...command,
     ...(manager === "npm" ? ["--"] : []),
-    hostFlag,
+    rule.hostFlag,
     "127.0.0.1",
     "--port",
     String(port),
-    ...(scripts.dev?.startsWith("astro dev") === true ? ["--ignore-lock"] : []),
+    ...rule.extraArgs,
   ];
 }
 
