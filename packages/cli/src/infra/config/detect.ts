@@ -31,7 +31,7 @@ export type PrimaryStack =
     }
   | { category: "unknown"; framework: null; evidence: readonly string[] };
 
-export type PackageManager = "bun" | "npm" | "pnpm" | "yarn";
+export type PackageManager = "aube" | "bun" | "npm" | "pnpm" | "yarn";
 
 export interface ProjectProfile {
   readonly root: string;
@@ -110,6 +110,7 @@ class FileSystemContext {
 }
 
 const packageManagers: readonly PackageManager[] = [
+  "aube",
   "pnpm",
   "yarn",
   "bun",
@@ -126,6 +127,7 @@ function packageManager(
   const declared = context.pkg?.packageManager?.split("@")[0];
   const locks = packageManagers.filter((manager) =>
     ({
+      aube: ["aube-lock.yaml"],
       pnpm: ["pnpm-lock.yaml"],
       yarn: ["yarn.lock"],
       bun: ["bun.lock", "bun.lockb"],
