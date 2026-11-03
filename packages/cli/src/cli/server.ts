@@ -59,6 +59,8 @@ const status = Command.make("status", {}, () =>
       }
     }
   })
+).pipe(
+  Command.withDescription("Show the attached server and deployment status")
 );
 
 const instanceReachability = (
