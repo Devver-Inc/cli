@@ -439,6 +439,8 @@ test("d opens deployment details and Esc closes them", async () => {
             status: "ready",
             stage: null,
             url: "http://a.localhost:1/",
+            publicUrl:
+              "https://d3e8aa51d75b34c7e9fca1190e573fefb.shvdmprfczuh.tunnels.devver.app/",
           },
         ],
       }}
@@ -456,7 +458,12 @@ test("d opens deployment details and Esc closes them", async () => {
     );
     expect(frame).toContain("b".repeat(40));
     expect(frame).toContain("deployed as a root");
+    expect(frame).toContain("local url");
+    expect(frame).toContain("public url");
     expect(frame).toContain("http://a.localhost:1/");
+    expect(frame.replaceAll(/[\s│]/gu, "")).toContain(
+      "https://d3e8aa51d75b34c7e9fca1190e573fefb.shvdmprfczuh.tunnels.devver.app/"
+    );
     await act(async () => {
       setup.mockInput.pressEscape();
       await new Promise((resolve) => {
@@ -649,6 +656,126 @@ test("c copies only a selected ready URL and reports clipboard failure", async (
       "http://a.localhost:1/",
       "http://a.localhost:1/",
     ]);
+  } finally {
+    await act(async () => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("s confirms publication, keeps both URLs, and never repeats or leaks failures", async () => {
+  const published: string[] = [];
+  const opened: string[] = [];
+  const copied: string[] = [];
+  const publication = Promise.withResolvers<{ url: string }>();
+  let rejectNext = false;
+  const setup = await testRender(
+    <App
+      onExit={() => undefined}
+      target={{
+        kind: "local",
+        server: "dev",
+        workspace: "site",
+        publishDeployment: async (id) => {
+          published.push(id);
+          if (rejectNext) {
+            throw new Error("private relay credential");
+          }
+          return await publication.promise;
+        },
+        openInBrowser: async (url) => {
+          opened.push(url);
+          return true;
+        },
+        copyUrl: async (url) => {
+          copied.push(url);
+          return true;
+        },
+        loadDeployments: async () => [
+          {
+            deploymentId: "11111111-1111-4111-8111-111111111111",
+            status: "ready",
+            stage: null,
+            url: "http://a.localhost:1/",
+          },
+          {
+            deploymentId: "22222222-2222-4222-8222-222222222222",
+            status: "failed",
+            stage: "readiness",
+            url: null,
+          },
+        ],
+      }}
+    />,
+    { width: 80, height: 24 }
+  );
+  const press = async (...keys: string[]) => {
+    await act(async () => {
+      for (const key of keys) {
+        if (key === "return") {
+          setup.mockInput.pressEnter();
+        } else if (key === "escape") {
+          setup.mockInput.pressEscape();
+        } else {
+          setup.mockInput.pressKey(key);
+        }
+      }
+      if (keys.includes("escape")) {
+        await new Promise((resolve) => {
+          setTimeout(resolve, 80);
+        });
+      }
+      await Promise.resolve();
+    });
+  };
+  try {
+    await setup.waitForFrame((value) => value.includes("s publish"));
+    await press("s");
+    const warning = await setup.waitForFrame((value) =>
+      value.includes("Anyone with the URL can access this deployment.")
+    );
+    expect(warning).toContain("Enter publish · Esc cancel");
+    expect(published).toEqual([]);
+    await press("escape");
+    await press("s");
+    expect(published).toEqual([]);
+    await press("return", "return");
+    expect(published).toEqual(["11111111-1111-4111-8111-111111111111"]);
+    await setup.waitForFrame((value) =>
+      value.includes("Publishing deployment")
+    );
+    await act(async () => {
+      publication.resolve({ url: "https://preview.example.com/" });
+      await Promise.resolve();
+    });
+    await setup.waitForFrame((value) => value.includes("Published. o opens"));
+    await press("d");
+    const details = await setup.waitForFrame((value) =>
+      value.includes("public url")
+    );
+    expect(details).toContain("http://a.localhost:1/");
+    expect(details).toContain("https://preview.example.com/");
+    await press("escape");
+    await press("o", "c");
+    expect(opened).toEqual(["https://preview.example.com/"]);
+    expect(copied).toEqual(["https://preview.example.com/"]);
+
+    await press("j");
+    await press("s");
+    await setup.waitForFrame((value) =>
+      value.includes("Only ready deployments")
+    );
+    expect(published).toHaveLength(1);
+
+    rejectNext = true;
+    await press("k");
+    await press("s");
+    await press("return");
+    const failed = await setup.waitForFrame((value) =>
+      value.includes("Could not publish")
+    );
+    expect(failed).not.toContain("private relay credential");
+    expect(published).toHaveLength(2);
   } finally {
     await act(async () => {
       setup.renderer.destroy();
