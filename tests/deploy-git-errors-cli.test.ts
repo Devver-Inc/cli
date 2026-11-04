@@ -87,12 +87,14 @@ test("deploy explains missing Git repository and missing commit without changing
     ).not.toBe(0);
 
     writeFileSync(join(config, "cli"), "{}");
-    const otherFailure = await run(plain, "--open");
-    expect(otherFailure.status).not.toBe(0);
-    expect(otherFailure.stdout).toContain("DeploymentError:");
-    expect(otherFailure.stdout).toContain(
-      "--open is only supported for local deployments."
-    );
+    for (const flag of ["--open", "--public"]) {
+      const otherFailure = await run(plain, flag);
+      expect(otherFailure.status).not.toBe(0);
+      expect(otherFailure.stdout).toContain("DeploymentError:");
+      expect(otherFailure.stdout).toContain(
+        "--open and --public are only supported for local deployments."
+      );
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -55,6 +55,7 @@ export const DeploymentStatuses = Schema.Array(
     status: Schema.Literals(["preparing", "ready", "failed", "degraded"]),
     stage: Schema.NullOr(DeployStageSchema),
     url: Schema.NullOr(Schema.String),
+    publicUrl: Schema.NullOr(Schema.String),
   })
 );
 
@@ -124,6 +125,24 @@ export const api = HttpApi.make("DevverControl")
           success: Schema.Struct({ displayName: DisplayName }),
           error: [DeploymentNotFound, DeployFailure],
         })
+      )
+      .add(
+        HttpApiEndpoint.post("publish", "/deployments/:deploymentId/public", {
+          params: Schema.Struct({ deploymentId: DeploymentId }),
+          success: Schema.Struct({ url: Schema.String }),
+          error: [DeploymentNotFound, DeployFailure],
+        })
+      )
+      .add(
+        HttpApiEndpoint.delete(
+          "unpublish",
+          "/deployments/:deploymentId/public",
+          {
+            params: Schema.Struct({ deploymentId: DeploymentId }),
+            success: Schema.Struct({ unpublished: Schema.Boolean }),
+            error: [DeploymentNotFound, DeployFailure],
+          }
+        )
       )
       .add(
         HttpApiEndpoint.get("list", "/deployments", {

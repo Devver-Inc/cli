@@ -79,6 +79,30 @@ export const deploymentHandlers = (deployer: Deployer) =>
           )
         )
       )
+      .handle("publish", ({ params }) =>
+        deployer.publish(params.deploymentId).pipe(
+          Effect.mapError((error) =>
+            error instanceof DeployFailure
+              ? error
+              : new DeployFailure({
+                  stage: "server",
+                  message: "server: publishing failed",
+                })
+          )
+        )
+      )
+      .handle("unpublish", ({ params }) =>
+        deployer.unpublish(params.deploymentId).pipe(
+          Effect.mapError((error) =>
+            error instanceof DeployFailure
+              ? error
+              : new DeployFailure({
+                  stage: "server",
+                  message: "server: unpublishing failed",
+                })
+          )
+        )
+      )
       .handle("list", () =>
         deployer.statuses.pipe(
           Effect.map((statuses) =>

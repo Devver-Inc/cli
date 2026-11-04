@@ -27,7 +27,8 @@ export async function subjectsOf(
 export function statusRows(
   deployments: readonly Deployment[],
   subjects: ReadonlyMap<string, string>,
-  url: (deploymentId: string) => string
+  url: (deploymentId: string) => string,
+  publicUrl: (deploymentId: string) => string | undefined
 ) {
   return deployments.map(
     ({
@@ -52,6 +53,7 @@ export function statusRows(
       stage,
       displayName,
       url: status === "ready" ? url(deploymentId) : null,
+      publicUrl: publicUrl(deploymentId) ?? null,
     })
   );
 }

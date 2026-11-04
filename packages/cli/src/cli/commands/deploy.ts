@@ -198,17 +198,18 @@ export const deploy = Command.make(
   {
     verbose: Flag.Boolean("verbose").pipe(Flag.withDefault(false)),
     open: Flag.Boolean("open").pipe(Flag.withDefault(false)),
+    publicly: Flag.Boolean("public").pipe(Flag.withDefault(false)),
   },
-  ({ verbose, open }) =>
+  ({ verbose, open, publicly }) =>
     Effect.gen(function* () {
       const target = (yield* Effect.tryPromise(readConfig))["local-target"];
       if (target !== undefined) {
-        return yield* localDeploy(target, verbose, open);
+        return yield* localDeploy(target, verbose, open, publicly);
       }
-      if (open) {
+      if (open || publicly) {
         return yield* new DeploymentError({
           message:
-            "--open is only supported for local deployments. Select a local server with 'devver attach' first.",
+            "--open and --public are only supported for local deployments. Select a local server with 'devver attach' first.",
         });
       }
       const config = yield* Effect.try(() => readConfigFile());

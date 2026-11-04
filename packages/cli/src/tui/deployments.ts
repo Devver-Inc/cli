@@ -24,6 +24,7 @@ export interface FlatDeployment {
   readonly status: LocalDeploymentStatus["status"];
   readonly stage: LocalDeploymentStatus["stage"];
   readonly url: string | null | undefined;
+  readonly publicUrl?: string | null | undefined;
 }
 
 interface TreeNode extends FlatDeployment {

@@ -188,7 +188,7 @@ function copyUrl(
   target: LocalTarget,
   setStatus: (message: string) => void
 ) {
-  const url = entry?.url;
+  const url = entry?.publicUrl ?? entry?.url;
   if (
     entry?.status !== "ready" ||
     url === undefined ||
@@ -221,7 +221,7 @@ function openUrl(
   target: LocalTarget,
   setStatus: (message: string) => void
 ) {
-  const url = entry?.url;
+  const url = entry?.publicUrl ?? entry?.url;
   if (url === undefined) {
     setStatus(
       "This server does not report deployment URLs. Re-create it from a current build."
@@ -252,7 +252,10 @@ function isRepeatedSelection(
   key: KeyEvent,
   action: keyof typeof shortcuts | undefined
 ) {
-  return key.repeated === true && (action === "merge" || action === "select");
+  return (
+    key.repeated === true &&
+    (action === "merge" || action === "select" || action === "publish")
+  );
 }
 
 function hintFor({
@@ -260,12 +263,23 @@ function hintFor({
   editing,
   merge,
   merged,
+  publication,
 }: {
+  readonly publication: "idle" | "confirming" | "publishing";
   readonly details: boolean;
   readonly editing: boolean;
   readonly merge: number;
   readonly merged: boolean;
 }) {
+  if (publication === "confirming") {
+    return {
+      hint: "Anyone with the URL can access this deployment.",
+      more: "Enter publish · Esc cancel",
+    };
+  }
+  if (publication === "publishing") {
+    return { hint: "Publishing deployment…", more: "" };
+  }
   if (details) {
     return { hint: "Esc or d closes these details", more: "" };
   }
@@ -278,7 +292,7 @@ function hintFor({
       more: "",
     };
   }
-  const more = "r rename · v select · m merge";
+  const more = "r rename · v select · m merge · s publish";
   return merged
     ? { hint: "1/h first parent · 2 second parent · d details · q quit", more }
     : { hint: "j/k/h/l move · d details · o open · c copy · q quit", more };
@@ -300,6 +314,14 @@ function LocalApp({
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState("");
   const [mergeSelection, setMergeSelection] = useState<readonly string[]>([]);
+  const [publicUrls, setPublicUrls] = useState<ReadonlyMap<string, string>>(
+    new Map()
+  );
+  const [publication, setPublication] = useState<
+    | { readonly kind: "idle" | "publishing" }
+    | { readonly kind: "confirming"; readonly id: string }
+  >({ kind: "idle" });
+  const publishingRef = useRef(false);
   const [details, setDetails] = useState(false);
   const [merging, setMerging] = useState(false);
   const mergingRef = useRef(false);
@@ -351,6 +373,8 @@ function LocalApp({
                 status: entry.status,
                 stage: entry.stage,
                 url: entry.url,
+                publicUrl:
+                  publicUrls.get(entry.deploymentId) ?? entry.publicUrl,
               })
             )
           )
@@ -534,6 +558,42 @@ function LocalApp({
     );
   }
 
+  function requestPublication() {
+    if (current?.status !== "ready") {
+      setStatus("Only ready deployments can be published.");
+      return;
+    }
+    if (target.publishDeployment === undefined) {
+      setStatus("Publishing is unavailable on this server.");
+      return;
+    }
+    setStatus("");
+    setPublication({ kind: "confirming", id: current.id });
+  }
+
+  function confirmPublication(id: string) {
+    if (publishingRef.current || target.publishDeployment === undefined) {
+      return;
+    }
+    publishingRef.current = true;
+    setPublication({ kind: "publishing" });
+    void target.publishDeployment(id).then(
+      ({ url }) => {
+        publishingRef.current = false;
+        setPublication({ kind: "idle" });
+        setPublicUrls((previous) => new Map(previous).set(id, url));
+        setStatus("Published. o opens the public URL · c copies it.");
+      },
+      () => {
+        publishingRef.current = false;
+        setPublication({ kind: "idle" });
+        setStatus(
+          "Could not publish deployment. Try devver publish for details."
+        );
+      }
+    );
+  }
+
   function toggleMergeSelection() {
     if (current === undefined) {
       return;
@@ -565,7 +625,9 @@ function LocalApp({
   }
 
   function browse(action: keyof typeof shortcuts | undefined) {
-    if (action === "details") {
+    if (action === "publish") {
+      requestPublication();
+    } else if (action === "details") {
       setDetails(current !== undefined);
     } else if (action === "select") {
       toggleMergeSelection();
@@ -602,7 +664,15 @@ function LocalApp({
       onExit();
       return;
     }
-    if (mergingRef.current) {
+    if (mergingRef.current || publishingRef.current) {
+      return;
+    }
+    if (publication.kind === "confirming") {
+      if (action === "confirm") {
+        confirmPublication(publication.id);
+      } else if (action === "cancel") {
+        setPublication({ kind: "idle" });
+      }
       return;
     }
     if (action === "cancel" && mergeSelection.length > 0) {
@@ -622,6 +692,7 @@ function LocalApp({
   });
 
   const { hint, more } = hintFor({
+    publication: publication.kind,
     details,
     editing: editor.kind === "editing",
     merge: mergeSelection.length,
