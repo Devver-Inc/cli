@@ -1,5 +1,8 @@
 import type { Candidate } from "../core/update";
-import type { LocalDeploymentStatus } from "../infra/api/local-deploy.requests";
+import type {
+  LocalDeployment,
+  LocalDeploymentStatus,
+} from "../infra/api/local-deploy.requests";
 import type { Organization } from "../infra/auth/session";
 
 export interface LocalTarget {
@@ -16,17 +19,7 @@ export interface LocalTarget {
     | ((id: string, name: string) => Promise<{ readonly displayName: string }>)
     | undefined;
   readonly mergeDeployments?:
-    | ((
-        first: string,
-        second: string
-      ) => Promise<{
-        readonly deploymentId: string;
-        readonly repositoryId: string;
-        readonly commit: string;
-        readonly parentDeploymentId: string | null;
-        readonly secondParentDeploymentId?: string | null | undefined;
-        readonly url: string;
-      }>)
+    | ((first: string, second: string) => Promise<LocalDeployment>)
     | undefined;
 }
 

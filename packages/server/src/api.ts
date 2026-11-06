@@ -7,56 +7,20 @@ import {
 } from "effect/http-api";
 
 import { DeployStageSchema } from "./deployment/record";
+import {
+  DeployRequest,
+  DeploymentId,
+  DeploymentResponse,
+  DeploymentStatuses,
+  DisplayName,
+  IdentityResponse,
+  MergeRequest,
+  RenameResponse,
+} from "./protocol";
 
-export const CONTROL_PROTOCOL_VERSION = 1;
+export { CONTROL_PROTOCOL_VERSION } from "./protocol";
 
 export const API_PATH = "/api/v1";
-
-const DeploymentId = Schema.String.check(Schema.isUUID(4));
-const Commit = Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/u));
-
-export const DisplayName = Schema.String.check(
-  Schema.isMinLength(1),
-  Schema.isMaxLength(80),
-  // oxlint-disable-next-line no-control-regex -- Reject terminal escape and C0/C1 controls in persisted names.
-  Schema.isPattern(/^[^\u0000-\u001F\u007F-\u009F]+$/u),
-  Schema.isTrimmed()
-);
-
-export const DeployRequest = Schema.Struct({
-  source: Schema.String.check(Schema.isNonEmpty()),
-  commit: Commit,
-});
-
-export const MergeRequest = Schema.Struct({
-  firstDeploymentId: DeploymentId,
-  secondDeploymentId: DeploymentId,
-});
-
-export const DeploymentResponse = Schema.Struct({
-  deploymentId: DeploymentId,
-  repositoryId: Schema.String,
-  commit: Commit,
-  parentDeploymentId: Schema.NullOr(DeploymentId),
-  secondParentDeploymentId: Schema.NullOr(DeploymentId),
-  url: Schema.String,
-});
-
-export const DeploymentStatuses = Schema.Array(
-  Schema.Struct({
-    deploymentId: DeploymentId,
-    repositoryId: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
-    commit: Commit,
-    commitSubject: Schema.NullOr(Schema.String),
-    createdAt: Schema.String,
-    parentDeploymentId: Schema.NullOr(DeploymentId),
-    secondParentDeploymentId: Schema.NullOr(DeploymentId),
-    displayName: Schema.NullOr(DisplayName),
-    status: Schema.Literals(["preparing", "ready", "failed", "degraded"]),
-    stage: Schema.NullOr(DeployStageSchema),
-    url: Schema.NullOr(Schema.String),
-  })
-);
 
 // oxlint-disable-next-line unicorn/throw-new-error -- Schema.Error builds the error class at this contract boundary; it is not a throw.
 export class DeployFailure extends Schema.Error<DeployFailure>("DeployFailure")(
@@ -81,13 +45,6 @@ export class MergeRejected extends Schema.Error<MergeRejected>("MergeRejected")(
   { _tag: Schema.tag("MergeRejected"), message: Schema.String },
   { httpApiStatus: 400 }
 ) {}
-
-export const IdentityResponse = Schema.Struct({
-  instanceId: Schema.String,
-  name: Schema.String,
-  serverVersion: Schema.String,
-  controlProtocolVersion: Schema.Literal(CONTROL_PROTOCOL_VERSION),
-});
 
 export const api = HttpApi.make("DevverControl")
   .add(
@@ -121,7 +78,7 @@ export const api = HttpApi.make("DevverControl")
         HttpApiEndpoint.put("rename", "/deployments/:deploymentId/name", {
           params: Schema.Struct({ deploymentId: DeploymentId }),
           payload: Schema.Struct({ displayName: DisplayName }),
-          success: Schema.Struct({ displayName: DisplayName }),
+          success: RenameResponse,
           error: [DeploymentNotFound, DeployFailure],
         })
       )
