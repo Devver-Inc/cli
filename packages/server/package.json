@@ -5,6 +5,7 @@
   "exports": {
     ".": "./index.ts",
     "./identity": "./identity.ts",
+    "./protocol": "./protocol.ts",
     "./windows-acl": "./windows-acl.ts"
   },
   "scripts": {
