@@ -1,0 +1,2 @@
+ts	phase	decision	why	evidence	result
+2026-11-14T22:00:00Z	frame	Build an engine foundation without changing the public CLI config	Service dependencies need independent ownership and recovery before a multi-app command contract	.github/../ARCHITECTURE.md	scoped
