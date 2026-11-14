@@ -71,6 +71,22 @@ A local target shows the deployments of its attached instance, matched by the SH
 
 A merge creates a new Git merge commit in the server-owned bare repository and a new deployment with both parents. It never changes either source or the user's checkout; conflicts, identical revisions and unrelated histories create nothing.
 
+## The resource engine
+
+`packages/server/engine.ts` owns an internal resource engine, with private implementation under `packages/server/src/engine/`. Deployment commands do not use it yet. Its scoped `openResourceEngine` takes an owner-only SQLite journal path, idempotent providers, and a concurrency bound. It exposes `apply` and `teardown`.
+
+Resource inputs contain JSON references such as `{ "$ref": "backend", "output": "url" }`. One traversal validates references and derives dependency edges. Resource identities never become filesystem paths in the engine. These dependencies are separate from Git deployment ancestry.
+
+`apply` validates graph structure and known persisted references before lifecycle effects. It always reconciles included resources in dependency order. Providers own live checks and readiness. Their arguments and outputs cross cloned, Schema-validated boundaries, and failures expose only static messages with validated public ids and stages. References to resources outside the request require a ready journal record, not an interrupted record's retained output.
+
+The journal records `pending` before each reconcile and `ready` after success. Pending updates retain the last successful output, the union of old and attempted dependency edges, and the stricter protection policy. Only successful reconciliation installs the requested bindings and policy. Failure blocks consumers without deleting resources. Providers must discover and reconcile partially created resources by stable identity after a crash.
+
+`teardown` refuses the whole request before removal if any member is unknown, protected, providerless, or still used by a surviving consumer. It also rejects invalid ids and corrupt dependency cycles. Removal runs in reverse dependency order. Failure stops before upstream removal and leaves retryable `deleting` state. Removed-id tombstones distinguish explicit retries from unknown ids. Omitted declarations never imply deletion.
+
+An Effect Semaphore serializes operations on one engine. A scoped SQLite owner claim rejects other writers and reclaims a crashed owner only when its PID is definitely dead. Short transactions preserve checkpoints across process death. PID reuse can conservatively block reopening until that PID disappears.
+
+`scripts/verify-resource-engine.ts` proves crash recovery, update recovery, deletion safety, writer exclusion, and Node execution without Bun on the runtime path. Its resources are files, not production databases or backends. The root test suite runs this proof; package tests exercise the root engine entry.
+
 ## Invariants
 
 - Effect v4 throughout: `effect/http` for HTTP, Effects for subprocesses, resource lifetimes and errors, Effect Schema at every trust boundary. Pure domain logic stays pure.

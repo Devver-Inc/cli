@@ -1,4 +1,4 @@
 ---
 ---
 
-Track the local resource engine foundation in https://github.com/Devver-Inc/cli/issues/213.
+Add an internal Effect resource engine with dependency wiring, durable recovery, and safe teardown. Existing deployment commands are unchanged.
