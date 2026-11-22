@@ -215,6 +215,27 @@ export async function mergeCommits(
   return commit;
 }
 
+export async function hasCommittedDevverConfig(cwd: string, commit: string) {
+  const entry = await git(cwd, "ls-tree", [
+    "ls-tree",
+    commit,
+    "--",
+    ".devver.yaml",
+  ]);
+  return entry !== "";
+}
+
+export async function removeWorktree(bare: string, worktree: string) {
+  await git(bare, "worktree remove", [
+    "worktree",
+    "remove",
+    "--force",
+    worktree,
+  ]).catch(async () => {
+    await rm(worktree, { recursive: true, force: true });
+  });
+}
+
 export async function addWorktree(options: {
   readonly bare: string;
   readonly worktrees: string;
@@ -223,6 +244,16 @@ export async function addWorktree(options: {
 }) {
   await requirePrivateDirectory(options.worktrees);
   const worktree = join(options.worktrees, options.deploymentId);
+  // A killed create can leave a half-registered worktree behind; the exact
+  // path is unique to this deployment, so remove any leftover and re-add.
+  if (
+    await lstat(worktree).then(
+      () => true,
+      () => false
+    )
+  ) {
+    await removeWorktree(options.bare, worktree);
+  }
   await git(options.bare, "worktree add", [
     "worktree",
     "add",
@@ -240,15 +271,4 @@ export async function removeDeploymentRef(bare: string, deploymentId: string) {
     "-d",
     `refs/devver/deployments/${deploymentId}`,
   ]).catch(() => undefined);
-}
-
-export async function removeWorktree(bare: string, worktree: string) {
-  await git(bare, "worktree remove", [
-    "worktree",
-    "remove",
-    "--force",
-    worktree,
-  ]).catch(async () => {
-    await rm(worktree, { recursive: true, force: true });
-  });
 }

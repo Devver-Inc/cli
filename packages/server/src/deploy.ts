@@ -15,10 +15,11 @@ import {
 import { statusRows, subjectsOf } from "./deployment/listing";
 import { mergeDecision } from "./deployment/merge-rules";
 import { reachable } from "./deployment/readiness";
-import type { NewDeployment } from "./deployment/record";
+import type { Deployment, NewDeployment } from "./deployment/record";
 import {
   addWorktree,
   firstParentDeployment,
+  hasCommittedDevverConfig,
   mergeCommits,
   pinCommit,
   removeDeploymentRef,
@@ -28,7 +29,18 @@ import {
 } from "./git-source";
 import { instanceParent } from "./identity";
 import { packagedToolsDirectory } from "./packaged-tools";
+import { openStaticDeploymentRunner } from "./static-deployment";
+import type { StaticDeploymentTarget } from "./static-deployment";
 import { prepareDaemon } from "./workloads";
+
+const publicResponse = (input: NewDeployment, url: string) => ({
+  deploymentId: input.deploymentId,
+  repositoryId: input.repositoryId,
+  commit: input.commit,
+  parentDeploymentId: input.parentDeploymentId,
+  secondParentDeploymentId: input.secondParentDeploymentId,
+  url,
+});
 
 const openDeployerFor = (name: string) =>
   Effect.gen(function* () {
@@ -68,6 +80,12 @@ export const openDeployer = (name: string) =>
           "The saved app port is occupied; deployment URLs were not changed",
       });
     }
+    const durable = yield* openStaticDeploymentRunner({
+      journalPath: join(instanceDirectory, "workflow.sqlite"),
+      instanceDirectory,
+      host,
+      markReady: store.markReady,
+    });
     const unpublish = (deploymentId: string) =>
       Effect.promise(async () => {
         await host.withdraw(deploymentId).catch(() => undefined);
@@ -90,15 +108,68 @@ export const openDeployer = (name: string) =>
         )
       );
 
+    const staticTarget = (input: {
+      readonly deploymentId: string;
+      readonly repositoryId: string;
+      readonly commit: string;
+      readonly source: string | null;
+    }): StaticDeploymentTarget => ({
+      deploymentId: input.deploymentId,
+      repositoryId: input.repositoryId,
+      commit: input.commit,
+      originKind: input.source === null ? "repository" : "checkout",
+      originPath:
+        input.source ??
+        join(instanceDirectory, "repositories", `${input.repositoryId}.git`),
+    });
+
+    const createStatic = (input: NewDeployment) => {
+      const { worktree } = input;
+      const target = staticTarget(input);
+      let recorded = false;
+      return Effect.gen(function* () {
+        yield* store.record(input);
+        recorded = true;
+        const finished = yield* durable.create(target);
+        return publicResponse(input, finished.url);
+      }).pipe(
+        Effect.onExit((exit) =>
+          Exit.isSuccess(exit) || !recorded
+            ? Effect.void
+            : Effect.gen(function* () {
+                // A cancelled create can leave the workflow run detached; stop
+                // it before removing its worktree and deployment ref.
+                yield* durable.interrupt(target);
+                yield* unpublish(input.deploymentId);
+                const bare =
+                  target.originKind === "repository"
+                    ? target.originPath
+                    : join(
+                        instanceDirectory,
+                        "repositories",
+                        `${input.repositoryId}.git`
+                      );
+                yield* Effect.promise(async () => {
+                  await removeWorktree(bare, worktree).catch(() => undefined);
+                  await removeDeploymentRef(bare, input.deploymentId);
+                }).pipe(
+                  Effect.onExit(() =>
+                    store.markFailed(input.deploymentId, failureStage(exit))
+                  )
+                );
+              })
+        )
+      );
+    };
+
     const create = (
       input: NewDeployment,
       pin: Effect.Effect<string, DeployFailure>,
       knownBare?: string
     ) => {
-      const { worktree, ...response } = input;
       let bare = knownBare;
       let recorded = false;
-      const { deploymentId, commit } = input;
+      const { deploymentId, commit, worktree } = input;
       return Effect.gen(function* () {
         yield* store.record(input);
         recorded = true;
@@ -123,7 +194,7 @@ export const openDeployer = (name: string) =>
         );
         yield* publish(deploymentId, added);
         yield* store.markReady(deploymentId);
-        return { ...response, url: host.url(deploymentId) };
+        return publicResponse(input, host.url(deploymentId));
       }).pipe(
         Effect.onExit((exit) =>
           Exit.isSuccess(exit) || !recorded
@@ -176,27 +247,36 @@ export const openDeployer = (name: string) =>
               )
             )
         );
-        return yield* create(
-          {
-            deploymentId,
-            repositoryId: source.repositoryId,
-            commit: input.commit,
-            parentDeploymentId,
-            secondParentDeploymentId: null,
-            worktree,
-          },
-          attempt(
-            "git",
-            async () =>
-              await syncCommit({
-                repositories: join(instanceDirectory, "repositories"),
-                repositoryId: source.repositoryId,
-                source: source.path,
-                commit: input.commit,
-                deploymentId,
-              })
-          )
+        const committedWorkload = yield* attempt(
+          "git",
+          async () => await hasCommittedDevverConfig(source.path, input.commit)
         );
+        const record: NewDeployment = {
+          deploymentId,
+          repositoryId: source.repositoryId,
+          commit: input.commit,
+          parentDeploymentId,
+          secondParentDeploymentId: null,
+          worktree,
+          source: source.path,
+          lifecycle: committedWorkload ? "inline" : "workflow",
+        };
+        return yield* committedWorkload
+          ? create(
+              record,
+              attempt(
+                "git",
+                async () =>
+                  await syncCommit({
+                    repositories: join(instanceDirectory, "repositories"),
+                    repositoryId: source.repositoryId,
+                    source: source.path,
+                    commit: input.commit,
+                    deploymentId,
+                  })
+              )
+            )
+          : createStatic(record);
       });
 
     const merge = (firstDeploymentId: string, secondDeploymentId: string) =>
@@ -235,23 +315,45 @@ export const openDeployer = (name: string) =>
         );
         const deploymentId = randomUUID();
         const worktree = join(instanceDirectory, "worktrees", deploymentId);
-        return yield* create(
-          {
-            deploymentId,
-            repositoryId: decision.repositoryId,
-            commit,
-            parentDeploymentId: firstDeploymentId,
-            secondParentDeploymentId: secondDeploymentId,
-            worktree,
-          },
-          attempt("git", async () => {
-            await pinCommit(bare, deploymentId, commit);
-            return bare;
-          }),
-          bare
+        const committedWorkload = yield* attempt(
+          "git",
+          async () => await hasCommittedDevverConfig(bare, commit)
         );
+        const record: NewDeployment = {
+          deploymentId,
+          repositoryId: decision.repositoryId,
+          commit,
+          parentDeploymentId: firstDeploymentId,
+          secondParentDeploymentId: secondDeploymentId,
+          worktree,
+          source: null,
+          lifecycle: committedWorkload ? "inline" : "workflow",
+        };
+        return yield* committedWorkload
+          ? create(
+              record,
+              attempt("git", async () => {
+                await pinCommit(bare, deploymentId, commit);
+                return bare;
+              }),
+              bare
+            )
+          : createStatic(record);
       });
 
+    const interrupted: Deployment[] = [];
+    const restoreLive = (deployment: Deployment) =>
+      Effect.gen(function* () {
+        const exit = yield* Effect.exit(
+          publish(
+            deployment.deploymentId,
+            join(instanceDirectory, "worktrees", deployment.deploymentId)
+          )
+        );
+        yield* Exit.isSuccess(exit)
+          ? store.markReady(deployment.deploymentId)
+          : store.markDegraded(deployment.deploymentId, failureStage(exit));
+      });
     const reconcile = Effect.gen(function* () {
       const { deployments, unreadable } = yield* store.list;
       if (unreadable > 0) {
@@ -267,18 +369,25 @@ export const openDeployer = (name: string) =>
         }
         yield* unpublish(deploymentId);
         if (status === "preparing") {
-          yield* store.markDegraded(deploymentId, "server");
+          if (deployment.lifecycle !== "workflow") {
+            yield* store.markDegraded(deploymentId, "server");
+            continue;
+          }
+          interrupted.push(deployment);
           continue;
         }
-        const exit = yield* Effect.exit(
-          publish(
-            deploymentId,
-            join(instanceDirectory, "worktrees", deploymentId)
-          )
-        );
-        yield* Exit.isSuccess(exit)
-          ? store.markReady(deploymentId)
-          : store.markDegraded(deploymentId, failureStage(exit));
+        yield* restoreLive(deployment);
+      }
+      for (const deployment of interrupted) {
+        // Re-running the create replays or resumes the recorded workflow; its
+        // cleanup marks the deployment failed when resuming is not possible.
+        yield* Effect.exit(createStatic(deployment));
+        const resumed = yield* store.read(deployment.deploymentId);
+        if (resumed?.status === "preparing") {
+          // The recorded run had already completed, so re-running it returns
+          // without re-publishing; liveness has to be re-established here.
+          yield* restoreLive(deployment);
+        }
       }
       return undefined;
     });

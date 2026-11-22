@@ -8,6 +8,7 @@ import type {
 } from "./deployment/record";
 import { DeploymentSchema, NewDeploymentSchema } from "./deployment/record";
 import { privateFile } from "./private-state";
+import { sqliteClientLayer } from "./sqlite-driver";
 
 const PortSchema = Schema.NumberFromString.check(
   Schema.isInt(),
@@ -20,14 +21,6 @@ class DeploymentStoreError extends Data.TaggedError("DeploymentStoreError")<{
   message: string;
 }> {}
 
-// A build defines the runtime so its offline server bundles only that driver.
-declare const DEVVER_NODE_SQLITE: boolean;
-const useNodeSqlite =
-  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Build-only constant is absent when the server runs from source.
-  typeof DEVVER_NODE_SQLITE === "boolean"
-    ? DEVVER_NODE_SQLITE
-    : process.versions.bun === undefined;
-
 export const openDeploymentStore = (path: string) =>
   Effect.gen(function* () {
     yield* Effect.tryPromise({
@@ -39,25 +32,23 @@ export const openDeploymentStore = (path: string) =>
           message: "Deployment records must be owner-only",
         }),
     });
-    const sql = useNodeSqlite
-      ? yield* Effect.gen(function* () {
-          const { layer } = yield* Effect.promise(
-            async () => await import("@effect/sql-sqlite-node/SqliteClient")
-          );
-          const context = yield* Layer.build(
-            layer({ filename: path, disableWAL: true, busyTimeout: 0 })
-          );
-          return Context.get(context, SqlClient.SqlClient);
-        })
-      : yield* Effect.gen(function* () {
-          const { layer } = yield* Effect.promise(
-            async () => await import("@effect/sql-sqlite-bun/SqliteClient")
-          );
-          const context = yield* Layer.build(
-            layer({ filename: path, disableWAL: true, busyTimeout: 0 })
-          );
-          return Context.get(context, SqlClient.SqlClient);
+    const sql = yield* Effect.gen(function* () {
+      const context = yield* Effect.exit(
+        Layer.build(
+          sqliteClientLayer({
+            filename: path,
+            disableWAL: true,
+            busyTimeout: 0,
+          })
+        )
+      );
+      if (Exit.isFailure(context)) {
+        return yield* new DeploymentStoreError({
+          message: "Deployment records could not be opened",
         });
+      }
+      return Context.get(context.value, SqlClient.SqlClient);
+    });
     yield* sql`CREATE TABLE IF NOT EXISTS deployments (
       deploymentId TEXT PRIMARY KEY NOT NULL,
       repositoryId TEXT NOT NULL,
@@ -74,6 +65,12 @@ export const openDeploymentStore = (path: string) =>
     if (!columns.some((column) => column.name === "displayName")) {
       yield* sql`ALTER TABLE deployments ADD COLUMN displayName TEXT`;
     }
+    if (!columns.some((column) => column.name === "source")) {
+      yield* sql`ALTER TABLE deployments ADD COLUMN source TEXT`;
+    }
+    if (!columns.some((column) => column.name === "lifecycle")) {
+      yield* sql`ALTER TABLE deployments ADD COLUMN lifecycle TEXT NOT NULL DEFAULT 'inline'`;
+    }
     if (columns.some((column) => column.name === "sitePort")) {
       yield* sql`ALTER TABLE deployments DROP COLUMN sitePort`;
     }
@@ -85,7 +82,7 @@ export const openDeploymentStore = (path: string) =>
       value TEXT NOT NULL
     ) STRICT`;
     const select = sql`SELECT deploymentId, repositoryId, commitSha AS "commit", parentDeploymentId,
-      secondParentDeploymentId, worktree, status, stage, displayName, createdAt FROM deployments`;
+      secondParentDeploymentId, worktree, status, stage, displayName, source, lifecycle, createdAt FROM deployments`;
     const markStatus = (
       deploymentId: string,
       status: string,
@@ -98,9 +95,10 @@ export const openDeploymentStore = (path: string) =>
           const deployment =
             yield* Schema.decodeEffect(NewDeploymentSchema)(input);
           yield* sql`INSERT INTO deployments
-            (deploymentId, repositoryId, commitSha, parentDeploymentId, secondParentDeploymentId, worktree, status, stage, createdAt)
+            (deploymentId, repositoryId, commitSha, parentDeploymentId, secondParentDeploymentId, worktree, source, lifecycle, status, stage, createdAt)
             VALUES (${deployment.deploymentId}, ${deployment.repositoryId}, ${deployment.commit},
-              ${deployment.parentDeploymentId}, ${deployment.secondParentDeploymentId}, ${deployment.worktree}, 'preparing', NULL, ${new Date().toISOString()})`;
+              ${deployment.parentDeploymentId}, ${deployment.secondParentDeploymentId}, ${deployment.worktree}, ${deployment.source}, ${deployment.lifecycle}, 'preparing', NULL, ${new Date().toISOString()})
+            ON CONFLICT(deploymentId) DO NOTHING`;
         }),
       rename: (deploymentId: string, displayName: string) =>
         Effect.gen(function* () {

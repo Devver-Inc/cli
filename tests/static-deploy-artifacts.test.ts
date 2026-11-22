@@ -486,13 +486,17 @@ async function restart(
   await waitFor(second.url, false);
 }
 
-function changeStoredStatus(instance: string, id: string, status: string) {
+function changeStoredStatus(
+  instance: string,
+  id: string,
+  status: string,
+  lifecycle = "workflow"
+) {
   const db = new Database(join(instance, "deployments.sqlite"));
   try {
-    db.query("UPDATE deployments SET status = ? WHERE deploymentId = ?").run(
-      status,
-      id
-    );
+    db.query(
+      "UPDATE deployments SET status = ?, lifecycle = ? WHERE deploymentId = ?"
+    ).run(status, lifecycle, id);
   } finally {
     db.close();
   }
@@ -508,7 +512,9 @@ async function degradedRestart(
   site: string,
   commit: string
 ) {
-  changeStoredStatus(instance, first.id, "preparing");
+  // A workflow preparing record resumes instead; a record written before the
+  // durable workflow existed must never be adopted or republished.
+  changeStoredStatus(instance, first.id, "preparing", "inline");
   const child = Bun.spawn(
     [...ws.serverCommand, ws.name, String(service.port)],
     { env: ws.creationEnv, stdout: "pipe", stderr: "pipe" }
