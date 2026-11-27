@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+step() {
+  local label="$1"
+  shift
+  local start=$SECONDS
+  echo "==> ${label}"
+  "$@"
+  echo "<== ${label} ($((SECONDS - start))s)"
+}
+
+# The orb base image ships Bun and Node; CI uses the latest Bun as well.
+command -v bun >/dev/null || {
+  echo "bun is missing from the orb image" >&2
+  exit 1
+}
+
+step "bun install" bun install --frozen-lockfile
+
+# Builds and tests download pinned static tool binaries (Pitchfork, Ferron, aube) into
+# ~/.cache/devver/static-tools; warm that cache so it reaches the snapshot.
+warm_static_tools() {
+  local destination
+  destination="$(mktemp -d)"
+  bun -e 'const { packageStaticTools } = await import(process.argv[1]); await packageStaticTools(process.argv[2]);' \
+    "$PWD/scripts/static-tools.ts" "$destination"
+  rm -rf -- "$destination"
+}
+step "warm static tools cache" warm_static_tools

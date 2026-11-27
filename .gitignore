@@ -49,3 +49,6 @@ packages/cli-*/.staging/
 plans
 data
 repos
+
+# Amp orb portals
+.amp/portals/*
