@@ -15,12 +15,13 @@ const PORT_PLACEHOLDER = `\${PORT}`;
 const packageScripts = Schema.decodeUnknownSync(
   Schema.Struct({ scripts: Schema.Record(Schema.String, Schema.String) })
 );
-const packageManagers = new Set(["npm", "pnpm", "yarn", "bun"]);
+const packageManagers = new Set(["npm", "pnpm", "yarn", "bun", "aube"]);
 const lockfiles = new Map([
   ["npm", "package-lock.json"],
   ["pnpm", "pnpm-lock.yaml"],
   ["yarn", "yarn.lock"],
   ["bun", "bun.lock"],
+  ["aube", "aube-lock.yaml"],
 ]);
 
 function commandParts(command: string, port?: number): readonly string[] {
@@ -144,10 +145,8 @@ export const processKind: WorkloadKind = {
       await run(build, directory);
     }
     return {
-      command: await managedDevCommand(
-        await packagedCommand(command),
-        directory,
-        port
+      command: await packagedCommand(
+        await managedDevCommand(command, directory, port)
       ),
       dir: directory,
       env: { HOST: "127.0.0.1", HOSTNAME: "127.0.0.1", PORT: String(port) },

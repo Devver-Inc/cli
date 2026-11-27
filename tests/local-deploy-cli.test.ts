@@ -381,7 +381,7 @@ test("an unusable Aube lock falls back to the project's npm install", async () =
   }
 }, 180_000);
 
-test("two Vite development deployments use their reserved ports without a build", async () => {
+test("two Aube Vite deployments use their reserved ports without a build", async () => {
   if (process.platform === "win32") {
     return;
   }
@@ -397,7 +397,10 @@ test("two Vite development deployments use their reserved ports without a build"
     })
   );
   writeFileSync(join(source, "index.html"), "<h1>first Vite deployment</h1>");
-  writeFileSync(join(source, ".devver.yaml"), "process:\n  run: npm run dev\n");
+  writeFileSync(
+    join(source, ".devver.yaml"),
+    "process:\n  run: aube run dev\n"
+  );
   git(source, "init", "-q", "-b", "main");
   git(source, "add", ".");
   git(source, "commit", "-q", "-m", "first Vite deployment");
