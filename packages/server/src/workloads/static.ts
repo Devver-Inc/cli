@@ -1,11 +1,10 @@
 import { chmod, lstat, readdir, realpath, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
-import { Schema } from "effect";
+import { Data, Effect } from "effect";
 
 import { locateFerron } from "../packaged-tools";
-import { readDevverFile } from "./config";
-import type { DaemonSpec, WorkloadKind } from "./types";
+import type { DaemonSpec, WorkloadTarget } from "./types";
 
 const PRIVATE_FILE = 0o600;
 // Ferron expands `{env:NAME}` in config strings; braces can expose server secrets.
@@ -13,16 +12,15 @@ const UNSAFE_IN_KDL = /["\\{\r\n]/u;
 // Consume queries and fragments so SPA rewrites do not append them to `/`.
 const SPA_ROUTE = String.raw`^/([^?#]*/)*[^./?#]*(?:[?#].*)?$`;
 
-const StaticSection = Schema.Struct({
-  workload: Schema.optional(Schema.String),
-  static: Schema.optional(
-    Schema.Struct({
-      directory: Schema.optional(Schema.String.check(Schema.isNonEmpty())),
-    })
-  ),
-});
+// A preparation failure carries one of the plain sentences this module
+// constructs; the surrounding worktree contents never reach it.
+export class StaticPrepareFailure extends Data.TaggedError(
+  "StaticPrepareFailure"
+)<{
+  readonly message: string;
+}> {}
 
-const decodeStaticSection = Schema.decodeUnknownSync(StaticSection);
+const failed = (message: string) => new StaticPrepareFailure({ message });
 
 function inside(root: string, path: string) {
   const subpath = relative(root, path);
@@ -44,7 +42,7 @@ async function verifyStaticTree(root: string) {
       const file = join(directory, entry.name);
       const target = entry.isSymbolicLink() ? await realpath(file) : file;
       if (!inside(root, target)) {
-        throw new Error("Static site contains a symlink outside its directory");
+        throw failed("Static site contains a symlink outside its directory");
       }
       if ((await lstat(target)).isDirectory()) {
         pending.push(target);
@@ -53,26 +51,18 @@ async function verifyStaticTree(root: string) {
   }
 }
 
-export async function staticSourceDirectory(worktree: string): Promise<string> {
+async function staticSourceDirectory(worktree: string, configured?: string) {
   const root = await realpath(worktree);
-  const file = await readDevverFile(worktree);
   let directory = ".";
-  let configured: string | undefined;
-  try {
-    const { static: staticSection } = decodeStaticSection(file);
-    configured = staticSection?.directory;
-  } catch {
-    throw new Error("The static configuration is not usable");
-  }
   if (configured !== undefined) {
     directory = configured;
   }
   if (isAbsolute(directory)) {
-    throw new Error("Static directory must remain inside the worktree");
+    throw failed("Static directory must remain inside the worktree");
   }
   const requested = resolve(root, directory);
   if (!inside(root, requested)) {
-    throw new Error("Static directory must remain inside the worktree");
+    throw failed("Static directory must remain inside the worktree");
   }
   try {
     const actual = await realpath(requested);
@@ -82,7 +72,7 @@ export async function staticSourceDirectory(worktree: string): Promise<string> {
     await verifyStaticTree(actual);
     return actual;
   } catch {
-    throw new Error(
+    throw failed(
       "Static directory must be a safe directory inside the worktree"
     );
   }
@@ -90,7 +80,7 @@ export async function staticSourceDirectory(worktree: string): Promise<string> {
 
 function kdlString(value: string) {
   if (UNSAFE_IN_KDL.test(value)) {
-    throw new Error(
+    throw failed(
       "A deployment path cannot contain quotes, backslashes, braces or newlines"
     );
   }
@@ -111,21 +101,37 @@ function ferronConfig(directory: string, port: number) {
 `;
 }
 
-export const staticSiteKind: WorkloadKind = {
-  name: "static",
-  resolve: async ({ worktree, directory: slot, port }) => {
-    const directory = await staticSourceDirectory(worktree);
-    const ferron = await locateFerron();
-    const config = join(slot, "ferron.kdl");
-    await writeFile(config, ferronConfig(directory, port), {
-      mode: PRIVATE_FILE,
+export const prepareStaticSite = (
+  specification: { readonly directory?: string | undefined },
+  target: WorkloadTarget
+): Effect.Effect<DaemonSpec, StaticPrepareFailure> =>
+  Effect.gen(function* () {
+    const directory = yield* Effect.tryPromise({
+      try: async () =>
+        await staticSourceDirectory(target.worktree, specification.directory),
+      catch: (cause) =>
+        cause instanceof StaticPrepareFailure
+          ? cause
+          : failed("The static checkout is not usable"),
     });
-    await chmod(config, PRIVATE_FILE);
-    const spec: DaemonSpec = {
+    const ferron = yield* Effect.tryPromise({
+      try: async () => await locateFerron(),
+      catch: () => failed("The packaged static server is not available"),
+    });
+    const config = join(target.directory, "ferron.kdl");
+    yield* Effect.tryPromise({
+      try: async () => {
+        await writeFile(config, ferronConfig(directory, target.port), {
+          mode: PRIVATE_FILE,
+        });
+        await chmod(config, PRIVATE_FILE);
+      },
+      catch: () =>
+        failed("The static server configuration could not be written"),
+    });
+    return {
       command: [ferron, "-c", config],
       dir: directory,
-      port,
-    };
-    return spec;
-  },
-};
+      port: target.port,
+    } satisfies DaemonSpec;
+  });

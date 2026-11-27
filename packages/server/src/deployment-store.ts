@@ -1,5 +1,7 @@
 import { Context, Data, Effect, Exit, Layer, Schema } from "effect";
+import type { SchemaError } from "effect/Schema";
 import { SqlClient } from "effect/sql";
+import type { SqlError } from "effect/sql/SqlError";
 
 import type {
   DeployStage,
@@ -20,6 +22,45 @@ const APP_PORT = "appPort";
 class DeploymentStoreError extends Data.TaggedError("DeploymentStoreError")<{
   message: string;
 }> {}
+
+export const DeploymentStore = Context.Service<StoreService>(
+  "devver/server/DeploymentStore"
+);
+
+export interface StoreService extends Record<string, unknown> {
+  readonly record: (
+    input: NewDeployment
+  ) => Effect.Effect<void, SchemaError | SqlError>;
+  readonly rename: (
+    deploymentId: string,
+    displayName: string
+  ) => Effect.Effect<boolean, SqlError>;
+  readonly markReady: (
+    deploymentId: string
+  ) => Effect.Effect<unknown, SqlError>;
+  readonly markFailed: (
+    deploymentId: string,
+    stage: DeployStage
+  ) => Effect.Effect<unknown, SqlError>;
+  readonly markDegraded: (
+    deploymentId: string,
+    stage: DeployStage
+  ) => Effect.Effect<unknown, SqlError>;
+  readonly read: (
+    deploymentId: string
+  ) => Effect.Effect<Deployment | undefined, SchemaError | SqlError>;
+  readonly list: Effect.Effect<
+    {
+      readonly deployments: readonly Deployment[];
+      readonly unreadable: number;
+    },
+    SchemaError | SqlError
+  >;
+  readonly appPort: Effect.Effect<number | undefined, SchemaError | SqlError>;
+  readonly setAppPort: (
+    port: number
+  ) => Effect.Effect<void, SchemaError | SqlError>;
+}
 
 export const openDeploymentStore = (path: string) =>
   Effect.gen(function* () {
@@ -154,5 +195,5 @@ export const openDeploymentStore = (path: string) =>
           yield* sql`INSERT INTO instance (key, value) VALUES (${APP_PORT}, ${value})
             ON CONFLICT(key) DO UPDATE SET value = excluded.value`;
         }),
-    };
+    } satisfies StoreService;
   });

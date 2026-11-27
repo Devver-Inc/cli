@@ -29,7 +29,7 @@ import type {
 } from "./src/engine/graph";
 import { openJournal } from "./src/engine/journal";
 import type { ResourceJournal } from "./src/engine/journal";
-import type { ResourceProvider } from "./src/engine/provider";
+import type { ProviderFailure, ResourceProvider } from "./src/engine/provider";
 
 export {
   EngineBusyError,
@@ -88,10 +88,26 @@ const invalid = (reason: ValidationReason, id?: string) =>
     message: validationMessage(reason),
   });
 
-const operationFailure = (id: string, stage: "reconcile" | "remove") =>
+const isJsonObject = (value: ProviderFailure["detail"]): value is JsonObject =>
+  value !== undefined &&
+  value !== null &&
+  !Array.isArray(value) &&
+  typeof value === "object";
+
+const providerDetailOf = (error: ProviderFailure): JsonObject | undefined =>
+  error.detail !== undefined && isJsonObject(error.detail)
+    ? error.detail
+    : undefined;
+
+const operationFailure = (
+  id: string,
+  stage: "reconcile" | "remove",
+  detail?: JsonObject
+) =>
   new EngineOperationError({
     id,
     stage,
+    detail,
     message:
       stage === "reconcile"
         ? "resource reconcile failed"
@@ -182,9 +198,23 @@ export const openResourceEngine = (
             previousOutput: cloneOutput(previous?.output),
           })
         ).pipe(
-          Effect.flatMap(Schema.decodeUnknownEffect(Schema.JsonObject)),
+          Effect.mapError((providerError) =>
+            operationFailure(
+              declaration.id,
+              "reconcile",
+              providerDetailOf(providerError)
+            )
+          ),
+          Effect.flatMap((output) =>
+            Schema.decodeUnknownEffect(Schema.JsonObject)(output).pipe(
+              // The provider detail belongs to the errors above; this branch
+              // converts only the output-decode failures.
+              Effect.mapError(() =>
+                operationFailure(declaration.id, "reconcile")
+              )
+            )
+          ),
           Effect.map((output) => structuredClone(output)),
-          Effect.mapError(() => operationFailure(declaration.id, "reconcile")),
           Effect.catchDefect(() =>
             operationFailure(declaration.id, "reconcile")
           )
@@ -320,7 +350,9 @@ export const openResourceEngine = (
                 previousOutput: cloneOutput(row.output),
               })
             ).pipe(
-              Effect.mapError(() => operationFailure(id, "remove")),
+              Effect.mapError((error) =>
+                operationFailure(id, "remove", providerDetailOf(error))
+              ),
               Effect.catchDefect(() => operationFailure(id, "remove"))
             );
             yield* journal.removeRow(id);

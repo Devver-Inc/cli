@@ -9,11 +9,13 @@ import {
   DeploymentNotFound,
   MergeRejected,
 } from "./api";
-import type { openDeployer } from "./deploy";
+import { Deployments } from "./deploy";
 import type { loadInstance } from "./identity";
 
 type Instance = Awaited<ReturnType<typeof loadInstance>>;
-type Deployer = Effect.Success<ReturnType<typeof openDeployer>>;
+
+const serverFailure = (message: string) =>
+  new DeployFailure({ stage: "server", message });
 
 export const instanceHandlers = (instance: Instance) =>
   HttpApiBuilder.group(api, "instance", (handlers) =>
@@ -32,68 +34,75 @@ export const instanceHandlers = (instance: Instance) =>
     )
   );
 
-export const deploymentHandlers = (deployer: Deployer) =>
-  HttpApiBuilder.group(api, "deployments", (handlers) =>
+// The handlers consume the deployment service through their effect's
+// requirements, so the server edge composes its layers once instead of
+// passing a constructed value.
+export const deploymentHandlers = HttpApiBuilder.group(
+  api,
+  "deployments",
+  (handlers) =>
     handlers
       .handle("create", ({ payload }) =>
-        deployer.deploy(payload).pipe(
-          Effect.mapError((error) =>
-            error instanceof DeployFailure
-              ? error
-              : new DeployFailure({
-                  stage: "server",
-                  message: "server: the deployment could not be completed",
-                })
-          )
+        Effect.flatMap(Deployments, (deployments) =>
+          deployments
+            .deploy(payload)
+            .pipe(
+              Effect.mapError((error) =>
+                error instanceof DeployFailure
+                  ? error
+                  : serverFailure(
+                      "server: the deployment could not be completed"
+                    )
+              )
+            )
         )
       )
       .handle("merge", ({ payload }) =>
-        deployer
-          .merge(payload.firstDeploymentId, payload.secondDeploymentId)
-          .pipe(
-            Effect.mapError((error) =>
-              error instanceof MergeRejected || error instanceof DeployFailure
-                ? error
-                : new DeployFailure({
-                    stage: "server",
-                    message:
-                      "server: the deployment merge could not be completed",
-                  })
+        Effect.flatMap(Deployments, (deployments) =>
+          deployments
+            .merge(payload.firstDeploymentId, payload.secondDeploymentId)
+            .pipe(
+              Effect.mapError((error) =>
+                error instanceof MergeRejected || error instanceof DeployFailure
+                  ? error
+                  : serverFailure(
+                      "server: the deployment merge could not be completed"
+                    )
+              )
             )
-          )
+        )
       )
       .handle("rename", ({ params, payload }) =>
-        deployer.rename(params.deploymentId, payload.displayName).pipe(
-          Effect.flatMap((found) =>
-            found
-              ? Effect.succeed({ displayName: payload.displayName })
-              : new DeploymentNotFound({ message: "Deployment not found" })
-          ),
-          Effect.mapError((error) =>
-            error instanceof DeploymentNotFound
-              ? error
-              : new DeployFailure({
-                  stage: "server",
-                  message: "server: deployment name could not be saved",
-                })
+        Effect.flatMap(Deployments, (deployments) =>
+          deployments.rename(params.deploymentId, payload.displayName).pipe(
+            Effect.flatMap((found) =>
+              found
+                ? Effect.succeed({ displayName: payload.displayName })
+                : Effect.fail(
+                    new DeploymentNotFound({ message: "Deployment not found" })
+                  )
+            ),
+            Effect.mapError((error) =>
+              error instanceof DeploymentNotFound
+                ? error
+                : serverFailure("server: deployment name could not be saved")
+            )
           )
         )
       )
       .handle("list", () =>
-        deployer.statuses.pipe(
-          Effect.map((statuses) =>
-            HttpApiSchema.withHeaders({
-              body: statuses,
-              headers: { "cache-control": "no-store" as const },
-            })
-          ),
-          Effect.mapError(
-            () =>
-              new DeployFailure({
-                stage: "server",
-                message: "server: deployment records could not be read",
+        Effect.flatMap(Deployments, (deployments) =>
+          deployments.statuses.pipe(
+            Effect.map((statuses) =>
+              HttpApiSchema.withHeaders({
+                body: statuses,
+                headers: { "cache-control": "no-store" as const },
               })
+            ),
+            Effect.mapError(() =>
+              serverFailure("server: deployment records could not be read")
+            )
           )
         )
       )
-  );
+);

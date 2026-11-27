@@ -2,7 +2,13 @@
 import { createServer } from "node:http";
 import type { IncomingMessage } from "node:http";
 
-import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
+import {
+  NodeHttpServer,
+  NodeRuntime,
+  NodeChildProcessSpawner,
+  NodeFileSystem,
+  NodePath,
+} from "@effect/platform-node";
 import { Data, Effect, Layer } from "effect";
 import {
   FetchHttpClient,
@@ -14,9 +20,19 @@ import {
 import { HttpApiBuilder } from "effect/http-api";
 
 import { API_PATH, api } from "./api";
-import { openDeployer } from "./deploy";
+import { deploymentsLayer, instanceServicesLayer } from "./deploy";
+import {
+  deploymentCreateLayer,
+  deploymentGuardsLayer,
+  deploymentWorkflowLayer,
+} from "./deployment/create";
 import { deploymentHandlers, instanceHandlers } from "./handlers";
 import { loadInstance } from "./identity";
+
+const childProcesses = NodeChildProcessSpawner.layer.pipe(
+  Layer.provide(NodeFileSystem.layer),
+  Layer.provide(NodePath.layer)
+);
 
 const HOST = "127.0.0.1";
 const PORT = /^(?<zero>0|[1-9]\d*)$/u;
@@ -64,7 +80,6 @@ const serveOnListener = (name: string) =>
       });
     }
     const origin = `http://${HOST}:${address.port}`;
-    const deployer = yield* openDeployer(name);
 
     const requestPolicy = HttpRouter.middleware(
       (next) =>
@@ -94,11 +109,29 @@ const serveOnListener = (name: string) =>
         }),
       { global: true }
     );
+    // The deployment service satisfies the handlers' typed requirements
+    // per request: request-level dependencies come from one composed layer,
+    // so the server edge builds the whole stack exactly once.
+    const transports = Layer.mergeAll(FetchHttpClient.layer, childProcesses);
+    const instanceServices = instanceServicesLayer(name).pipe(
+      Layer.provide(transports)
+    );
+    const workflow = deploymentWorkflowLayer.pipe(
+      Layer.provide(deploymentGuardsLayer),
+      Layer.provide(instanceServices)
+    );
+    const deploymentStack = deploymentsLayer.pipe(
+      Layer.provideMerge(deploymentCreateLayer),
+      Layer.provideMerge(workflow),
+      Layer.provideMerge(instanceServices),
+      Layer.provideMerge(transports)
+    );
     const handler = yield* HttpRouter.toHttpEffect(
       Layer.mergeAll(
         HttpApiBuilder.layer(api).pipe(
           Layer.provide(instanceHandlers(instance)),
-          Layer.provide(deploymentHandlers(deployer))
+          Layer.provide(deploymentHandlers),
+          HttpRouter.provideRequest(deploymentStack)
         ),
         requestPolicy
       )

@@ -1,12 +1,14 @@
-import { Cause, Data, Effect, Exit, Option } from "effect";
+import { Cause, Data, Exit, Option } from "effect";
+import type { Effect } from "effect";
 
 import { DeployFailure } from "../api";
+import { runAbortable } from "../exec";
 import type { DeployStage } from "./record";
 
 // Subprocess output can name paths or secrets, so only a plain sentence passes.
-const SAFE_DETAIL = /^(?=[^\n]* )[A-Za-z0-9 ,.'()-]{1,120}$/u;
+export const SAFE_DETAIL = /^(?=[^\n]* )[A-Za-z0-9 ,.'()-]{1,120}$/u;
 
-const stageMessage: Record<DeployStage, string> = {
+export const stageMessage: Record<DeployStage, string> = {
   server: "server: this installation cannot deploy this workload",
   source: "source: the checkout or commit cannot be deployed",
   git: "git: the commit could not be synchronized",
@@ -21,14 +23,14 @@ export class DeploymentStartupError extends Data.TaggedError(
   message: string;
 }> {}
 
-export const startup = <A>(step: () => Promise<A>) =>
-  Effect.tryPromise({
-    try: async () => await step(),
-    catch: () =>
+export const startup = <A>(step: (signal: AbortSignal) => Promise<A>) =>
+  runAbortable(
+    step,
+    () =>
       new DeploymentStartupError({
         message: "Deployment state could not be opened",
-      }),
-  });
+      })
+  );
 
 export const failureStage = (
   exit: Exit.Exit<unknown, unknown>
@@ -39,17 +41,43 @@ export const failureStage = (
   return error instanceof DeployFailure ? error.stage : "server";
 };
 
-export const attempt = <A>(stage: DeployStage, step: () => Promise<A>) =>
-  Effect.tryPromise({
-    try: async () => await step(),
-    catch: (error) =>
-      error instanceof DeployFailure
-        ? error
-        : new DeployFailure({
-            stage,
-            message:
-              error instanceof Error && SAFE_DETAIL.test(error.message)
-                ? `${stage}: ${error.message}`
-                : stageMessage[stage],
-          }),
+export class HostFailure extends Data.TaggedError("HostFailure")<{
+  message: string;
+}> {}
+
+// Renders one crafted sentence at the deployment stage; anything the
+// sentence filters would leak, so it falls back to the stage's fixed text.
+export const stagedFailure = (stage: DeployStage, message: string) =>
+  new DeployFailure({
+    stage,
+    message: SAFE_DETAIL.test(message)
+      ? `${stage}: ${message}`
+      : stageMessage[stage],
   });
+
+export const attemptHost = <A>(
+  step: (signal: AbortSignal) => Promise<A>
+): Effect.Effect<A, HostFailure> =>
+  runAbortable(
+    step,
+    (error) =>
+      new HostFailure({
+        message:
+          error instanceof Error && SAFE_DETAIL.test(error.message)
+            ? error.message
+            : "this installation cannot deploy the workload",
+      })
+  );
+
+export const hostFailure = (stage: DeployStage) => (error: HostFailure) =>
+  new DeployFailure({ stage, message: `${stage}: ${error.message}` });
+
+export const attempt = <A>(
+  stage: DeployStage,
+  step: (signal: AbortSignal) => Promise<A>
+) =>
+  runAbortable<A, DeployFailure>(step, (error) =>
+    error instanceof DeployFailure
+      ? error
+      : stagedFailure(stage, error instanceof Error ? error.message : "")
+  );

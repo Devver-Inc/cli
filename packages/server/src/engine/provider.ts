@@ -4,6 +4,9 @@ import type { Json, JsonObject } from "effect/Schema";
 
 export class ProviderFailure extends Data.TaggedError("ProviderFailure")<{
   readonly message: string;
+  // A provider author supplies a JSON detail it has already sanitized; the
+  // engine stores it opaquely so callers can map it at their own seam.
+  readonly detail?: Json | undefined;
 }> {}
 
 export interface ProviderCall {

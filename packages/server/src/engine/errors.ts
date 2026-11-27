@@ -1,4 +1,5 @@
 import { Data } from "effect";
+import type { Json } from "effect/Schema";
 
 export type ValidationReason =
   | "invalid-declaration"
@@ -53,6 +54,7 @@ export class EngineOperationError extends Data.TaggedError(
   readonly id: string;
   readonly stage: "reconcile" | "remove";
   readonly message: string;
+  readonly detail?: Json | undefined;
 }> {}
 
 export type TeardownRefusalReason =
