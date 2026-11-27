@@ -10,6 +10,7 @@ import { ApiClient } from "../../infra/api/client";
 import {
   listLocalDeployments,
   mergeLocalDeployments,
+  publishLocalDeployment,
   renameLocalDeployment,
 } from "../../infra/api/local-deploy.requests";
 import { getProjects } from "../../infra/api/projects.requests";
@@ -75,6 +76,12 @@ export const launchTui = (project?: string, apiUrl = Option.none<string>()) =>
               mergeDeployments: async (first, second) =>
                 await runWithContext(
                   mergeLocalDeployments(first, second).pipe(
+                    Effect.provideService(ApiClient, api)
+                  )
+                ),
+              publishDeployment: async (id) =>
+                await runWithContext(
+                  publishLocalDeployment(id).pipe(
                     Effect.provideService(ApiClient, api)
                   )
                 ),

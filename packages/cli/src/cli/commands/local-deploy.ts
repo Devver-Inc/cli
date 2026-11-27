@@ -1,6 +1,9 @@
 import { Console, Effect } from "effect";
 
-import { createLocalDeployment } from "../../infra/api/local-deploy.requests";
+import {
+  createLocalDeployment,
+  publishLocalDeployment,
+} from "../../infra/api/local-deploy.requests";
 import { openBrowser } from "../../infra/auth/browser";
 import type { LocalTargetSchema } from "../../infra/config/api";
 import { withLocalApi } from "../api";
@@ -11,7 +14,8 @@ const MILLISECONDS = 1000;
 export const localDeploy = (
   target: typeof LocalTargetSchema.Type,
   verbose: boolean,
-  open: boolean
+  open: boolean,
+  publicly: boolean
 ) =>
   withLocalApi(
     target,
@@ -38,6 +42,15 @@ export const localDeploy = (
         yield* Console.log("\nDeployment ready");
       }
       yield* Console.log(`    App URL: ${deployment.url}`);
+      if (publicly) {
+        yield* Console.log(
+          "Anyone with the public URL can access this deployment."
+        );
+        const publication = yield* publishLocalDeployment(
+          deployment.deploymentId
+        );
+        yield* Console.log(`    Public URL: ${publication.url}`);
+      }
       if (
         open &&
         !(yield* Effect.promise(async () => openBrowser(deployment.url)))

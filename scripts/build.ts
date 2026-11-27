@@ -6,6 +6,12 @@ import pkg from "../package.json";
 import { buildDefines } from "./stamp";
 import { packageStaticTools } from "./static-tools";
 
+if (!Bun.semver.satisfies(Bun.version, pkg.engines.bun)) {
+  throw new Error(
+    `Building Devver requires Bun ${pkg.engines.bun}; found ${Bun.version}. Older runtimes stall OpenTunnel TLS handshakes.`
+  );
+}
+
 const config: Bun.BuildConfig = {
   entrypoints: ["./packages/cli/src/cli/index.ts"],
   compile: { outfile: "devver" },

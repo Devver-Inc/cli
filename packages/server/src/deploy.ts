@@ -28,6 +28,7 @@ import {
 } from "./git-source";
 import { instanceParent } from "./identity";
 import { packagedToolsDirectory } from "./packaged-tools";
+import { openPublicRouter } from "./public-router";
 import { prepareDaemon } from "./workloads";
 
 const openDeployerFor = (name: string) =>
@@ -286,6 +287,10 @@ export const openDeployer = (name: string) =>
     if (appPort === undefined) {
       yield* store.setAppPort(host.proxyPort);
     }
+    const router = yield* Effect.acquireRelease(
+      Effect.sync(() => openPublicRouter(store, host, instanceDirectory)),
+      (opened) => Effect.promise(async () => opened.close())
+    );
     const statuses = Effect.gen(function* () {
       const { deployments, unreadable } = yield* store.list;
       if (unreadable !== 0) {
@@ -297,7 +302,7 @@ export const openDeployer = (name: string) =>
       const subjects = yield* Effect.promise(
         async () => await subjectsOf(instanceDirectory, deployments)
       );
-      return statusRows(deployments, subjects, host.url);
+      return statusRows(deployments, subjects, host.url, router.publicUrl);
     });
     return {
       appPort: host.proxyPort,
@@ -305,6 +310,37 @@ export const openDeployer = (name: string) =>
       merge,
       statuses,
       rename: store.rename,
+      publish: (deploymentId: string) =>
+        Effect.gen(function* () {
+          const deployment = yield* store.read(deploymentId);
+          if (deployment?.status !== "ready") {
+            return yield* new DeployFailure({
+              stage: "readiness",
+              message: "readiness: only a ready deployment can be published",
+            });
+          }
+          const url = yield* Effect.tryPromise({
+            try: async () => await router.publish(deploymentId),
+            catch: () =>
+              new DeployFailure({
+                stage: "server",
+                message: "server: the deployment could not be published",
+              }),
+          });
+          return { url };
+        }),
+      unpublish: (deploymentId: string) =>
+        Effect.tryPromise({
+          try: async () => {
+            await router.unpublish(deploymentId);
+            return { unpublished: true as const };
+          },
+          catch: () =>
+            new DeployFailure({
+              stage: "server",
+              message: "server: the deployment could not be unpublished",
+            }),
+        }),
     };
   }).pipe(
     Effect.mapError((error) =>

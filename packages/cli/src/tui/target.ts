@@ -12,6 +12,9 @@ export interface LocalTarget {
   readonly loadDeployments: () => Promise<
     readonly LocalDeploymentStatus[] | null
   >;
+  readonly publishDeployment?:
+    | ((id: string) => Promise<{ readonly url: string }>)
+    | undefined;
   readonly renameDeployment?:
     | ((id: string, name: string) => Promise<{ readonly displayName: string }>)
     | undefined;

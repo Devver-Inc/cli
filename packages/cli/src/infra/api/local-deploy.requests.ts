@@ -43,11 +43,34 @@ const LocalDeploymentStatuses = Schema.Array(
       ])
     ),
     url: Schema.optional(Schema.NullOr(Schema.String)),
+    publicUrl: Schema.optional(Schema.NullOr(Schema.String)),
   })
 );
 
 export type LocalDeploymentStatus =
   (typeof LocalDeploymentStatuses.Type)[number];
+
+const PublishedDeployment = Schema.Struct({ url: Schema.String });
+const UnpublishedDeployment = Schema.Struct({ unpublished: Schema.Boolean });
+
+export const publishLocalDeployment = (deploymentId: string) =>
+  Effect.gen(function* () {
+    const api = yield* ApiClient;
+    return yield* api.post(
+      `/deployments/${encodeURIComponent(deploymentId)}/public`,
+      {},
+      PublishedDeployment
+    );
+  });
+
+export const unpublishLocalDeployment = (deploymentId: string) =>
+  Effect.gen(function* () {
+    const api = yield* ApiClient;
+    return yield* api.delete(
+      `/deployments/${encodeURIComponent(deploymentId)}/public`,
+      UnpublishedDeployment
+    );
+  });
 
 export const listLocalDeployments = Effect.gen(function* () {
   const api = yield* ApiClient;

@@ -55,7 +55,13 @@ export function DeploymentDetails({
     ["deployed", when(entry.createdAt)],
     ["how", how(entry, byId)],
     ["status", `${entry.status}${stage}`],
-    ["url", entry.url ?? "none until ready"],
+    ["local url", entry.url ?? "none until ready"],
+    [
+      "public url",
+      entry.publicUrl === undefined
+        ? "not reported by this server"
+        : (entry.publicUrl ?? "not published"),
+    ],
     ["repository", entry.repositoryId ?? "not reported by this server"],
   ] as const;
   return (
@@ -80,8 +86,17 @@ export function DeploymentDetails({
         width="84%"
       >
         {fields.map(([label, value]): React.ReactNode => (
-          <box flexDirection="row" height={1} key={label} width="100%">
-            <text wrapMode="none">
+          <box
+            flexDirection="row"
+            height={label.endsWith("url") ? "auto" : 1}
+            key={label}
+            width="100%"
+          >
+            <text
+              flexGrow={1}
+              minWidth={0}
+              wrapMode={label.endsWith("url") ? "char" : "none"}
+            >
               <span attributes={TextAttributes.BOLD} fg={theme.mint}>
                 {label.padEnd(11)}
               </span>

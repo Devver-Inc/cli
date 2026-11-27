@@ -84,6 +84,9 @@ export const openDeploymentStore = (path: string) =>
       key TEXT PRIMARY KEY NOT NULL,
       value TEXT NOT NULL
     ) STRICT`;
+    yield* sql`CREATE TABLE IF NOT EXISTS publications (
+      deploymentId TEXT PRIMARY KEY NOT NULL REFERENCES deployments(deploymentId)
+    ) STRICT`;
     const select = sql`SELECT deploymentId, repositoryId, commitSha AS "commit", parentDeploymentId,
       secondParentDeploymentId, worktree, status, stage, displayName, createdAt FROM deployments`;
     const markStatus = (
@@ -150,6 +153,20 @@ export const openDeploymentStore = (path: string) =>
         )(row);
         return yield* Schema.decodeEffect(PortSchema)(decoded.value);
       }),
+      publications: Effect.gen(function* () {
+        const rows = yield* sql`SELECT deploymentId FROM publications`;
+        return yield* Schema.decodeUnknownEffect(
+          Schema.Array(
+            Schema.Struct({
+              deploymentId: Schema.String.check(Schema.isUUID(4)),
+            })
+          )
+        )(rows);
+      }),
+      publish: (deploymentId: string) =>
+        sql`INSERT OR IGNORE INTO publications (deploymentId) VALUES (${deploymentId})`,
+      unpublish: (deploymentId: string) =>
+        sql`DELETE FROM publications WHERE deploymentId = ${deploymentId}`,
       setAppPort: (port: number) =>
         Effect.gen(function* () {
           const value = yield* Schema.encodeUnknownEffect(PortSchema)(port);

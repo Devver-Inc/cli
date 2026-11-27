@@ -16,10 +16,12 @@ import { merge } from "./commands/merge";
 import { newCommand } from "./commands/new";
 import { organization } from "./commands/organization";
 import { project } from "./commands/project";
+import { publish } from "./commands/publish";
 import { repos } from "./commands/repos";
 import { secret } from "./commands/secret";
 import { server } from "./commands/server";
 import { tui } from "./commands/tui";
+import { unpublish } from "./commands/unpublish";
 import {
   deploymentIds,
   extendCompletions,
@@ -51,10 +53,12 @@ const subcommands = [
   newCommand,
   organization,
   project,
+  publish,
   repos,
   secret,
   server,
   tui,
+  unpublish,
 ] as const;
 
 const helpTree = root.pipe(Command.withSubcommands(subcommands));
