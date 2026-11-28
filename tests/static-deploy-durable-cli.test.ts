@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -305,6 +306,117 @@ test("a killed static deploy resumes to ready and same-commit deployments stay d
     } finally {
       restart.child.kill();
       await restart.child.exited;
+    }
+  } finally {
+    first.child.kill();
+    await first.child.exited;
+    rmSync(ws.root, { recursive: true, force: true });
+  }
+}, 180_000);
+
+test("restart preserves a resumed process while restoring older ready workloads", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  packagedTools();
+  const ws = workspace();
+  const source = checkout(ws.root);
+  const name = "verify-static";
+  const first = await foreground(ws.env, name);
+  try {
+    expect(
+      (await runCli(ws.env, source.directory, ["attach", first.url])).status
+    ).toBe(0);
+    const page = await runCli(ws.env, source.directory, [
+      "deploy",
+      "--verbose",
+    ]);
+    expect(page.status, page.output).toBe(0);
+    const pageUrl = APP_URL.exec(page.output)?.groups?.url;
+    expect(pageUrl).toBeDefined();
+    const gate = join(ws.root, "release-build");
+    const marker = join(ws.root, "build-started");
+    writeFileSync(gate, "release");
+    writeFileSync(
+      join(source.directory, "build.mjs"),
+      `import { existsSync, writeFileSync } from 'node:fs';\nimport { setTimeout } from 'node:timers/promises';\nwriteFileSync(${JSON.stringify(marker)}, 'started');\nwhile (!existsSync(${JSON.stringify(gate)})) await setTimeout(50);\n`
+    );
+    writeFileSync(
+      join(source.directory, "server.mjs"),
+      "import { createServer } from 'node:http';\ncreateServer((_req, res) => res.end('node deployment')).listen(Number(process.env.PORT), process.env.HOST);\n"
+    );
+    writeFileSync(
+      join(source.directory, ".devver.yaml"),
+      "process:\n  build: node build.mjs\n  run: node server.mjs\n"
+    );
+    git(source.directory, "add", ".devver.yaml", "server.mjs", "build.mjs");
+    git(source.directory, "commit", "-qm", "Node process");
+    const backend = await runCli(ws.env, source.directory, [
+      "deploy",
+      "--verbose",
+    ]);
+    expect(backend.status, backend.output).toBe(0);
+    const backendUrl = APP_URL.exec(backend.output)?.groups?.url;
+    expect(backendUrl).toBeDefined();
+    rmSync(gate);
+    rmSync(marker);
+    const deploying = Bun.spawn(["bun", "run", cli, "deploy", "--verbose"], {
+      cwd: source.directory,
+      env: ws.env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    try {
+      const deadline = Date.now() + 30_000;
+      while (!existsSync(marker) && Date.now() < deadline) {
+        await Bun.sleep(20);
+      }
+      expect(existsSync(marker)).toBe(true);
+      expect(readFileSync(marker, "utf-8")).toBe("started");
+      const preparing = await waitForRecord(ws.root, (rows) =>
+        rows.some((row) => row.status === "preparing")
+      );
+      const interrupted = preparing.find((row) => row.status === "preparing");
+      expect(interrupted).toBeDefined();
+      first.child.kill(9);
+      await first.child.exited;
+      await deploying.exited;
+      writeFileSync(gate, "release");
+      const restart = await foreground(ws.env, name);
+      try {
+        await waitForRecord(
+          ws.root,
+          (rows) =>
+            rows.length === 3 && rows.every((row) => row.status === "ready")
+        );
+        if (
+          pageUrl === undefined ||
+          backendUrl === undefined ||
+          interrupted === undefined
+        ) {
+          throw new Error("The deployment URLs were not recorded");
+        }
+        const recoveredUrl = new URL(backendUrl);
+        recoveredUrl.hostname = `${interrupted.deploymentId}.${name}.localhost`;
+        expect(await body(pageUrl)).toEqual({
+          status: 200,
+          text: "<h1>durable page</h1>",
+        });
+        expect(await body(backendUrl)).toEqual({
+          status: 200,
+          text: "node deployment",
+        });
+        expect(await body(recoveredUrl.href)).toEqual({
+          status: 200,
+          text: "node deployment",
+        });
+      } finally {
+        restart.child.kill();
+        await restart.child.exited;
+      }
+    } finally {
+      deploying.kill();
+      await deploying.exited;
     }
   } finally {
     first.child.kill();

@@ -4,7 +4,7 @@ import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Exit } from "effect";
 
 import { openDeploymentStore } from "../deployments";
 
@@ -64,6 +64,84 @@ test("legacy deployment tables migrate and never read as workflow-created", asyn
         row.displayName === null &&
         row.secondParentDeploymentId === null
     ).toBe(true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("specifications survive reopen and conflicting writes cannot replace the first record", async () => {
+  const root = mkdtempSync(join(tmpdir(), "devver-specification-"));
+  const path = join(root, "deployments.sqlite");
+  const deploymentId = "63227492-7164-489e-b8d2-1e5c342f4f38";
+  const specification = {
+    kind: "process",
+    run: "node server.mjs",
+  } as const;
+  try {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const store = yield* openDeploymentStore(path);
+          yield* store.record({
+            deploymentId,
+            repositoryId: "a".repeat(64),
+            commit: "1".repeat(40),
+            parentDeploymentId: null,
+            secondParentDeploymentId: null,
+            worktree: join(root, "worktrees", deploymentId),
+            source: null,
+            lifecycle: "workflow",
+          });
+          expect(yield* store.readSpecification(deploymentId)).toBeUndefined();
+          expect(
+            yield* store.recordSpecification(deploymentId, specification)
+          ).toEqual(specification);
+        })
+      )
+    );
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const store = yield* openDeploymentStore(path);
+          expect(
+            yield* store.recordSpecification(deploymentId, { kind: "static" })
+          ).toEqual(specification);
+          expect(yield* store.readSpecification(deploymentId)).toEqual(
+            specification
+          );
+        })
+      )
+    );
+    for (const [version, content] of [
+      [2, JSON.stringify(specification)],
+      [1, "not JSON"],
+      [1, JSON.stringify({ kind: "unknown" })],
+    ] as const) {
+      const db = new Database(path);
+      db.query(
+        "UPDATE deployment_specifications SET version = ?, specification = ? WHERE deploymentId = ?"
+      ).run(version, content, deploymentId);
+      db.close();
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const store = yield* openDeploymentStore(path);
+            expect(
+              Exit.isFailure(
+                yield* Effect.exit(store.readSpecification(deploymentId))
+              )
+            ).toBe(true);
+            expect(
+              Exit.isFailure(
+                yield* Effect.exit(
+                  store.recordSpecification(deploymentId, { kind: "static" })
+                )
+              )
+            ).toBe(true);
+          })
+        )
+      );
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

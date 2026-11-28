@@ -39,10 +39,6 @@ const StaticSection = Schema.Struct({
 const failure = (message: string) =>
   new DeployFailure({ stage: "config", message: `config: ${message}` });
 
-// The deployment kind and configuration are resolved once from the pinned
-// revision's committed configuration file and persisted as the workflow's
-// specification record, so a replayed run selects the same implementation
-// instead of re-reading a worktree the deployed workload may have modified.
 export const specificationOf = (
   committed: string | null
 ): DeploymentSpecification | DeployFailure => {

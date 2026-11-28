@@ -9,8 +9,15 @@ import type {
   NewDeployment,
 } from "./deployment/record";
 import { DeploymentSchema, NewDeploymentSchema } from "./deployment/record";
+import { DeploymentSpecificationSchema } from "./deployment/specification";
+import type { DeploymentSpecification } from "./deployment/specification";
 import { privateFile } from "./private-state";
 import { sqliteClientLayer } from "./sqlite-driver";
+
+const SpecificationRow = Schema.Struct({
+  version: Schema.Literals([1]),
+  specification: Schema.fromJsonString(DeploymentSpecificationSchema),
+});
 
 const PortSchema = Schema.NumberFromString.check(
   Schema.isInt(),
@@ -49,6 +56,16 @@ export interface StoreService extends Record<string, unknown> {
   readonly read: (
     deploymentId: string
   ) => Effect.Effect<Deployment | undefined, SchemaError | SqlError>;
+  readonly readSpecification: (
+    deploymentId: string
+  ) => Effect.Effect<
+    DeploymentSpecification | undefined,
+    SchemaError | SqlError
+  >;
+  readonly recordSpecification: (
+    deploymentId: string,
+    specification: DeploymentSpecification
+  ) => Effect.Effect<DeploymentSpecification, SchemaError | SqlError>;
   readonly list: Effect.Effect<
     {
       readonly deployments: readonly Deployment[];
@@ -122,6 +139,13 @@ export const openDeploymentStore = (path: string) =>
       key TEXT PRIMARY KEY NOT NULL,
       value TEXT NOT NULL
     ) STRICT`;
+    yield* sql`CREATE TABLE IF NOT EXISTS deployment_specifications (
+      deploymentId TEXT PRIMARY KEY NOT NULL REFERENCES deployments(deploymentId),
+      version INTEGER NOT NULL,
+      specification TEXT NOT NULL
+    ) STRICT`;
+    const specificationRows = (deploymentId: string) =>
+      sql`SELECT version, specification FROM deployment_specifications WHERE deploymentId = ${deploymentId}`;
     const select = sql`SELECT deploymentId, repositoryId, commitSha AS "commit", parentDeploymentId,
       secondParentDeploymentId, worktree, status, stage, displayName, source, lifecycle, createdAt FROM deployments`;
     const markStatus = (
@@ -161,6 +185,30 @@ export const openDeploymentStore = (path: string) =>
           return row === undefined
             ? undefined
             : yield* Schema.decodeUnknownEffect(DeploymentSchema)(row);
+        }),
+      readSpecification: (deploymentId: string) =>
+        Effect.gen(function* () {
+          const [row] = yield* specificationRows(deploymentId);
+          return row === undefined
+            ? undefined
+            : (yield* Schema.decodeUnknownEffect(SpecificationRow)(row))
+                .specification;
+        }),
+      recordSpecification: (
+        deploymentId: string,
+        specification: DeploymentSpecification
+      ) =>
+        Effect.gen(function* () {
+          const encoded = yield* Schema.encodeEffect(SpecificationRow)({
+            version: 1,
+            specification,
+          });
+          yield* sql`INSERT INTO deployment_specifications (deploymentId, version, specification)
+            VALUES (${deploymentId}, ${encoded.version}, ${encoded.specification})
+            ON CONFLICT(deploymentId) DO NOTHING`;
+          const [row] = yield* specificationRows(deploymentId);
+          return (yield* Schema.decodeUnknownEffect(SpecificationRow)(row))
+            .specification;
         }),
       list: Effect.gen(function* () {
         const rows = yield* sql`${select} ORDER BY createdAt, deploymentId`;

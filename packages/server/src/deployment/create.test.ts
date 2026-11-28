@@ -33,6 +33,7 @@ import {
 } from "./create";
 import { HostFailure } from "./failures";
 import { enginesLayer } from "./resources";
+import type { DeploymentSpecification } from "./specification";
 
 const childProcesses = NodeChildProcessSpawner.layer.pipe(
   Layer.provide(NodeFileSystem.layer),
@@ -95,6 +96,7 @@ const EVENTS_TIMEOUT_MS = 60_000;
 const harness = (options: HarnessOptions) => {
   const instance = mkdtempSync(join(tmpdir(), "devver-create-"));
   const events: string[] = [];
+  const specifications = new Map<string, DeploymentSpecification>();
   const deploymentPort = 45_678;
   const gitService: GitService = {
     verifiedSource: unusedGit,
@@ -193,6 +195,15 @@ const harness = (options: HarnessOptions) => {
   };
   const storeService: StoreService = {
     record: () => Effect.void,
+    readSpecification: (deploymentId) =>
+      Effect.sync(() => specifications.get(deploymentId)),
+    recordSpecification: (deploymentId, specification) =>
+      Effect.sync(() => {
+        const recordedSpecification =
+          specifications.get(deploymentId) ?? specification;
+        specifications.set(deploymentId, recordedSpecification);
+        return recordedSpecification;
+      }),
     rename: () => Effect.succeed(false),
     markReady: (deploymentId) =>
       Effect.sync(() => {

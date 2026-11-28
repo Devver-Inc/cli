@@ -414,15 +414,16 @@ export const deploymentsLayer: Layer.Layer<
         if (status === "failed" || status === "degraded") {
           continue;
         }
-        yield* unpublish(deploymentId);
         if (status === "preparing") {
           if (deployment.lifecycle !== "workflow") {
+            yield* unpublish(deploymentId);
             yield* Effect.orDie(store.markDegraded(deploymentId, "server"));
             continue;
           }
           interrupted.push(deployment);
           continue;
         }
+        yield* unpublish(deploymentId);
         yield* restoreLive(deployment);
       }
       for (const deployment of interrupted) {

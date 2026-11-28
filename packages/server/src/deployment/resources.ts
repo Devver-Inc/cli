@@ -281,24 +281,41 @@ const resolveSpecification = (
       : specification;
   });
 
+const specificationStoreFailure = () =>
+  providerFailed(
+    new DeployFailure({
+      stage: "config",
+      message:
+        "config: the recorded deployment specification could not be used",
+    })
+  );
+
 const hostedWorkloadProvider = (deps: ProviderDeps) => ({
   id: HostedWorkloadId,
   reconcile: ({ inputs, previousOutput }: ProviderCall) => {
     const step = Effect.gen(function* () {
       const input = yield* decodeInputs(HostedWorkloadInputs, inputs);
-      // The specification is resolved once from the pinned revision and
-      // then carried by this resource's durable output, so every replay and
-      // restart reconciles the same decoded kind and configuration instead
-      // of re-interpreting configuration under a newer parser.
-      const specification =
-        previousOutput === undefined
-          ? yield* resolveSpecification(deps, input.repositoryId, input.commit)
-          : yield* Effect.suspend(() =>
-              decodeSpecification(previousOutput.specification ?? null).pipe(
-                Effect.fromOption,
-                Effect.mapError(() => providerInvalid())
+      let specification = yield* deps.store
+        .readSpecification(input.deploymentId)
+        .pipe(Effect.mapError(specificationStoreFailure));
+      if (specification === undefined) {
+        const resolved =
+          previousOutput === undefined
+            ? yield* resolveSpecification(
+                deps,
+                input.repositoryId,
+                input.commit
               )
-            );
+            : yield* Effect.suspend(() =>
+                decodeSpecification(previousOutput.specification ?? null).pipe(
+                  Effect.fromOption,
+                  Effect.mapError(() => providerInvalid())
+                )
+              );
+        specification = yield* deps.store
+          .recordSpecification(input.deploymentId, resolved)
+          .pipe(Effect.mapError(specificationStoreFailure));
+      }
       const slot = yield* deps.host
         .reserve(input.deploymentId)
         .pipe(

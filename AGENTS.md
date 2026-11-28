@@ -44,6 +44,8 @@ In descending order of importance
 
 ## Types and trust
 
+- `deployment-store.ts` owns the authoritative versioned, immutable deployment specification, persisted before workload reserve or preparation. On first apply after upgrade, adopt an existing hosted-workload output's specification without rereading committed config; keep the output copy for compatibility. Invalid or unsupported stored versions fail closed, and insert-if-absent returns the stored specification on conflict.
+- Startup must not withdraw preparing workflow deployments: their runner can already be replaying while older ready deployments are restored. Preparing legacy inline deployments still withdraw and degrade.
 - Infer internal types; use `effect/cli` typed flags/arguments and Effect Schema to decode unknown values from HTTP, YAML/JSON, files, and other external inputs.
 - Logto persists `logto/accessToken` as JSON but `logto/idToken` as a JWT whose payload carries top-level `organizations: string[]`. Decode the JWT payload; do not `JSON.parse` the ID token file, and do not expect a `claims` wrapper or organization objects. Test fixtures must use real JWTs.
 - Do not use `as Type`, `any`, or TypeScript suppressions to make unverified data type-check. `as const` is fine. Narrow with a guard or validate at the boundary; don't silently substitute empty data when persisted secrets/configuration are corrupt.

@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import {
@@ -31,7 +32,7 @@ import { DeploymentHost } from "../deployment-host";
 import type { HostService } from "../deployment-host";
 import { DeploymentStore } from "../deployment-store";
 import type { StoreService } from "../deployment-store";
-import { Git, openGit } from "../git-source";
+import { Git, GitFailure, openGit } from "../git-source";
 import type { GitService } from "../git-source";
 import type { InstanceDirectoryService } from "../instance-directory";
 import { InstanceDirectory } from "../instance-directory";
@@ -45,6 +46,7 @@ import {
   WorkspaceId,
 } from "./resources";
 import type { EnginesService } from "./resources";
+import type { DeploymentSpecification } from "./specification";
 
 const childProcesses = NodeChildProcessSpawner.layer.pipe(
   Layer.provide(NodeFileSystem.layer),
@@ -86,6 +88,9 @@ interface Kit {
   readonly committed: string;
   storeStatus: (deploymentId: string) => "preparing" | "ready";
   statuses: Record<string, "preparing" | "ready">;
+  readonly specifications: Map<string, DeploymentSpecification>;
+  slowReserve: boolean;
+  unreadableConfig: boolean;
   slowPublish: boolean;
   cleanup: () => void;
 }
@@ -118,6 +123,9 @@ const makeKit = async (committed = "static: {}\n"): Promise<Kit> => {
     storeStatus: (deploymentId: string) =>
       probe.statuses[deploymentId] ?? "preparing",
     statuses: {},
+    specifications: new Map(),
+    slowReserve: false,
+    unreadableConfig: false,
     committed,
     slowPublish: false,
     cleanup,
@@ -182,6 +190,11 @@ const countingGit = (probe: Kit): Layer.Layer<GitService> =>
           },
           committedFile: (repositoryId, commit, path) => {
             recorded(probe, "committedFile");
+            if (probe.unreadableConfig) {
+              return Effect.fail(
+                new GitFailure({ message: "config unavailable" })
+              );
+            }
             return git.committedFile(repositoryId, commit, path);
           },
           removeWorktree: (repositoryId, worktree) => {
@@ -210,8 +223,11 @@ type HarnessServices =
 const deploymentsHarness = (probe: Kit): Layer.Layer<HarnessServices> => {
   const hostService: HostService = {
     reserve: (deploymentId) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
         probe.events.push(`reserve:${deploymentId}`);
+        if (probe.slowReserve) {
+          return yield* Effect.never;
+        }
         const directory = join(probe.instance, "slot", deploymentId);
         mkdirSync(directory, { recursive: true });
         return {
@@ -236,6 +252,15 @@ const deploymentsHarness = (probe: Kit): Layer.Layer<HarnessServices> => {
   };
   const storeService: StoreService = {
     record: () => Effect.void,
+    readSpecification: (deploymentId) =>
+      Effect.sync(() => probe.specifications.get(deploymentId)),
+    recordSpecification: (deploymentId, specification) =>
+      Effect.sync(() => {
+        const recordedSpecification =
+          probe.specifications.get(deploymentId) ?? specification;
+        probe.specifications.set(deploymentId, recordedSpecification);
+        return recordedSpecification;
+      }),
     rename: () => Effect.succeed(false),
     markReady: () => Effect.void,
     markFailed: () => Effect.void,
@@ -305,7 +330,7 @@ const useEngines = async <A>(
     )
   );
 
-test("apply wires the workspace into the workload and journals the specification once", async () => {
+test("apply adopts a legacy journal specification without reading config again", async () => {
   const kitInstance = await makeKit();
   try {
     const deploymentId = "11111111-1111-4111-8111-111111111111";
@@ -327,6 +352,8 @@ test("apply wires the workspace into the workload and journals the specification
       join(kitInstance.instance, "worktrees", deploymentId)
     );
     expect(firstDeployed).toBe(true);
+    kitInstance.specifications.clear();
+    kitInstance.unreadableConfig = true;
     const applied = await useEngines(kitInstance, (engines) =>
       Effect.scoped(
         Effect.flatMap(engines.for(deploymentId), (engine) =>
@@ -335,6 +362,9 @@ test("apply wires the workspace into the workload and journals the specification
       ).pipe(Effect.orDie)
     );
     expect(applied.resources).toHaveLength(2);
+    expect(kitInstance.specifications.get(deploymentId)).toEqual({
+      kind: "static",
+    });
     expect(kitInstance.gitCalls.committedFile).toBe(1);
     expect(kitInstance.gitCalls.prepareWorktree).toBe(1);
     expect(
@@ -342,8 +372,70 @@ test("apply wires the workspace into the workload and journals the specification
         event.startsWith(`publish:${deploymentId}:`)
       )
     ).toHaveLength(2);
+    kitInstance.specifications.clear();
+    const journal = new Database(
+      join(kitInstance.instance, "resource-journals", `${deploymentId}.sqlite`)
+    );
+    journal
+      .query("UPDATE resources SET output = ? WHERE id = 'hosted-workload'")
+      .run(JSON.stringify({ specification: { kind: "unknown" } }));
+    journal.close();
+    const failed = await useEngines(kitInstance, (engines) =>
+      Effect.scoped(
+        Effect.flatMap(engines.for(deploymentId), (engine) =>
+          Effect.exit(engine.apply({ resources: deploymentResources(target) }))
+        )
+      ).pipe(Effect.orDie)
+    );
+    expect(Exit.isFailure(failed)).toBe(true);
+    expect(kitInstance.gitCalls.committedFile).toBe(1);
+    expect(
+      kitInstance.events.filter((event) => event === `reserve:${deploymentId}`)
+    ).toHaveLength(2);
+    expect(kitInstance.specifications.has(deploymentId)).toBe(false);
   } finally {
     kitInstance.cleanup();
+  }
+});
+
+test("an interrupted first reserve replays the frozen specification without reading config again", async () => {
+  const probe = await makeKit();
+  const deploymentId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const target = targetOf(probe, deploymentId);
+  try {
+    probe.slowReserve = true;
+    await useEngines(probe, (engines) =>
+      Effect.scoped(
+        Effect.flatMap(engines.for(deploymentId), (engine) =>
+          Effect.exit(
+            engine
+              .apply({ resources: deploymentResources(target) })
+              .pipe(Effect.timeout(1000))
+          )
+        )
+      ).pipe(Effect.asVoid, Effect.orDie)
+    );
+    expect(probe.events).toContain(`reserve:${deploymentId}`);
+    expect(probe.events.some((event) => event.startsWith("publish:"))).toBe(
+      false
+    );
+    expect(probe.specifications.get(deploymentId)).toEqual({ kind: "static" });
+    probe.slowReserve = false;
+    probe.unreadableConfig = true;
+    const applied = await useEngines(probe, (engines) =>
+      Effect.scoped(
+        Effect.flatMap(engines.for(deploymentId), (engine) =>
+          engine.apply({ resources: deploymentResources(target) })
+        )
+      ).pipe(Effect.orDie)
+    );
+    expect(applied.resources).toHaveLength(2);
+    expect(probe.gitCalls.committedFile).toBe(1);
+    expect(
+      probe.events.filter((event) => event.startsWith("publish:"))
+    ).toHaveLength(1);
+  } finally {
+    probe.cleanup();
   }
 });
 
