@@ -2,16 +2,23 @@ import { existsSync } from "node:fs";
 import { readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 
-import { Schema } from "effect";
+import { Data, Effect, Schema } from "effect";
+import type { ChildProcessSpawner } from "effect/process/ChildProcessSpawner";
 
-import { execute } from "../exec";
+import type { ProcessFailure } from "../exec";
+import { runProcess } from "../exec";
 import { locateAube } from "../packaged-tools";
-import { readProcessRecipe } from "./config";
+import type { ProcessRecipe } from "./config";
 import { launchRuleFor } from "./stacks/launch-rules";
-import type { DaemonSpec, WorkloadKind } from "./types";
+import type { DaemonSpec, WorkloadTarget } from "./types";
 
 const UNSAFE_COMMAND = /["'`$;&|<>(){}\\\r\n]/u;
 const PORT_PLACEHOLDER = `\${PORT}`;
+const INSTALL_TIMEOUT_MS = 120_000;
+const INSTALL_MAX_BUFFER = 16 * 1024 * 1024;
+// npm-style processes forward SIGTERM to their children unreliably; the
+// spawner escalates to SIGKILL so an interrupted install truly ends.
+const FORCE_KILL_AFTER_MS = 10_000;
 const packageScripts = Schema.decodeUnknownSync(
   Schema.Struct({ scripts: Schema.Record(Schema.String, Schema.String) })
 );
@@ -22,6 +29,16 @@ const lockfiles = new Map([
   ["yarn", "yarn.lock"],
   ["bun", "bun.lock"],
 ]);
+
+// A preparation failure carries one of the plain sentences this module
+// constructs; subprocess output never reaches it.
+export class ProcessPrepareFailure extends Data.TaggedError(
+  "ProcessPrepareFailure"
+)<{
+  readonly message: string;
+}> {}
+
+const failed = (message: string) => new ProcessPrepareFailure({ message });
 
 function commandParts(command: string, port?: number): readonly string[] {
   const parts = command
@@ -37,7 +54,7 @@ function commandParts(command: string, port?: number): readonly string[] {
       (part) => UNSAFE_COMMAND.test(part) || part.includes(PORT_PLACEHOLDER)
     )
   ) {
-    throw new Error("Process commands must be plain executable arguments");
+    throw failed("Process commands must be plain executable arguments");
   }
   return parts;
 }
@@ -49,44 +66,66 @@ async function packagedCommand(
   return file === "aube" ? [await locateAube(), ...args] : command;
 }
 
-async function run(command: string, worktree: string): Promise<void> {
-  const [file, ...args] = await packagedCommand(commandParts(command));
-  if (file === undefined) {
-    throw new Error("Process command is missing an executable");
-  }
-  await execute(file, args, {
-    cwd: worktree,
-    timeout: 120_000,
-    maxBuffer: 16 * 1024 * 1024,
-    windowsHide: true,
-  });
-}
+const run = (
+  command: string,
+  directory: string
+): Effect.Effect<
+  void,
+  ProcessPrepareFailure | ProcessFailure,
+  ChildProcessSpawner
+> =>
+  Effect.tryPromise({
+    try: async () => await packagedCommand(commandParts(command)),
+    catch: (cause) =>
+      cause instanceof ProcessPrepareFailure
+        ? cause
+        : failed("Process commands must be plain executable arguments"),
+  }).pipe(
+    Effect.flatMap(
+      ([file, ...args]): Effect.Effect<
+        void,
+        ProcessPrepareFailure | ProcessFailure,
+        ChildProcessSpawner
+      > =>
+        file === undefined
+          ? Effect.fail(failed("Process command is missing an executable"))
+          : runProcess(file, args, {
+              cwd: directory,
+              timeoutMs: INSTALL_TIMEOUT_MS,
+              maxBufferBytes: INSTALL_MAX_BUFFER,
+              forceKillAfterMs: FORCE_KILL_AFTER_MS,
+            }).pipe(Effect.asVoid)
+    )
+  );
 
-async function installFallback(
+const installFallback = (
   manager: string,
   directory: string
-): Promise<void> {
+): Effect.Effect<
+  void,
+  ProcessPrepareFailure | ProcessFailure,
+  ChildProcessSpawner
+> => {
   const lockfile = lockfiles.get(manager);
   const hasLockfile =
     lockfile !== undefined && existsSync(join(directory, lockfile));
   if (manager === "npm") {
-    await run(
+    return run(
       hasLockfile ? "npm ci" : "npm install --no-package-lock",
       directory
     );
-    return;
   }
-  await run(
+  return run(
     `${manager} install${hasLockfile ? " --frozen-lockfile" : ""}`,
     directory
   );
-}
+};
 
-async function managedDevCommand(
+const managedDevCommand = (
   command: readonly string[],
   directory: string,
   port: number
-): Promise<readonly string[]> {
+): Effect.Effect<readonly string[], ProcessPrepareFailure> => {
   const [manager, action, script] = command;
   if (
     command.length !== 3 ||
@@ -94,58 +133,74 @@ async function managedDevCommand(
     action !== "run" ||
     script !== "dev"
   ) {
-    return command;
+    return Effect.succeed(command);
   }
-  let scripts: Readonly<Record<string, string>>;
-  try {
-    const content = await readFile(join(directory, "package.json"), "utf-8");
-    const parsed: unknown = JSON.parse(content);
-    ({ scripts } = packageScripts(parsed));
-  } catch {
-    throw new Error("The process package scripts are not usable");
-  }
-  const rule = launchRuleFor(scripts.dev ?? "");
-  if (rule === undefined) {
-    return command;
-  }
-  return [
-    ...command,
-    ...(manager === "npm" ? ["--"] : []),
-    rule.hostFlag,
-    "127.0.0.1",
-    "--port",
-    String(port),
-    ...rule.extraArgs,
-  ];
-}
+  return Effect.tryPromise({
+    try: async () => {
+      const content = await readFile(join(directory, "package.json"), "utf-8");
+      return packageScripts(JSON.parse(content));
+    },
+    catch: () => failed("The process package scripts are not usable"),
+  }).pipe(
+    Effect.flatMap((parsed) => {
+      const rule = launchRuleFor(parsed.scripts.dev ?? "");
+      return Effect.succeed(
+        rule === undefined
+          ? command
+          : [
+              ...command,
+              ...(manager === "npm" ? ["--"] : []),
+              rule.hostFlag,
+              "127.0.0.1",
+              "--port",
+              String(port),
+              ...rule.extraArgs,
+            ]
+      );
+    })
+  );
+};
 
-export const processKind: WorkloadKind = {
-  name: "process",
-  resolve: async ({ worktree, port }) => {
-    const { install, build, run: start } = await readProcessRecipe(worktree);
-    const directory = await realpath(worktree);
+export const prepareProcess = (
+  recipe: ProcessRecipe,
+  { worktree, port }: WorkloadTarget
+): Effect.Effect<
+  DaemonSpec,
+  ProcessPrepareFailure | ProcessFailure,
+  ChildProcessSpawner
+> =>
+  Effect.gen(function* () {
+    const { install, build, run: start } = recipe;
+    const directory = yield* Effect.tryPromise({
+      try: async () => await realpath(worktree),
+      catch: () => failed("The process checkout is not usable"),
+    });
     const command = commandParts(start, port);
     const [manager, action, script] = command;
     if (install !== undefined) {
-      await run(install, directory);
+      yield* run(install, directory);
     } else if (
       command.length === 3 &&
       packageManagers.has(manager ?? "") &&
       action === "run" &&
       script !== undefined
     ) {
-      try {
-        await run("aube install --frozen-lockfile", directory);
-      } catch {
-        await installFallback(manager ?? "", directory);
-      }
+      yield* run("aube install --frozen-lockfile", directory).pipe(
+        Effect.catch(() => installFallback(manager ?? "", directory))
+      );
     }
     if (build !== undefined) {
-      await run(build, directory);
+      yield* run(build, directory);
     }
     return {
-      command: await managedDevCommand(
-        await packagedCommand(command),
+      command: yield* managedDevCommand(
+        yield* Effect.tryPromise({
+          try: async () => await packagedCommand(command),
+          catch: (cause) =>
+            cause instanceof ProcessPrepareFailure
+              ? cause
+              : failed("Process commands must be plain executable arguments"),
+        }),
         directory,
         port
       ),
@@ -153,5 +208,4 @@ export const processKind: WorkloadKind = {
       env: { HOST: "127.0.0.1", HOSTNAME: "127.0.0.1", PORT: String(port) },
       port,
     } satisfies DaemonSpec;
-  },
-};
+  });

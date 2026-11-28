@@ -25,6 +25,8 @@ const identity = {
 export const NewDeploymentSchema = Schema.Struct({
   ...identity,
   repositoryId: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
+  source: Schema.NullOr(Schema.String.check(Schema.isNonEmpty())),
+  lifecycle: Schema.Literals(["workflow", "inline"]),
 });
 
 export const DeploymentSchema = Schema.Struct({
@@ -32,6 +34,8 @@ export const DeploymentSchema = Schema.Struct({
   status: Schema.Literals(["preparing", "ready", "failed", "degraded"]),
   stage: Schema.NullOr(DeployStageSchema),
   displayName: Schema.NullOr(Schema.String),
+  source: Schema.NullOr(Schema.String),
+  lifecycle: Schema.Literals(["workflow", "inline"]),
   createdAt: Schema.String,
 });
 

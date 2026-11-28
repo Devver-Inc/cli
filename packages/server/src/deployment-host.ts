@@ -9,8 +9,10 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 
-import { Effect } from "effect";
+import { Context, Effect } from "effect";
 
+import type { HostFailure } from "./deployment/failures";
+import { attemptHost } from "./deployment/failures";
 import { execute } from "./exec";
 import { allocatePort } from "./pitchfork/loopback-port";
 import type { DaemonSpec } from "./pitchfork/manifest";
@@ -251,4 +253,52 @@ export async function openDeploymentHost(options: {
   };
 }
 
-export type DeploymentHost = Awaited<ReturnType<typeof openDeploymentHost>>;
+export interface OpenedDeploymentHost {
+  readonly reserve: (deploymentId: string) => Promise<DaemonSlot>;
+  readonly publish: (deploymentId: string, spec: DaemonSpec) => Promise<void>;
+  readonly withdraw: (deploymentId: string) => Promise<void>;
+  readonly close: () => Promise<void>;
+  readonly proxyPort: number;
+  readonly url: (deploymentId: string) => string;
+}
+
+// The effect-valued deployment host capability. The packaged supervisor
+// implementation below stays promise-based; this adapter is the typed
+// boundary the deployment lifecycle composes against.
+export interface HostService {
+  readonly reserve: (
+    deploymentId: string
+  ) => Effect.Effect<DaemonSlot, HostFailure>;
+  readonly publish: (
+    deploymentId: string,
+    spec: DaemonSpec
+  ) => Effect.Effect<void, HostFailure>;
+  readonly withdraw: (deploymentId: string) => Effect.Effect<void>;
+  readonly url: (deploymentId: string) => string;
+  readonly proxyPort: number;
+}
+
+export const DeploymentHost = Context.Service<HostService>(
+  "devver/server/DeploymentHost"
+);
+
+export const hostService = (
+  opened: Pick<
+    OpenedDeploymentHost,
+    "reserve" | "publish" | "withdraw" | "url" | "proxyPort"
+  >
+): HostService => ({
+  reserve: (deploymentId) =>
+    attemptHost(async () => await opened.reserve(deploymentId)),
+  publish: (deploymentId, spec) =>
+    attemptHost(async () => {
+      await opened.publish(deploymentId, spec);
+    }),
+  withdraw: (deploymentId) =>
+    Effect.promise(async () => {
+      await opened.withdraw(deploymentId).catch(() => undefined);
+      return undefined;
+    }),
+  url: (deploymentId) => opened.url(deploymentId),
+  proxyPort: opened.proxyPort,
+});

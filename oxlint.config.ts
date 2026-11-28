@@ -25,6 +25,14 @@ export default defineConfig({
     },
   ],
   rules: {
+    // The Effect language service reads `@effect-expect-leaking` annotations
+    // to mark services that intentionally pass a requirement through, so
+    // those documented tags are the exit door for leaking-requirements.
+    "jsdoc/check-tag-names": "off",
+    // Effect's dual-argument combinators `Effect.flatMap(tag, fn)` are read
+    // as `Array#map(fn, thisArg)` by this rule; every deployment handler and
+    // service call site is a false positive.
+    "unicorn/no-array-method-this-argument": "off",
     // Schema and request field order mirrors the API contract it describes.
     "sort-keys": "off",
     // `Effect.gen(function* () {})` takes an anonymous function expression.

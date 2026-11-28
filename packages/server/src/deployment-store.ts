@@ -1,5 +1,7 @@
 import { Context, Data, Effect, Exit, Layer, Schema } from "effect";
+import type { SchemaError } from "effect/Schema";
 import { SqlClient } from "effect/sql";
+import type { SqlError } from "effect/sql/SqlError";
 
 import type {
   DeployStage,
@@ -7,7 +9,15 @@ import type {
   NewDeployment,
 } from "./deployment/record";
 import { DeploymentSchema, NewDeploymentSchema } from "./deployment/record";
+import { DeploymentSpecificationSchema } from "./deployment/specification";
+import type { DeploymentSpecification } from "./deployment/specification";
 import { privateFile } from "./private-state";
+import { sqliteClientLayer } from "./sqlite-driver";
+
+const SpecificationRow = Schema.Struct({
+  version: Schema.Literals([1]),
+  specification: Schema.fromJsonString(DeploymentSpecificationSchema),
+});
 
 const PortSchema = Schema.NumberFromString.check(
   Schema.isInt(),
@@ -20,13 +30,54 @@ class DeploymentStoreError extends Data.TaggedError("DeploymentStoreError")<{
   message: string;
 }> {}
 
-// A build defines the runtime so its offline server bundles only that driver.
-declare const DEVVER_NODE_SQLITE: boolean;
-const useNodeSqlite =
-  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Build-only constant is absent when the server runs from source.
-  typeof DEVVER_NODE_SQLITE === "boolean"
-    ? DEVVER_NODE_SQLITE
-    : process.versions.bun === undefined;
+export const DeploymentStore = Context.Service<StoreService>(
+  "devver/server/DeploymentStore"
+);
+
+export interface StoreService extends Record<string, unknown> {
+  readonly record: (
+    input: NewDeployment
+  ) => Effect.Effect<void, SchemaError | SqlError>;
+  readonly rename: (
+    deploymentId: string,
+    displayName: string
+  ) => Effect.Effect<boolean, SqlError>;
+  readonly markReady: (
+    deploymentId: string
+  ) => Effect.Effect<unknown, SqlError>;
+  readonly markFailed: (
+    deploymentId: string,
+    stage: DeployStage
+  ) => Effect.Effect<unknown, SqlError>;
+  readonly markDegraded: (
+    deploymentId: string,
+    stage: DeployStage
+  ) => Effect.Effect<unknown, SqlError>;
+  readonly read: (
+    deploymentId: string
+  ) => Effect.Effect<Deployment | undefined, SchemaError | SqlError>;
+  readonly readSpecification: (
+    deploymentId: string
+  ) => Effect.Effect<
+    DeploymentSpecification | undefined,
+    SchemaError | SqlError
+  >;
+  readonly recordSpecification: (
+    deploymentId: string,
+    specification: DeploymentSpecification
+  ) => Effect.Effect<DeploymentSpecification, SchemaError | SqlError>;
+  readonly list: Effect.Effect<
+    {
+      readonly deployments: readonly Deployment[];
+      readonly unreadable: number;
+    },
+    SchemaError | SqlError
+  >;
+  readonly appPort: Effect.Effect<number | undefined, SchemaError | SqlError>;
+  readonly setAppPort: (
+    port: number
+  ) => Effect.Effect<void, SchemaError | SqlError>;
+}
 
 export const openDeploymentStore = (path: string) =>
   Effect.gen(function* () {
@@ -39,25 +90,23 @@ export const openDeploymentStore = (path: string) =>
           message: "Deployment records must be owner-only",
         }),
     });
-    const sql = useNodeSqlite
-      ? yield* Effect.gen(function* () {
-          const { layer } = yield* Effect.promise(
-            async () => await import("@effect/sql-sqlite-node/SqliteClient")
-          );
-          const context = yield* Layer.build(
-            layer({ filename: path, disableWAL: true, busyTimeout: 0 })
-          );
-          return Context.get(context, SqlClient.SqlClient);
-        })
-      : yield* Effect.gen(function* () {
-          const { layer } = yield* Effect.promise(
-            async () => await import("@effect/sql-sqlite-bun/SqliteClient")
-          );
-          const context = yield* Layer.build(
-            layer({ filename: path, disableWAL: true, busyTimeout: 0 })
-          );
-          return Context.get(context, SqlClient.SqlClient);
+    const sql = yield* Effect.gen(function* () {
+      const context = yield* Effect.exit(
+        Layer.build(
+          sqliteClientLayer({
+            filename: path,
+            disableWAL: true,
+            busyTimeout: 0,
+          })
+        )
+      );
+      if (Exit.isFailure(context)) {
+        return yield* new DeploymentStoreError({
+          message: "Deployment records could not be opened",
         });
+      }
+      return Context.get(context.value, SqlClient.SqlClient);
+    });
     yield* sql`CREATE TABLE IF NOT EXISTS deployments (
       deploymentId TEXT PRIMARY KEY NOT NULL,
       repositoryId TEXT NOT NULL,
@@ -74,6 +123,12 @@ export const openDeploymentStore = (path: string) =>
     if (!columns.some((column) => column.name === "displayName")) {
       yield* sql`ALTER TABLE deployments ADD COLUMN displayName TEXT`;
     }
+    if (!columns.some((column) => column.name === "source")) {
+      yield* sql`ALTER TABLE deployments ADD COLUMN source TEXT`;
+    }
+    if (!columns.some((column) => column.name === "lifecycle")) {
+      yield* sql`ALTER TABLE deployments ADD COLUMN lifecycle TEXT NOT NULL DEFAULT 'inline'`;
+    }
     if (columns.some((column) => column.name === "sitePort")) {
       yield* sql`ALTER TABLE deployments DROP COLUMN sitePort`;
     }
@@ -84,8 +139,15 @@ export const openDeploymentStore = (path: string) =>
       key TEXT PRIMARY KEY NOT NULL,
       value TEXT NOT NULL
     ) STRICT`;
+    yield* sql`CREATE TABLE IF NOT EXISTS deployment_specifications (
+      deploymentId TEXT PRIMARY KEY NOT NULL REFERENCES deployments(deploymentId),
+      version INTEGER NOT NULL,
+      specification TEXT NOT NULL
+    ) STRICT`;
+    const specificationRows = (deploymentId: string) =>
+      sql`SELECT version, specification FROM deployment_specifications WHERE deploymentId = ${deploymentId}`;
     const select = sql`SELECT deploymentId, repositoryId, commitSha AS "commit", parentDeploymentId,
-      secondParentDeploymentId, worktree, status, stage, displayName, createdAt FROM deployments`;
+      secondParentDeploymentId, worktree, status, stage, displayName, source, lifecycle, createdAt FROM deployments`;
     const markStatus = (
       deploymentId: string,
       status: string,
@@ -98,9 +160,10 @@ export const openDeploymentStore = (path: string) =>
           const deployment =
             yield* Schema.decodeEffect(NewDeploymentSchema)(input);
           yield* sql`INSERT INTO deployments
-            (deploymentId, repositoryId, commitSha, parentDeploymentId, secondParentDeploymentId, worktree, status, stage, createdAt)
+            (deploymentId, repositoryId, commitSha, parentDeploymentId, secondParentDeploymentId, worktree, source, lifecycle, status, stage, createdAt)
             VALUES (${deployment.deploymentId}, ${deployment.repositoryId}, ${deployment.commit},
-              ${deployment.parentDeploymentId}, ${deployment.secondParentDeploymentId}, ${deployment.worktree}, 'preparing', NULL, ${new Date().toISOString()})`;
+              ${deployment.parentDeploymentId}, ${deployment.secondParentDeploymentId}, ${deployment.worktree}, ${deployment.source}, ${deployment.lifecycle}, 'preparing', NULL, ${new Date().toISOString()})
+            ON CONFLICT(deploymentId) DO NOTHING`;
         }),
       rename: (deploymentId: string, displayName: string) =>
         Effect.gen(function* () {
@@ -122,6 +185,30 @@ export const openDeploymentStore = (path: string) =>
           return row === undefined
             ? undefined
             : yield* Schema.decodeUnknownEffect(DeploymentSchema)(row);
+        }),
+      readSpecification: (deploymentId: string) =>
+        Effect.gen(function* () {
+          const [row] = yield* specificationRows(deploymentId);
+          return row === undefined
+            ? undefined
+            : (yield* Schema.decodeUnknownEffect(SpecificationRow)(row))
+                .specification;
+        }),
+      recordSpecification: (
+        deploymentId: string,
+        specification: DeploymentSpecification
+      ) =>
+        Effect.gen(function* () {
+          const encoded = yield* Schema.encodeEffect(SpecificationRow)({
+            version: 1,
+            specification,
+          });
+          yield* sql`INSERT INTO deployment_specifications (deploymentId, version, specification)
+            VALUES (${deploymentId}, ${encoded.version}, ${encoded.specification})
+            ON CONFLICT(deploymentId) DO NOTHING`;
+          const [row] = yield* specificationRows(deploymentId);
+          return (yield* Schema.decodeUnknownEffect(SpecificationRow)(row))
+            .specification;
         }),
       list: Effect.gen(function* () {
         const rows = yield* sql`${select} ORDER BY createdAt, deploymentId`;
@@ -156,5 +243,5 @@ export const openDeploymentStore = (path: string) =>
           yield* sql`INSERT INTO instance (key, value) VALUES (${APP_PORT}, ${value})
             ON CONFLICT(key) DO UPDATE SET value = excluded.value`;
         }),
-    };
+    } satisfies StoreService;
   });

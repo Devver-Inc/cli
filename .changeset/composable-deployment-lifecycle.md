@@ -1,0 +1,5 @@
+---
+"@devver-inc/cli": patch
+---
+
+Unify static and process creation behind one durable lifecycle and wire the resource engine into it. Static and process deployments become two implementations of one workload capability selected from the recorded specification; every creation runs on the historical workflow identity (dedup by deployment id, durable interrupt, typed terminal result), while each deployment owns a per-deployment resource journal whose desired-state graph (verified workspace, hosted workload) is applied and torn down in dependency order with an idempotent legacy fallback for pre-engine deployments. Server Git and process workloads now run through the platform child process service: interruptions await the killed process group, a cancelled create withdraws and removes its worktree only after its run body truly terminated, and a failed create's staged message reaches the CLI unchanged. Restart reconciliation adopts existing deployments by reusing their matching worktrees, preserving untracked build output and printed URLs.
